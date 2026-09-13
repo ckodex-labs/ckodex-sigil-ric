@@ -1,0 +1,6 @@
+patterns = [
+  "(?i)mcp server",
+  "(?i)tool output",
+  "(?i)context injection",
+  "(?i)response poisoning"
+]

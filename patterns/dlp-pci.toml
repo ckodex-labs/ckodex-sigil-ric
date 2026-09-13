@@ -1,0 +1,4 @@
+patterns = [
+  "(?i)credit card",
+  "\\b(?:\\d[ -]*?){13,19}\\b"
+]

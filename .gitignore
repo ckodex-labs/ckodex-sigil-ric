@@ -1,0 +1,26 @@
+# Rust build artifacts
+/target
+**/*.rs.bk
+
+# Zig build artifacts
+zig-cache/
+zig-out/
+.zig-cache/
+
+# Compiled test binary at repo root
+/test
+
+# OS / editor noise
+.DS_Store
+*.swp
+*.swo
+
+# Local env / secrets — never committed
+.env
+.env.*
+*.pem
+*.key
+
+# ccc index artifacts
+.ccc/
+cocoindex_code.db*

@@ -1,0 +1,14 @@
+{
+  "name": "small",
+  "preset": "small",
+  "corpus": "small",
+  "vocab": "cl100k_base",
+  "rounds": 20,
+  "batch_size": 2,
+  "special_token_mode": "allow_all",
+  "expected_parity": true,
+  "items": 6,
+  "sequential_ns_per_token": 68304,
+  "parallel_ns_per_token": 36946,
+  "max_regression_pct": 200
+}

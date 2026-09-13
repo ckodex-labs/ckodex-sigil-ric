@@ -1,0 +1,10 @@
+[
+  "The quick brown fox jumps over the lazy dog.",
+  "Unicode-heavy text: café, façade, coöperate, naïve, and jalapeño.",
+  "Mixed scripts: English Ελληνικά русский العربية हिन्दी עברית.",
+  "Contractions should stay stable: don't, won't, you're, we'll, I'd.",
+  "Longer content for throughput measurement with repeated clauses and punctuation. This sentence is intentionally verbose and repetitive to exercise batch tokenization over a larger payload.",
+  "Zero-width and control-ish characters: zero\u200bwidth, tab\tseparator, and newline\nseparator.",
+  "Special-token-like boundary text without activation: <|not_a_real_token|> and similar markers.",
+  "A final corpus entry that mixes digits 0123456789, symbols !@#$%^&*, and UTF-8 accents like São Paulo."
+]

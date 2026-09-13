@@ -1,0 +1,42 @@
+# SIGIL QA Scorecard
+
+This scorecard maps the main attack classes to the layer that blocks them and to the regression tests that prove the behavior.
+
+| Attack class | Blocking layer | Proof tests |
+| --- | --- | --- |
+| Prompt injection and recursive injection | `sigil-core` scan and verdict engine | `crates/sigil-core/tests/attack_proofs.rs`, `crates/sigil-core/tests/property_defense.rs` |
+| Unicode controls, bidi, zero-width, homoglyph abuse, Unicode Tags (U+E0000–E007F) smuggling | `sigil-core` intake + scan | `crates/sigil-core/tests/pipeline.rs`, `crates/sigil-core/tests/attack_proofs.rs`, `crates/sigil-core/tests/property_defense.rs`, `crates/sigil-core/tests/conformance_vectors.rs` |
+| DLP exfiltration, secrets, emails, SSNs, credit cards, API keys | `sigil-core` DLP detectors and evidence bounds | `crates/sigil-core/tests/attack_proofs.rs`, `crates/sigil-core/tests/security_hardening.rs` |
+| Oversized payloads and invalid byte streams | `sigil-core` intake boundary | `crates/sigil-core/tests/attack_proofs.rs`, `crates/sigil-core/tests/pipeline.rs`, `crates/sigil-core/tests/property_defense.rs` |
+| Token smuggling and boundary abuse (contiguous encoded payloads) | `sigil-core` merge/scan rules | `crates/sigil-core/tests/attack_proofs.rs`, `crates/sigil-core/tests/pipeline.rs` |
+| Cross-provenance merge erosion (suppressed and unsuppressed crossings) | `sigil-core` merge boundary findings | `crates/sigil-core/tests/conformance_vectors.rs` |
+| Receipt tampering and unsigned-admission substitution | `sigil-core` receipt signing (ECDSA P-384) | `crates/sigil-core/tests/conformance_vectors.rs` |
+| Tokenizer firewall and reserved token smuggling | `sigil-core` tokenizer boundary | `crates/sigil-core/tests/firewall.rs` |
+| Representation-integrity conformance (receipts, evidence modes, trust composition, raw-range traceability) | `sigil-core` RIC conformance vectors | `crates/sigil-core/tests/conformance_vectors.rs` |
+| Contract boundary invariants and serialization | `sigil-core` / `sigil-s` public contract surface | `crates/sigil-core/tests/contracts.rs` |
+| Batch actor consistency and thread safety | `sigil-core` parallel tokenizer actor | `crates/sigil-core/tests/batch_parallel.rs` |
+| Cross-tool contamination and schema drift | `sigil-mcp` gate | `crates/sigil-mcp/tests/attack_proofs.rs`, `crates/sigil-mcp/tests/gate.rs` |
+| Cross-modal payloads and hidden commands | `sigil-multimodal` composition | `crates/sigil-multimodal/tests/attack_proofs.rs`, `crates/sigil-multimodal/tests/cross_modal.rs` |
+| Unsafe fusion boundaries (cross-trust, cross-role, instruction formation, derived-authority escalation) | `sigil-multimodal` fusion-boundary auditor | `crates/sigil-multimodal/src/lib.rs` unit tests, `crates/sigil-multimodal/tests/cross_modal.rs` |
+| Perception-channel authority fabrication (adapter claiming first-party provenance) | `sigil-multimodal` kernel mapping (type-level RIC-R-7) | `crates/sigil-multimodal/src/perception.rs` unit tests |
+| Image-borne instruction injection (OCR channel) | `sigil-perception` image adapter + `sigil-multimodal` kernel scan | `crates/sigil-perception/src/lib.rs` unit tests, `crates/sigil-multimodal/tests/cross_modal.rs` |
+| Behavioral drift and SHIELD escalation | `sigil-probe` health engine | `crates/sigil-probe/tests/attack_proofs.rs`, `crates/sigil-probe/tests/drift.rs` |
+| Sentinel composition not weakening SIGIL denies | `sigil-s` composition layer | `crates/sigil-s/tests/composition.rs` |
+| Zig tokenizer parity and ABI stability | `zig/tiktoken` backend plus Rust FFI | `crates/sigil-core/tests/tiktoken_parity.rs` |
+| Python binding encode/decode parity | Python `ctypes` wrapper | `bindings/python/benchmark.py`, CI binding smoke job |
+| Go binding encode/decode parity | Go `cgo` wrapper | `bindings/go/cmd/sigil-bench`, CI binding smoke job |
+| Throughput regression and batch consistency | CLI benchmark harness | `bench/baselines/*`, `crates/sigil-cli/src/lib.rs`, CI benchmark job |
+
+## QA gates
+
+- `cargo test --workspace`
+- `cargo clippy --workspace --all-targets -- -D warnings`
+- `zig build-lib` verification for both static and shared tokenizer artifacts
+- benchmark regression checks for `small`, `medium`, and `stress`
+- binding smoke checks for Python and Go
+
+## Status
+
+The repo is currently organized to fail closed on the classes above. Any new attack surface should add a corresponding row here and a regression test in the owning crate.
+
+CI also renders this scorecard into a deterministic artifact on every run so coverage drift is visible without manually rebuilding the report.

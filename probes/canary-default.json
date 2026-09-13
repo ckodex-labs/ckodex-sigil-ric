@@ -1,0 +1,4 @@
+[
+  { "input": "hello", "expected_fragment": "ok" },
+  { "input": "status", "expected_fragment": "healthy" }
+]

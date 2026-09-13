@@ -1,0 +1,20 @@
+[package]
+name = "sigil-perception"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+hound = "3.5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
+kamadak-exif = "0.6"
+lopdf = { version = "0.36", default-features = false }
+mp4parse = "0.17"
+realfft = "3.5"
+rustfft = "6.4"
+serde = { version = "1", features = ["derive"] }
+serde_json.workspace = true
+sha2 = "0.10.9"
+sigil-core = { path = "../sigil-core" }
+sigil-multimodal = { path = "../sigil-multimodal" }

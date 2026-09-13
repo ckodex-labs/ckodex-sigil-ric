@@ -1,0 +1,6 @@
+patterns = [
+  "(?i)ignore previous",
+  "(?i)system prompt",
+  "(?i)developer mode",
+  "(?i)prompt injection"
+]

@@ -1,0 +1,9 @@
+{
+  "name": "small",
+  "corpus": "small",
+  "vocab": "cl100k_base",
+  "rounds": 20,
+  "batch_size": 2,
+  "special_token_mode": "allow_all",
+  "expected_parity": true
+}

@@ -1,0 +1,8 @@
+[
+  "hello world",
+  "mañana",
+  "mixed-script Русский العربي Latin",
+  "zero\u200bwidth joiner test",
+  "<|endoftext|> special token boundary",
+  "a short benchmark line with punctuation, numbers 123, and emojis 😀"
+]

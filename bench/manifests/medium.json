@@ -1,0 +1,9 @@
+{
+  "name": "medium",
+  "corpus": "medium",
+  "vocab": "cl100k_base",
+  "rounds": 10,
+  "batch_size": 4,
+  "special_token_mode": "disallow",
+  "expected_parity": true
+}

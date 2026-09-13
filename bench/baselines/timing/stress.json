@@ -1,0 +1,14 @@
+{
+  "name": "stress",
+  "preset": "stress",
+  "corpus": "stress",
+  "vocab": "cl100k_base",
+  "rounds": 5,
+  "batch_size": 8,
+  "special_token_mode": "disallow",
+  "expected_parity": true,
+  "items": 10,
+  "sequential_ns_per_token": 43126,
+  "parallel_ns_per_token": 22322,
+  "max_regression_pct": 200
+}

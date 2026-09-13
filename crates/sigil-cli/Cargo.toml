@@ -1,0 +1,20 @@
+[package]
+name = "sigil-cli"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+
+[dependencies]
+anyhow.workspace = true
+clap.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+toml.workspace = true
+sigil-core = { path = "../sigil-core" }
+sigil-mcp = { path = "../sigil-mcp" }
+sigil-probe = { path = "../sigil-probe" }
+sigil-multimodal = { path = "../sigil-multimodal" }
+sigil-s = { path = "../sigil-s" }
+sigil-perception = { version = "0.3.0", path = "../sigil-perception" }
+sigil-sigstore = { version = "0.3.0", path = "../sigil-sigstore" }

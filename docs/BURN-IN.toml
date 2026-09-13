@@ -1,0 +1,8 @@
+[burn_in]
+monitor_shadow_required = true
+representative_corpora = ["small", "medium", "stress"]
+false_positive_rate_max = 0.01
+max_unresolved_high_severity_findings = 0
+rollback_ready_required = true
+require_stress_benchmark = true
+

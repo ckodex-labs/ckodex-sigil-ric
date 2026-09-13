@@ -1,0 +1,117 @@
+name: Benchmark Nightly
+
+on:
+  schedule:
+    - cron: "0 2 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  stress-benchmark:
+    name: Stress benchmark trend
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Rust toolchain
+        uses: dtolnay/rust-toolchain@1.78.0
+
+      - name: Zig toolchain
+        uses: mlugg/setup-zig@v1
+        with:
+          version: 0.15.2
+
+      - name: Prepare output dir
+        run: mkdir -p "$RUNNER_TEMP/sigil-bench"
+
+      - name: Run small benchmark and compare baselines
+        run: >
+          cargo run -p sigil-cli -- bench
+          --preset small
+          --format json
+          --baseline-dir bench/baselines
+          --output "$RUNNER_TEMP/sigil-bench/small.json"
+
+      - name: Run medium benchmark and compare baselines
+        run: >
+          cargo run -p sigil-cli -- bench
+          --preset medium
+          --format json
+          --baseline-dir bench/baselines
+          --output "$RUNNER_TEMP/sigil-bench/medium.json"
+
+      - name: Run stress benchmark and compare baselines
+        run: >
+          cargo run -p sigil-cli -- bench
+          --preset stress
+          --format json
+          --baseline-dir bench/baselines
+          --output "$RUNNER_TEMP/sigil-bench/stress.json"
+
+      - name: Emit runtime telemetry
+        run: |
+          cargo run -p sigil-cli -- telemetry \
+            --benchmark "$RUNNER_TEMP/sigil-bench/small.json" \
+            --benchmark "$RUNNER_TEMP/sigil-bench/medium.json" \
+            --benchmark "$RUNNER_TEMP/sigil-bench/stress.json" \
+            --deployment-mode monitor \
+            --monitor-shadow-enabled \
+            --false-positive-rate 0.0 \
+            --false-positive-rate-threshold 0.01 \
+            --unresolved-high-severity-findings 0 \
+            --rollback-ready \
+            --source nightly-benchmark \
+            --evidence-ref "$RUNNER_TEMP/sigil-bench/small.json" \
+            --evidence-ref "$RUNNER_TEMP/sigil-bench/medium.json" \
+            --evidence-ref "$RUNNER_TEMP/sigil-bench/stress.json" \
+            --output "$RUNNER_TEMP/sigil-bench/telemetry.json"
+
+      - name: Render burn-in report
+        run: |
+          python3 scripts/render_burn_in_report.py \
+            --benchmark "$RUNNER_TEMP/sigil-bench/stress.json" \
+            --telemetry "$RUNNER_TEMP/sigil-bench/telemetry.json" \
+            --markdown-out "$RUNNER_TEMP/sigil-bench/burn-in.md" \
+            --json-out "$RUNNER_TEMP/sigil-bench/burn-in.json"
+
+      - name: Publish burn-in summary
+        run: |
+          {
+            echo "## SIGIL Burn-In"
+            echo
+            cat "$RUNNER_TEMP/sigil-bench/burn-in.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Render staged rollout readiness
+        run: |
+          python3 scripts/render_launch_readiness.py \
+            --stage staged_rollout \
+            --assume-commands-pass \
+            --burn-in-report "$RUNNER_TEMP/sigil-bench/burn-in.json" \
+            --markdown-out "$RUNNER_TEMP/sigil-bench/staged-rollout.md" \
+            --json-out "$RUNNER_TEMP/sigil-bench/staged-rollout.json"
+
+      - name: Publish staged rollout summary
+        run: |
+          {
+            echo "## SIGIL Staged Rollout Readiness"
+            echo
+            cat "$RUNNER_TEMP/sigil-bench/staged-rollout.md"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload benchmark artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: benchmark-stress-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/sigil-bench/small.json
+            ${{ runner.temp }}/sigil-bench/medium.json
+            ${{ runner.temp }}/sigil-bench/stress.json
+            ${{ runner.temp }}/sigil-bench/telemetry.json
+            ${{ runner.temp }}/sigil-bench/burn-in.md
+            ${{ runner.temp }}/sigil-bench/burn-in.json
+            ${{ runner.temp }}/sigil-bench/staged-rollout.md
+            ${{ runner.temp }}/sigil-bench/staged-rollout.json

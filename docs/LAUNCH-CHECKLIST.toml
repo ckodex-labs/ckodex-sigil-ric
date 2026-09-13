@@ -1,0 +1,38 @@
+[stage.internal_qa]
+title = "Internal QA"
+items = [
+  { id = "cargo-test", kind = "command", label = "cargo test --workspace passes", command = "cargo test --workspace" },
+  { id = "cargo-clippy", kind = "command", label = "cargo clippy --workspace --all-targets -- -D warnings passes", command = "cargo clippy --workspace --all-targets -- -D warnings" },
+  { id = "zig-static-shared", kind = "command", label = "Zig tokenizer builds in static and shared modes", command = "zig build-lib -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig && zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.so zig/tiktoken/src/lib.zig" },
+  { id = "check-contracts", kind = "command", label = "scripts/check_contracts.py passes", command = "python3 scripts/check_contracts.py" },
+  { id = "scorecard-render", kind = "file", label = "docs/QA-SCORECARD.md renders cleanly in CI", path = "scripts/render_qa_scorecard.py" },
+  { id = "contracts-test", kind = "file", label = "crates/sigil-core/tests/contracts.rs passes", path = "crates/sigil-core/tests/contracts.rs" },
+  { id = "attack-proofs-core", kind = "file", label = "crates/sigil-core/tests/attack_proofs.rs passes", path = "crates/sigil-core/tests/attack_proofs.rs" },
+  { id = "firewall-core", kind = "file", label = "crates/sigil-core/tests/firewall.rs passes", path = "crates/sigil-core/tests/firewall.rs" },
+  { id = "property-defense-core", kind = "file", label = "crates/sigil-core/tests/property_defense.rs passes", path = "crates/sigil-core/tests/property_defense.rs" },
+  { id = "attack-proofs-mcp", kind = "file", label = "crates/sigil-mcp/tests/attack_proofs.rs passes", path = "crates/sigil-mcp/tests/attack_proofs.rs" },
+  { id = "attack-proofs-multimodal", kind = "file", label = "crates/sigil-multimodal/tests/attack_proofs.rs passes", path = "crates/sigil-multimodal/tests/attack_proofs.rs" },
+  { id = "attack-proofs-probe", kind = "file", label = "crates/sigil-probe/tests/attack_proofs.rs passes", path = "crates/sigil-probe/tests/attack_proofs.rs" },
+  { id = "composition-sigil-s", kind = "file", label = "crates/sigil-s/tests/composition.rs passes", path = "crates/sigil-s/tests/composition.rs" },
+]
+
+[stage.staged_rollout]
+title = "Staged Rollout"
+extends = "internal_qa"
+items = [
+  { id = "monitor-shadow", kind = "manual", label = "Monitor/shadow mode is enabled for the first rollout window" },
+  { id = "representative-corpus", kind = "manual", label = "Real traffic or a representative corpus has been exercised" },
+  { id = "false-positive-rate", kind = "manual", label = "False-positive rate is stable and within the approved threshold" },
+  { id = "no-high-sev", kind = "manual", label = "No unresolved high-severity security findings remain" },
+  { id = "rollback-plan", kind = "manual", label = "Rollout can be paused or reverted without data loss" },
+]
+
+[stage.production_launch]
+title = "Production Launch"
+extends = "staged_rollout"
+items = [
+  { id = "bench-small", kind = "command", label = "sigil bench --preset small compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset small --baseline-dir bench/baselines --format json" },
+  { id = "bench-medium", kind = "command", label = "sigil bench --preset medium compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset medium --baseline-dir bench/baselines --format json" },
+  { id = "bench-stress", kind = "manual", label = "sigil bench --preset stress is recorded for trend tracking" },
+  { id = "pr-visible", kind = "file", label = "CI summary and PR comment scorecard are visible to reviewers", path = ".github/workflows/ci.yml" },
+]

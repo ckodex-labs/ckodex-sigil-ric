@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "deployment_mode": "monitor",
+  "monitor_shadow_enabled": true,
+  "representative_corpora": [
+    "small",
+    "medium",
+    "stress"
+  ],
+  "false_positive_rate": 0.0,
+  "false_positive_rate_threshold": 0.01,
+  "unresolved_high_severity_findings": 0,
+  "rollback_ready": true,
+  "captured_at_unix_ms": 0,
+  "source": "sample-telemetry",
+  "evidence_refs": [
+    "bench/baselines/timing/stress.json",
+    "bench/baselines/correctness/stress.json"
+  ],
+  "notes": "sample telemetry bundle for burn-in report validation"
+}

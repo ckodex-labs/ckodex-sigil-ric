@@ -1,0 +1,12 @@
+[
+  "This is a longer benchmark sample designed to exercise the tokenizer over repeated English prose, punctuation, and numerals. It should remain deterministic even when the batch size changes.",
+  "Another long entry with Unicode: crème brûlée, São Tomé, and naïve coöperation with mixed scripts العربية and Русский.",
+  "Repeated clause repeated clause repeated clause repeated clause repeated clause repeated clause repeated clause repeated clause.",
+  "A paragraph with line breaks\nthat should remain stable when split across batch boundaries\nand still produce the same tokens.",
+  "Tokenization should not change when we add more volume to the corpus; this line exists to make the stress corpus less trivial.",
+  "Streaming-style content with lists: one, two, three, four, five, six, seven, eight, nine, ten.",
+  "Symbols and operators: <>{}[]()|\\/~`^ and a few more punctuation marks to keep the batch busy.",
+  "Boundary-sensitive input including em-dashes, ellipses, and quotes: “quoted text” — plus apostrophes and contractions like it's and they're.",
+  "Multiscript: English, 日本語, 한국어, 中文, தமிழ், Ελληνικά, and العربية all in one line.",
+  "A final stress line with emojis 😀😎🚀 and zero-width joiners\u200dplus\u200bmarkers to keep the token stream interesting."
+]

@@ -1,0 +1,6 @@
+patterns = [
+  "(?i)internal api secret",
+  "(?i)root password",
+  "(?i)private key",
+  "(?i)oauth token"
+]

@@ -1,0 +1,164 @@
+use super::*;
+
+fn sine_wave(freq_hz: f32, sample_rate: u32, duration_secs: f32) -> Vec<f32> {
+    let n = (sample_rate as f32 * duration_secs) as usize;
+    (0..n)
+        .map(|i| (2.0 * std::f32::consts::PI * freq_hz * i as f32 / sample_rate as f32).sin())
+        .collect()
+}
+
+#[test]
+fn pure_tone_detected_at_correct_frequency() {
+    let samples = sine_wave(440.0, 16000, 0.1);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "aa").expect("spectrum");
+    assert!(
+        (report.dominant_freq_hz - 440.0).abs() < 20.0,
+        "dominant freq should be ~440 Hz, got {}",
+        report.dominant_freq_hz
+    );
+}
+
+#[test]
+fn subliminal_low_frequency_energy_detected() {
+    let mut samples = sine_wave(5.0, 16000, 0.5);
+    for s in &mut samples {
+        *s *= 10.0;
+    }
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "bb").expect("spectrum");
+    assert!(
+        !report.subliminal_findings.is_empty(),
+        "sub-audible signal should be detected: {:?}",
+        report.subliminal_findings
+    );
+}
+
+#[test]
+fn high_frequency_steganography_detected() {
+    let mut samples = sine_wave(7000.0, 16000, 0.1);
+    for s in &mut samples {
+        *s *= 5.0;
+    }
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "cc").expect("spectrum");
+    assert!(
+        !report.steganography_findings.is_empty(),
+        "high-frequency anomaly should be detected: {:?}",
+        report.steganography_findings
+    );
+}
+
+#[test]
+fn normal_audio_no_false_positives() {
+    let samples = sine_wave(440.0, 16000, 0.1);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "dd").expect("spectrum");
+    assert!(
+        report.subliminal_findings.is_empty(),
+        "normal audio should not trigger subliminal: {:?}",
+        report.subliminal_findings
+    );
+    assert!(
+        report.steganography_findings.is_empty(),
+        "normal audio should not trigger steganography: {:?}",
+        report.steganography_findings
+    );
+}
+
+#[test]
+fn too_short_signal_returns_none() {
+    let samples = vec![0.0; 10];
+    let report = analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "ee");
+    assert!(report.is_none(), "short signal should return None");
+}
+
+#[test]
+fn silent_signal_returns_none() {
+    let samples = vec![0.0; 1024];
+    let report = analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "ff");
+    assert!(report.is_none(), "silent signal should return None");
+}
+
+#[test]
+fn artifact_digest_is_propagated() {
+    let samples = sine_wave(440.0, 16000, 0.1);
+    let digest = "0123456789abcdef".repeat(6);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), &digest).expect("spectrum");
+    assert_eq!(report.artifact_digest, digest);
+}
+
+#[test]
+fn multiple_windows_analyzed_for_long_signal() {
+    // 2 seconds at 16000 Hz = 32000 samples. With fft_size=1024 and
+    // 50% overlap (hop=512), we should get ~62 windows.
+    let samples = sine_wave(440.0, 16000, 2.0);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "gg").expect("spectrum");
+    assert!(
+        report.windows_analyzed > 50,
+        "should analyze many windows, got {}",
+        report.windows_analyzed
+    );
+}
+
+#[test]
+fn subliminal_detected_in_second_window_only() {
+    // First second: 440 Hz normal tone. Second second: 5 Hz sub-audible.
+    let mut samples = sine_wave(440.0, 16000, 1.0);
+    let mut sub = sine_wave(5.0, 16000, 1.0);
+    for s in &mut sub {
+        *s *= 10.0;
+    }
+    samples.extend(sub);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "hh").expect("spectrum");
+    assert!(
+        !report.subliminal_findings.is_empty(),
+        "sub-audible in second window should be detected across full signal"
+    );
+}
+
+#[test]
+fn downmix_stereo_to_mono_simple() {
+    let samples = vec![100i16, 200, 200, 300];
+    let mono = downmix_to_mono(&samples, 2);
+    assert_eq!(mono.len(), 2);
+    assert!((mono[0] - (150.0 / i16::MAX as f32)).abs() < 0.001);
+}
+
+#[test]
+fn downmix_51_excludes_lfe_channel() {
+    // 5.1: L=100, R=100, C=100, LFE=32767 (max), Ls=0, Rs=0
+    // Weighted: L*1.0 + R*1.0 + C*0.707 + LFE*0.0 + Ls*0.707 + Rs*0.707
+    // = 100 + 100 + 70.7 + 0 + 0 + 0 = 270.7
+    // Simple avg would include LFE: (100+100+100+32767+0+0)/6 = 5511.2
+    let samples = vec![100i16, 100, 100, 32767, 0, 0];
+    let mono_weighted = downmix_to_mono_weighted(&samples, 6);
+    let mono_simple = downmix_to_mono(&samples, 6);
+    assert_eq!(mono_weighted.len(), 1);
+    assert_eq!(mono_simple.len(), 1);
+    // Weighted should be much smaller than simple (LFE excluded).
+    assert!(
+        mono_weighted[0] < mono_simple[0] * 0.1,
+        "weighted downmix should exclude LFE: weighted={}, simple={}",
+        mono_weighted[0],
+        mono_simple[0]
+    );
+}
+
+#[test]
+fn pcm_conversion_preserves_amplitude() {
+    let pcm = vec![0i16, i16::MAX, i16::MIN];
+    let f32_samples = pcm_to_f32(&pcm);
+    assert!((f32_samples[0] - 0.0).abs() < 0.001);
+    assert!((f32_samples[1] - 1.0).abs() < 0.01);
+    assert!((f32_samples[2] - (-1.0)).abs() < 0.01);
+}
+
+#[test]
+fn artifact_digest_computes_sha384() {
+    let digest = artifact_digest(b"test");
+    assert_eq!(digest.len(), 96, "SHA-384 hex = 96 chars");
+}
