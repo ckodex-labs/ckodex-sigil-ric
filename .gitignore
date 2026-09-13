@@ -21,6 +21,10 @@ zig-out/
 *.pem
 *.key
 
-# ccc index artifacts
-.ccc/
-cocoindex_code.db*
+# CocoIndex Code (ccc) — index DBs ignored, settings.yml stays tracked
+/.cocoindex_code/*.db
+/.cocoindex_code/cocoindex.db/
+
+# graft's local graph cache — regenerable, not committed (run `graft build`).
+# .ignore re-admits the tree to ripgrep and stays tracked.
+/graft/

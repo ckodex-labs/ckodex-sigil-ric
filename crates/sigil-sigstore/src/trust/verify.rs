@@ -4,6 +4,18 @@ use crate::trust::rekor::{verify_inclusion_proof, verify_rekor_entry_binding, ve
 use crate::trust::types::{RekorEntry, TrustError, TrustRoot};
 use crate::{SigstoreBundle, BUNDLE_MEDIA_TYPE};
 use base64::Engine as _;
+
+/// Full keyless verification of a Sigstore bundle against a pinned trust root.
+///
+/// Verification path:
+/// 1. Signature binding (message → leaf cert public key)
+/// 2. Certificate chain validation (leaf → intermediate → root)
+/// 3. SAN identity check against `expected_identity`
+/// 4. Validity window at Rekor `integratedTime`
+/// 5. Rekor SET verification
+/// 6. Rekor inclusion proof verification (RFC 6962)
+/// 7. Rekor entry binding — `canonicalizedBody` artifact hash and signature
+///    must match the artifact and signature being verified
 pub fn verify_bundle_with_trust(
     bundle: &SigstoreBundle,
     message: &[u8],

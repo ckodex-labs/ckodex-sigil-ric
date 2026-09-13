@@ -7,6 +7,8 @@ surface:
 - `crates/sigil-mcp` - MCP content security gate
 - `crates/sigil-probe` - model health and SHIELD bridge
 - `crates/sigil-multimodal` - multimodal security taint propagation
+- `crates/sigil-perception` - perception adapters (audio/image/video/document → derived channels)
+- `crates/sigil-sigstore` - Sigstore keyless signing and bundle verification
 - `crates/sigil-s` - semantic sentinel companion
 - `crates/sigil-server` - sidecar composition façade
 - `crates/sigil-cli` - operator and CI entrypoint

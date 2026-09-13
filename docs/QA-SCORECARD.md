@@ -17,7 +17,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Batch actor consistency and thread safety | `sigil-core` parallel tokenizer actor | `crates/sigil-core/tests/batch_parallel.rs` |
 | Cross-tool contamination and schema drift | `sigil-mcp` gate | `crates/sigil-mcp/tests/attack_proofs.rs`, `crates/sigil-mcp/tests/gate.rs` |
 | Cross-modal payloads and hidden commands | `sigil-multimodal` composition | `crates/sigil-multimodal/tests/attack_proofs.rs`, `crates/sigil-multimodal/tests/cross_modal.rs` |
-| Unsafe fusion boundaries (cross-trust, cross-role, instruction formation, derived-authority escalation) | `sigil-multimodal` fusion-boundary auditor | `crates/sigil-multimodal/src/lib.rs` unit tests, `crates/sigil-multimodal/tests/cross_modal.rs` |
+| Unsafe fusion boundaries (cross-trust, cross-role, instruction formation, derived-authority escalation) | `sigil-multimodal` fusion-boundary auditor | `crates/sigil-multimodal/src/tests.rs`, `crates/sigil-multimodal/tests/cross_modal.rs` |
 | Perception-channel authority fabrication (adapter claiming first-party provenance) | `sigil-multimodal` kernel mapping (type-level RIC-R-7) | `crates/sigil-multimodal/src/perception.rs` unit tests |
 | Image-borne instruction injection (OCR channel) | `sigil-perception` image adapter + `sigil-multimodal` kernel scan | `crates/sigil-perception/src/lib.rs` unit tests, `crates/sigil-multimodal/tests/cross_modal.rs` |
 | Behavioral drift and SHIELD escalation | `sigil-probe` health engine | `crates/sigil-probe/tests/attack_proofs.rs`, `crates/sigil-probe/tests/drift.rs` |
@@ -25,7 +25,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Zig tokenizer parity and ABI stability | `zig/tiktoken` backend plus Rust FFI | `crates/sigil-core/tests/tiktoken_parity.rs` |
 | Python binding encode/decode parity | Python `ctypes` wrapper | `bindings/python/benchmark.py`, CI binding smoke job |
 | Go binding encode/decode parity | Go `cgo` wrapper | `bindings/go/cmd/sigil-bench`, CI binding smoke job |
-| Throughput regression and batch consistency | CLI benchmark harness | `bench/baselines/*`, `crates/sigil-cli/src/lib.rs`, CI benchmark job |
+| Throughput regression and batch consistency | CLI benchmark harness | `bench/baselines/*`, `crates/sigil-cli/src/cli/benchmark.rs`, CI benchmark job |
 
 ## QA gates
 

@@ -102,13 +102,15 @@ primitive) and proceeded through five increments:
   valid Rekor entry for a different artifact → `verify_rekor_entry_binding` compares
   `spec.data.hash.value` against `SHA-256(message)` and `spec.signature.content`
   against the bundle's signature. 5 new tests (float WAV, truncated WAV, Rekor binding
-  accept/reject×2). File-size decomposition signals: `audio.rs` 577, `spectral.rs` 527,
-  `trust.rs` 800 LOC — all over the 500-line governance limit.
+  accept/reject×2). Oversized files decomposed: `audio.rs` → `audio/` (mod + sampling
+  + transcript + tests), `spectral.rs` → `spectral/` (mod + downmix + tests),
+  `trust.rs` → `trust/` (chain + fetch + rekor + types + verify + tests) — all now
+  under the 500-line governance limit.
 
 | Capability | State | Where |
 |---|---|---|
 | Raw↔canonical digest binding (RIC-R-1..R-4) | done | `RepresentationReceipt` on every `SigilOutput` |
-| Per-cluster normalization, raw-accurate ranges (INV-007) | done | `intake.rs`, `vocab.rs` remap |
+| Per-cluster normalization, raw-accurate ranges (INV-007) | done | `intake.rs`, `vocab/encode.rs` remap |
 | Unicode Tags U+E0000–E007F + extended invisible detection | done | `intake.rs` predicates, both scan detectors |
 | Strip policy (grapheme-level, evidence-preserving) | done | `intake.rs` |
 | Merge-boundary findings + `suppress_cross_boundary` policy | done | `merge.rs`, `engine.rs` |

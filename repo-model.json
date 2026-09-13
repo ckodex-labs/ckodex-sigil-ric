@@ -1,0 +1,70 @@
+{
+  "repo": "ckodex-safir-tokenizer",
+  "commit": "96a40c9",
+  "branch": "develop",
+  "date": "2026-09-13",
+  "adapters": ["ccc", "graft"],
+  "coverage": {"files_total_rs": 103, "crates": 9, "flows_traced": 4},
+  "entry_points": [
+    {"name": "sigil-cli", "path": "crates/sigil-cli/src/main.rs:3", "kind": "binary"},
+    {"name": "SigilSidecar", "path": "crates/sigil-server/src/lib.rs:41", "kind": "library_facade"},
+    {"name": "sigil-bench", "path": "bindings/go/cmd/sigil-bench/main.go", "kind": "go_binary"},
+    {"name": "sigil_tiktoken (python)", "path": "bindings/python/sigil_tiktoken/__init__.py", "kind": "ctypes_binding"},
+    {"name": "zig tokenizer FFI", "path": "zig/tiktoken/src/lib.zig", "kind": "ffi"},
+    {"name": "check_contracts.py", "path": "scripts/check_contracts.py", "kind": "ci_gate"}
+  ],
+  "module_graph": {
+    "sigil-core": [],
+    "sigil-mcp": ["sigil-core"],
+    "sigil-probe": ["sigil-core"],
+    "sigil-multimodal": ["sigil-core"],
+    "sigil-s": ["sigil-core"],
+    "sigil-sigstore": ["sigil-core"],
+    "sigil-perception": ["sigil-core", "sigil-multimodal"],
+    "sigil-server": ["sigil-core", "sigil-mcp", "sigil-probe", "sigil-multimodal", "sigil-s"],
+    "sigil-cli": ["sigil-core", "sigil-mcp", "sigil-probe", "sigil-multimodal", "sigil-s", "sigil-perception", "sigil-sigstore"]
+  },
+  "flows": [
+    {"id": "F1", "name": "text_admission", "hops": ["cli/run.rs:run", "engine.rs:48 process_text_segments", "intake.rs:39 intake_text_segment", "taint.rs:5 apply_provenance", "engine.rs:85 process_graphemes", "scan/run.rs:9 run_scan", "merge.rs:29 security_aware_merge", "emit.rs:12 emit_output", "emit.rs:83 decide_verdict", "evidence.rs:8 build_evidence", "signing.rs:68 receipt_message"]},
+    {"id": "F2", "name": "mcp_response_gate", "hops": ["sigil-mcp/session.rs:43 inspect_response", "helpers.rs:80 validate_schema", "helpers.rs:7 truncate_output", "sigil-core engine.rs:48 process_text_segments", "helpers.rs:23 compose_verdict", "session.rs:142 combine_taint", "session.rs:127 update_history"]},
+    {"id": "F3", "name": "multimodal_fusion", "hops": ["sigil-multimodal/engine.rs:39 analyze", "detect.rs detect_*", "sigil-core engine.rs:48 process_text_segments", "fusion.rs:6 audit_fusion", "verdict.rs compose_* / fold_verdicts / authority_ceiling"]},
+    {"id": "F4", "name": "sigstore_verify", "hops": ["trust/verify.rs:7 verify_bundle_with_trust", "bundle_ops.rs:94 verify_bundle", "fetch.rs:6 parse_cert", "chain.rs:8 validate_chain", "chain.rs:85 check_san_identity", "chain.rs:122 check_validity_at", "rekor.rs:9 verify_rekor_set", "rekor.rs:45 verify_inclusion_proof", "rekor.rs:122 verify_rekor_entry_binding"]},
+    {"id": "F5", "name": "error_propagation", "hops": ["tokenizer_ffi.rs ZigTokenizerError", "sigil-core error::Result (thiserror)", "anyhow at cli/run.rs", "main.rs exit 1"]}
+  ],
+  "patterns": ["facade re-export modules", "pub(crate) internals", "module-local tests.rs", "typed errors in libs / anyhow at CLI boundary", "ReceiptSigner trait-object evidence signing", "adapters emit channels not verdicts"],
+  "invariants": [
+    {"id": "INV-M1", "claim": "zero .unwrap() outside tests", "check": "! grep -rn '\\.unwrap()' crates/*/src --include='*.rs' | grep -vE 'tests?\\.rs|tests?_'", "status": "verified"},
+    {"id": "INV-M2", "claim": "every .rs file <= 500 LOC", "check": "find crates -name '*.rs' | xargs wc -l | awk '$1>500' (empty)", "status": "verified"},
+    {"id": "INV-M3", "claim": "sigil-core has no network/async deps", "check": "! grep -E 'reqwest|ureq|tokio|hyper' crates/sigil-core/Cargo.toml", "status": "verified"},
+    {"id": "INV-M4", "claim": "perception adapters emit no Verdict", "check": "! grep -rn 'Verdict::' crates/sigil-perception/src/", "status": "verified"},
+    {"id": "INV-M5", "claim": "Critical severity maps to Deny", "check": "grep -A2 'Severity::Critical' crates/sigil-core/src/emit.rs | grep 'Verdict::Deny'", "status": "verified"},
+    {"id": "INV-M6", "claim": "no crate depends on sigil-cli or sigil-server", "check": "grep -l 'sigil-cli\\|sigil-server' crates/*/Cargo.toml (none)", "status": "verified"},
+    {"id": "INV-M7", "claim": "contract docs and QA scorecard in sync", "check": "python3 scripts/check_contracts.py", "status": "verified"},
+    {"id": "INV-M8", "claim": "extracted channels carry derived_from lineage", "check": "grep -rn derived_from crates/sigil-multimodal/src/perception.rs (non-empty)", "status": "verified"},
+    {"id": "INV-M9", "claim": "deterministic finding order", "check": "manual — detect_rare_patterns sorts by byte_range and dedups (lfdd.rs:100)", "status": "manual"}
+  ],
+  "discrepancies": [
+    {"id": "D-A", "claimed": "sigil-server is a gRPC/HTTP microservice + MCP proxy", "actual": "lib-only SigilSidecar facade; no bin, no transport deps", "evidence": ["SIGIL-SPEC.md:346", "crates/sigil-server/src/lib.rs:41"], "severity": "medium", "disposition": "fix-docs"},
+    {"id": "D-B", "claimed": "pysigil via PyO3", "actual": "ctypes over Zig shared library", "evidence": ["SIGIL-SPEC.md:345", "bindings/python/sigil_tiktoken/__init__.py"], "severity": "low", "disposition": "fix-docs"},
+    {"id": "D-C", "claimed": "sigil.wasm deliverable", "actual": "no wasm target/config", "evidence": ["SIGIL-SPEC.md:344"], "severity": "low", "disposition": "fix-docs"},
+    {"id": "D-D", "claimed": "libsigil C ABI shared library", "actual": "only bindings/c/sigil_tiktoken.h; no cdylib target", "evidence": ["SIGIL-SPEC.md:343", "bindings/c/"], "severity": "low", "disposition": "fix-docs"},
+    {"id": "D-E", "claimed": "README crate list covers workspace", "actual": "omits sigil-perception, sigil-sigstore", "evidence": ["README.md", "Cargo.toml:2-12"], "severity": "low", "disposition": "fix-docs"},
+    {"id": "D-F", "claimed": "verify_bundle_with_trust documented", "actual": "6-step doc comment lost in trust.rs split", "evidence": ["crates/sigil-sigstore/src/trust/verify.rs:1-7"], "severity": "low", "disposition": "fix-code"},
+    {"id": "D-G", "claimed": ".gitignore covers ccc index", "actual": "has .ccc/; actual dir is .cocoindex_code/ (14MB sqlite)", "evidence": [".gitignore", ".cocoindex_code/"], "severity": "low", "disposition": "fix-code"},
+    {"id": "D-H", "claimed": "TRAJECTORY references live paths", "actual": "refs audio.rs, spectral.rs, trust.rs, vocab.rs — all split into module dirs", "evidence": ["docs/TRAJECTORY.md:105-111"], "severity": "low", "disposition": "fix-docs"}
+  ],
+  "do_not_touch": [
+    {"path": "zig/tiktoken/ + crates/sigil-core/src/tokenizer_ffi.rs + build.rs", "reason": "unsafe C ABI + Zig build coupling"},
+    {"path": "crates/sigil-sigstore/src/trust/rekor.rs", "reason": "RFC 6962 domain-separated hashing; silent change breaks proof verification"},
+    {"path": "crates/sigil-core/src/scan/helpers.rs", "reason": "luhn_valid/looks_like_base64 tuned security gates"},
+    {"path": "crates/sigil-core/src/merge.rs", "reason": "merge-boundary suppression is a security invariant"},
+    {"path": "bench/", "reason": "corpora/baselines pin regression thresholds"}
+  ],
+  "open_questions": [
+    "Is sigil-server transport planned or descoped? Spec lines 346 vs 906 disagree.",
+    "Is TUF trust-root refresh wired or intentionally static snapshot?",
+    "How is the >=80% coverage target measured? No coverage tool configured.",
+    "Where does MCP evidence record persistence land? Currently in-memory session history.",
+    "Is PyO3 a planned migration for pysigil or a stale spec claim?"
+  ]
+}

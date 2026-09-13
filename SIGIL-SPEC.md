@@ -339,11 +339,11 @@ SIGIL ships as a standalone, embeddable package — same philosophy as Valance.
 | `ckx-sigil` | Rust crate — core library | `crates.io` |
 | `ckx-sigil-mcp` | Rust crate — MCP security gate | `crates.io` |
 | `ckx-sigil-probe` | Rust crate — model health query engine | `crates.io` |
-| `libsigil` | C ABI shared library | FFI consumers |
-| `sigil.wasm` | WebAssembly module | Browser / edge / serverless |
+| `libsigil` | C ABI shared library — planned; header ships at `bindings/c/sigil_tiktoken.h` | FFI consumers |
+| `sigil.wasm` | WebAssembly module — planned, not yet wired | Browser / edge / serverless |
 | `sigil` | CLI tool (tokenize, scan, mcp, probe) | Operators / CI pipelines |
-| `pysigil` | Python bindings (PyO3) | ML ecosystem integration |
-| `sigil-server` | gRPC/HTTP microservice + MCP proxy | Inference pipeline sidecar |
+| `sigil_tiktoken` | Python bindings (ctypes over the Zig shared library) | ML ecosystem integration |
+| `sigil-server` | Sidecar composition façade; gRPC/HTTP transport planned | Inference pipeline sidecar |
 
 ### 4.1 CLI Interface
 
