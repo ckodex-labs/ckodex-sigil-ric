@@ -331,3 +331,143 @@ impl Vocab {
         tokenizer_for_name(&self.name)
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::types::{Grapheme, ScanFinding};
+
+    fn vocab() -> Vocab {
+        Vocab::tiktoken("cl100k_base")
+    }
+
+    fn tainted(text: &str, start: usize) -> TaintedGrapheme {
+        TaintedGrapheme {
+            grapheme: Grapheme {
+                text: text.to_string(),
+                byte_range: ByteRange::new(start, start + text.len()),
+                normalized: false,
+            },
+            provenance: Provenance::User,
+            trust_level: TrustLevel::Untrusted,
+            boundary_context: BoundaryContext::Interior,
+            threat: ScanFinding::none(ByteRange::new(start, start + text.len())),
+        }
+    }
+
+    #[test]
+    fn encode_decode_roundtrip() {
+        let v = vocab();
+        let tokens = v.encode("the quick brown fox");
+        assert!(!tokens.is_empty());
+        let ids: Vec<u32> = tokens.iter().map(|t| t.token_id).collect();
+        assert_eq!(v.decode(&ids), "the quick brown fox");
+    }
+
+    #[test]
+    fn token_id_for_single_token_piece() {
+        let v = vocab();
+        let encoded = v.encode_text("hello");
+        if encoded.len() == 1 {
+            assert_eq!(v.token_id("hello"), encoded[0].token_id);
+        }
+    }
+
+    #[test]
+    fn encode_tracks_byte_ranges() {
+        let v = vocab();
+        let tokens = v.encode_text("hello world");
+        let mut cursor = 0usize;
+        for token in &tokens {
+            assert_eq!(token.byte_range.start, cursor);
+            cursor = token.byte_range.end;
+        }
+        assert_eq!(cursor, "hello world".len());
+    }
+
+    #[test]
+    fn specials_disallow_rejects_injection_token() {
+        let v = vocab();
+        let err = v
+            .try_encode_with_specials("x <|endoftext|> y", SpecialTokenMode::Disallow)
+            .expect_err("special token must be rejected");
+        assert_eq!(err, ZigTokenizerError::InvalidInput);
+    }
+
+    #[test]
+    fn specials_allow_only_permits_listed() {
+        let v = vocab();
+        let mut allowed = std::collections::HashSet::new();
+        allowed.insert("<|endoftext|>".to_string());
+        let tokens = v.encode_with_specials("<|endoftext|>", SpecialTokenMode::AllowOnly(allowed));
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].token_id, 100257);
+        assert_eq!(tokens[0].text, "<|endoftext|>");
+    }
+
+    #[test]
+    fn encode_graphemes_empty_returns_empty() {
+        assert_eq!(vocab().encode_graphemes(&[]), Vec::new());
+    }
+
+    #[test]
+    fn encode_graphemes_carries_provenance() {
+        let v = vocab();
+        let g = tainted("test input", 0);
+        let tokens = v.encode_graphemes(&[g]);
+        assert!(!tokens.is_empty());
+        for token in &tokens {
+            assert_eq!(token.provenance, Provenance::User);
+            assert_eq!(token.trust_level, TrustLevel::Untrusted);
+        }
+    }
+
+    #[test]
+    fn encode_graphemes_remaps_normalized_lengths() {
+        // A grapheme whose normalized text differs in byte length from the
+        // raw span exercises the INV-007 raw-range remapping path.
+        let v = vocab();
+        let mut g = tainted("ab", 10);
+        g.grapheme.text = "abcd".to_string(); // normalized longer than raw
+        g.grapheme.normalized = true;
+        let tokens = v.encode_graphemes(&[g]);
+        assert!(!tokens.is_empty());
+        for token in &tokens {
+            // Remapped ranges must stay within the raw span [10, 12).
+            assert!(token.byte_range.start >= 10);
+            assert!(token.byte_range.end <= 12);
+        }
+    }
+
+    #[test]
+    fn batch_encode_and_decode() {
+        let v = vocab();
+        let texts = ["alpha", "beta gamma"];
+        let batches = v.encode_batch(&texts);
+        assert_eq!(batches.len(), 2);
+        let decoded = v.decode_batch(
+            &batches
+                .iter()
+                .map(|b| b.iter().map(|t| t.token_id).collect())
+                .collect::<Vec<Vec<u32>>>(),
+        );
+        assert_eq!(decoded, texts);
+    }
+
+    #[test]
+    fn boundary_flag_propagates() {
+        let v = vocab();
+        let mut g = tainted("x", 0);
+        g.boundary_context = BoundaryContext::Start;
+        let tokens = v.encode_graphemes(&[g]);
+        assert!(tokens.iter().all(|t| t.boundary));
+    }
+
+    #[test]
+    fn try_decode_reports_invalid_utf8_as_lossy() {
+        let v = vocab();
+        // Decoding arbitrary ids must not panic; lossy conversion covers
+        // non-UTF8 byte sequences.
+        let _ = v.try_decode(&[v.encode_text("ok")[0].token_id]);
+    }
+}

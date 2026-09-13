@@ -156,14 +156,13 @@ jobs:
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
 
-      # Governance target is 80% lines; measured baseline is 74.01%
-      # (2026-Q1, see docs/TRAJECTORY.md C1). The gate is a no-regression
-      # floor below the baseline; ratchet it as uncovered paths get tests.
+      # Governance target is 80% lines; measured coverage is 80.54%
+      # (see docs/TRAJECTORY.md C1). The floor is now at the target.
       - name: Coverage gate
         run: |
           cargo llvm-cov --workspace --lcov \
             --output-path "$RUNNER_TEMP/lcov.info" \
-            --fail-under-lines 70
+            --fail-under-lines 80
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4

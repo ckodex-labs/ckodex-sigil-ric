@@ -243,3 +243,80 @@ fn broadband_high_frequency_noise_is_not_narrowband() {
         "broadband noise should not produce narrowband findings: {labels:?}"
     );
 }
+
+mod downmix_tests {
+    use super::super::downmix::*;
+
+    #[test]
+    fn mono_passthrough() {
+        let out = downmix_to_mono(&[i16::MAX / 2], 1);
+        assert_eq!(out.len(), 1);
+        assert!((out[0] - 0.5).abs() < 0.01);
+    }
+
+    #[test]
+    fn stereo_averages_channels() {
+        let out = downmix_to_mono(&[1000, 2000], 2);
+        assert_eq!(out.len(), 1);
+        let expected = 1500.0 / i16::MAX as f32;
+        assert!((out[0] - expected).abs() < 1e-6);
+    }
+
+    #[test]
+    fn zero_channels_returns_empty() {
+        assert!(downmix_to_mono(&[1, 2, 3], 0).is_empty());
+        assert!(downmix_to_mono_weighted(&[1, 2, 3], 0).is_empty());
+        assert!(downmix_to_mono_f32(&[1.0], 0).is_empty());
+        assert!(downmix_to_mono_weighted_f32(&[1.0], 0).is_empty());
+    }
+
+    #[test]
+    fn weighted_51_excludes_lfe() {
+        // 5.1 frame: L=100, R=100, C=100, LFE=32000 (full-scale hidden
+        // payload), Ls=100, Rs=100. LFE weight is 0.0 — the hidden channel
+        // must not contribute.
+        let frame = [100i16, 100, 100, i16::MAX, 100, 100];
+        let out = downmix_to_mono_weighted(&frame, 6);
+        assert_eq!(out.len(), 1);
+        // Without LFE exclusion the sum would exceed i16::MAX and clamp
+        // wildly; with it the result is a sane weighted mix.
+        let expected =
+            (100.0 + 100.0 + 100.0 * 0.707 + 0.0 + 100.0 * 0.707 + 100.0 * 0.707) / i16::MAX as f32;
+        assert!((out[0] - expected).abs() < 1e-5, "got {}", out[0]);
+    }
+
+    #[test]
+    fn weighted_odd_channel_count_falls_back_to_equal() {
+        // 3 channels has no ITU layout — equal 1/3 weights.
+        let out = downmix_to_mono_weighted(&[3000, 3000, 3000], 3);
+        assert_eq!(out.len(), 1);
+        assert!((out[0] - 3000.0 / i16::MAX as f32).abs() < 1e-5);
+    }
+
+    #[test]
+    fn f32_variants_mirror_i16() {
+        let stereo = [0.5f32, -0.5];
+        assert_eq!(downmix_to_mono_f32(&stereo, 2).len(), 1);
+        assert_eq!(downmix_to_mono_f32(&stereo, 2)[0], 0.0);
+        let w = downmix_to_mono_weighted_f32(&stereo, 2);
+        assert_eq!(w.len(), 1);
+        assert!((w[0] - 0.0).abs() < 1e-6);
+    }
+
+    #[test]
+    fn normalization_factor_per_bit_depth() {
+        assert_eq!(normalization_factor(8), i8::MAX as f32);
+        assert_eq!(normalization_factor(16), i16::MAX as f32);
+        assert_eq!(normalization_factor(24), ((1 << 23) - 1) as f32);
+        assert_eq!(normalization_factor(32), i32::MAX as f32);
+        assert_eq!(normalization_factor(0), 1.0);
+    }
+
+    #[test]
+    fn pcm_to_f32_normalizes() {
+        let out = pcm_to_f32(&[i16::MAX, 0, i16::MIN]);
+        assert!((out[0] - 1.0).abs() < 1e-6);
+        assert_eq!(out[1], 0.0);
+        assert!((out[2] - (-1.0)).abs() < 1e-4);
+    }
+}

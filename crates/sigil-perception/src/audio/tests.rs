@@ -277,3 +277,74 @@ fn transcript_channel_flows_through_kernel_mapping_as_derived() {
         assert_eq!(mapped.derived_from.as_deref(), Some("audio-9"));
     }
 }
+
+mod transcript_tests {
+    use super::super::transcript::ExternalTranscript;
+    use sigil_multimodal::PerceptionError;
+    use std::io::Write;
+
+    fn temp_binary(name: &str, body: &str) -> std::path::PathBuf {
+        let path = std::env::temp_dir().join(format!("sigil-test-{name}-{}", std::process::id()));
+        let mut f = std::fs::File::create(&path).expect("create");
+        f.write_all(body.as_bytes()).expect("write");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&path).expect("meta").permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).expect("chmod");
+        }
+        path
+    }
+
+    #[test]
+    fn pin_computes_sha384_digest() {
+        let path = temp_binary("pin", "fake-binary");
+        let pinned =
+            ExternalTranscript::pin(path.clone(), vec!["-x".into()], "v1".into()).expect("pin");
+        assert_eq!(pinned.binary_digest.len(), 96); // sha384 hex
+        assert_eq!(pinned.version, "v1");
+        let id = pinned.identity();
+        assert_eq!(id.name, "external-transcript");
+        assert_eq!(id.config_digest, pinned.binary_digest);
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn pin_missing_binary_errors() {
+        let err = ExternalTranscript::pin(
+            std::path::PathBuf::from("/nonexistent/sigil-no-such-binary"),
+            vec![],
+            "v".into(),
+        );
+        assert!(err.is_err());
+    }
+
+    #[test]
+    fn extract_streams_bytes_to_stdin() {
+        // `cat` echoes stdin to stdout — exercises the real spawn path.
+        let path = temp_binary("cat", "#!/bin/sh\nexec cat\n");
+        let t = ExternalTranscript::pin(path.clone(), vec![], "cat".into()).expect("pin");
+        let out = t.extract(b"transcribe me").expect("extract");
+        assert_eq!(out, "transcribe me");
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn extract_fails_on_nonzero_exit() {
+        let path = temp_binary("fail", "#!/bin/sh\nexit 1\n");
+        let t = ExternalTranscript::pin(path.clone(), vec![], "fail".into()).expect("pin");
+        let err = t.extract(b"x").expect_err("must fail");
+        assert!(matches!(err, PerceptionError::ExtractorFailed(_)));
+        let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn extract_fails_on_non_utf8_output() {
+        let path = temp_binary("bin", "#!/bin/sh\nprintf '\\377\\376'\n");
+        let t = ExternalTranscript::pin(path.clone(), vec![], "bin".into()).expect("pin");
+        let err = t.extract(b"x").expect_err("non-utf8 must fail");
+        assert!(matches!(err, PerceptionError::ExtractorFailed(_)));
+        let _ = std::fs::remove_file(path);
+    }
+}
