@@ -25,17 +25,24 @@
 //! near-ultrasonic jailbreaks against speech-driven LLMs, confirming
 //! both sub-audible and ultrasonic bands are real attack vectors.
 //!
-//! **Known limitations** (per 2024-2025 steganalysis research):
-//! - Band-energy thresholding detects gross anomalies but misses weak
-//!   frequency-hopping steganography (Yang & Huang, 2018) where energy
-//!   is redistributed across sub-bands in tiny modulations.
-//! - High-frequency padding with subtle hopping variation (Wang et al.,
-//!   2020) can evade simple band-energy checks. The Goertzel algorithm
-//!   (MDPI 2024) or spectrogram-based deep residual networks (Spec-ResNet,
-//!   2019) would be needed for robust detection.
-//! - This implementation is a first-generation spectral detector. It
-//!   catches the blunt attack vectors (CVE-2026-34760, SWhisper) but is
-//!   not a general-purpose audio steganalysis system.
+//! In addition to band-energy checks, each window's per-bin spectrum is
+//! examined for **narrowband peaks** inside the near-Nyquist band: a
+//! single FFT bin holding a large share of a window's energy in a band
+//! that is normally near-silent is a covert-tone signature even when the
+//! aggregate band fraction stays under threshold (frequency-hopping
+//! steganography, Yang & Huang 2018). When the peak lands on several
+//! distinct bins across windows the finding is reported as
+//! `frequency_hopping`. Per-bin magnitudes come from the windowed FFT
+//! already computed, so no Goertzel pass is needed — the per-frequency
+//! sensitivity is equivalent.
+//!
+//! **Remaining limitations**:
+//! - Spectrogram-domain patterns below the narrowband-peak threshold
+//!   (spread-spectrum, echo hiding) still evade detection; a
+//!   spectrogram-based deep residual network (Spec-ResNet, 2019) would
+//!   be needed for that class.
+//! - This is a spectral anomaly detector, not a general-purpose audio
+//!   steganalysis system.
 
 mod downmix;
 
@@ -97,6 +104,13 @@ pub struct SpectralConfig {
     pub stego_high_band_hz: f32,
     /// Fraction of total energy in the high band to flag as steganography.
     pub stego_energy_fraction: f32,
+    /// Fraction of a window's energy held by a single high-band bin that
+    /// flags a narrowband peak — catches covert tones whose aggregate
+    /// band share stays under `stego_energy_fraction`.
+    pub stego_peak_fraction: f32,
+    /// Distinct high-band peak bins across windows that upgrades a
+    /// narrowband-peak finding to `frequency_hopping`.
+    pub stego_hop_min_bins: usize,
 }
 
 impl Default for SpectralConfig {
@@ -108,6 +122,8 @@ impl Default for SpectralConfig {
             subliminal_energy_fraction: 0.01,
             stego_high_band_hz: 2000.0,
             stego_energy_fraction: 0.05,
+            stego_peak_fraction: 0.02,
+            stego_hop_min_bins: 3,
         }
     }
 }
@@ -155,6 +171,8 @@ struct WindowStats {
     high_band_energy_sum: f32,
     high_band_start_hz: f32,
     nyquist: f32,
+    narrowband_peak_energy_sum: f32,
+    high_band_peak_bins: Vec<usize>,
 }
 
 /// Run the windowed Hann FFT pass over `samples`, folding each window's
@@ -192,6 +210,8 @@ fn accumulate_windows(
         high_band_energy_sum: 0.0,
         high_band_start_hz,
         nyquist,
+        narrowband_peak_energy_sum: 0.0,
+        high_band_peak_bins: Vec::new(),
     };
 
     let mut input: Vec<f32> = vec![0.0; fft_size];
@@ -273,6 +293,23 @@ fn fold_window(
     if high_energy / window_energy > config.stego_energy_fraction {
         stats.has_stego = true;
     }
+
+    // Narrowband-peak pass: the strongest bin inside the high band. A
+    // single-bin tone above `stego_peak_fraction` is a covert-carrier
+    // signature even when the aggregate band share stays low.
+    let band = &energies[high_band_start_bin.min(energies.len())..];
+    if let Some((peak_offset, &peak_energy)) = band
+        .iter()
+        .enumerate()
+        .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+    {
+        if peak_energy / window_energy > config.stego_peak_fraction {
+            stats.narrowband_peak_energy_sum += peak_energy;
+            stats
+                .high_band_peak_bins
+                .push(high_band_start_bin + peak_offset);
+        }
+    }
 }
 
 /// Assemble the `SpectralReport` from the accumulated window stats.
@@ -302,6 +339,25 @@ fn build_report(
             high_hz: stats.nyquist,
             energy: stats.high_band_energy_sum,
             fraction_of_total: stats.high_band_energy_sum / stats.total_energy,
+        });
+    }
+    if !stats.high_band_peak_bins.is_empty() {
+        let distinct_bins = stats
+            .high_band_peak_bins
+            .iter()
+            .collect::<std::collections::HashSet<_>>()
+            .len();
+        let label = if distinct_bins >= config.stego_hop_min_bins {
+            "frequency_hopping"
+        } else {
+            "narrowband_high_freq_peak"
+        };
+        steganography_findings.push(FreqBand {
+            label: label.to_string(),
+            low_hz: stats.high_band_start_hz,
+            high_hz: stats.nyquist,
+            energy: stats.narrowband_peak_energy_sum,
+            fraction_of_total: stats.narrowband_peak_energy_sum / stats.total_energy,
         });
     }
 

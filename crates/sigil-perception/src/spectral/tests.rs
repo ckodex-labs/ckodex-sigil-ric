@@ -162,3 +162,84 @@ fn artifact_digest_computes_sha384() {
     let digest = artifact_digest(b"test");
     assert_eq!(digest.len(), 96, "SHA-384 hex = 96 chars");
 }
+
+fn mixed(base_freq: f32, tone_freq: f32, tone_amp: f32, sr: u32, secs: f32) -> Vec<f32> {
+    let n = (sr as f32 * secs) as usize;
+    (0..n)
+        .map(|i| {
+            (2.0 * std::f32::consts::PI * base_freq * i as f32 / sr as f32).sin()
+                + tone_amp * (2.0 * std::f32::consts::PI * tone_freq * i as f32 / sr as f32).sin()
+        })
+        .collect()
+}
+
+#[test]
+fn narrowband_covert_tone_detected_below_band_threshold() {
+    // 1 kHz carrier + weak 7 kHz tone at ~3.8% of window energy: the
+    // aggregate high-band share stays under the 5% stego gate, but the
+    // Hann-windowed peak bin holds ~2.5% — over the 2% narrowband
+    // threshold.
+    let samples = mixed(1000.0, 7000.0, 0.2, 16000, 0.5);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "ii").expect("spectrum");
+    let labels: Vec<&str> = report
+        .steganography_findings
+        .iter()
+        .map(|f| f.label.as_str())
+        .collect();
+    assert!(
+        labels.contains(&"narrowband_high_freq_peak"),
+        "expected narrowband peak finding, got {labels:?}"
+    );
+    assert!(
+        !labels.contains(&"high_frequency_anomaly"),
+        "aggregate band fraction should stay under threshold: {labels:?}"
+    );
+}
+
+#[test]
+fn frequency_hopping_across_bins_is_labeled() {
+    // Four 0.25 s segments, each with a different covert tone in the
+    // 6-8 kHz band — peaks land on >=3 distinct bins across windows.
+    let mut samples = Vec::new();
+    for tone in [6200.0f32, 6600.0, 7000.0, 7400.0] {
+        samples.extend(mixed(1000.0, tone, 0.2, 16000, 0.25));
+    }
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "jj").expect("spectrum");
+    let labels: Vec<&str> = report
+        .steganography_findings
+        .iter()
+        .map(|f| f.label.as_str())
+        .collect();
+    assert!(
+        labels.contains(&"frequency_hopping"),
+        "expected frequency_hopping finding, got {labels:?}"
+    );
+}
+
+#[test]
+fn broadband_high_frequency_noise_is_not_narrowband() {
+    // Deterministic broadband pattern: high-band energy is spread over
+    // many bins, so no single bin exceeds the peak threshold.
+    let sr = 16000u32;
+    let n = sr as usize / 2;
+    let samples: Vec<f32> = (0..n)
+        .map(|i| {
+            let t = i as f32 / sr as f32;
+            (2.0 * std::f32::consts::PI * 1000.0 * t).sin()
+                + 0.03 * (((i * 37) % 13) as f32 - 6.0) / 6.0
+        })
+        .collect();
+    let report =
+        analyze_spectrum(&samples, sr, &SpectralConfig::default(), "kk").expect("spectrum");
+    let labels: Vec<&str> = report
+        .steganography_findings
+        .iter()
+        .map(|f| f.label.as_str())
+        .collect();
+    assert!(
+        !labels.contains(&"narrowband_high_freq_peak") && !labels.contains(&"frequency_hopping"),
+        "broadband noise should not produce narrowband findings: {labels:?}"
+    );
+}
