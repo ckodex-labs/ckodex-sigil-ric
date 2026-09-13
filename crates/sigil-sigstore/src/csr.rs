@@ -38,7 +38,7 @@ pub(crate) fn build_csr(signing_key: &SigningKey) -> Result<Vec<u8>, SigstoreErr
 
 /// Wrap a DER PKCS#10 CSR in PEM framing (Fulcio v2 expects PEM-encoded
 /// CSRs in the `certificateSigningRequest` bytes field).
-fn pem_csr(csr_der: &[u8]) -> Result<String, SigstoreError> {
+pub(crate) fn pem_csr(csr_der: &[u8]) -> Result<String, SigstoreError> {
     use der::{Decode, EncodePem};
     use p384::pkcs8::LineEnding;
     use x509_cert::request::CertReq;
@@ -116,10 +116,14 @@ pub(crate) fn fulcio_exchange(
         .or(parsed.signed_certificate)
         .ok_or_else(|| SigstoreError::Fulcio("no certificate in response".to_string()))?;
 
-    // Chain certificates: per fulcio.proto these are DER bytes (base64 in
-    // JSON); some deployments return PEM strings — accept both. Leaf first.
+    decode_chain_certs(&signed.chain.certificates)
+}
+
+/// Chain certificates: per fulcio.proto these are DER bytes (base64 in
+/// JSON); some deployments return PEM strings — accept both. Leaf first.
+pub(crate) fn decode_chain_certs(certificates: &[String]) -> Result<Vec<u8>, SigstoreError> {
     let mut der = Vec::new();
-    for cert in &signed.chain.certificates {
+    for cert in certificates {
         let trimmed = cert.trim();
         if trimmed.starts_with("-----BEGIN CERTIFICATE-----") {
             for line in trimmed.lines() {

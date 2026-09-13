@@ -123,3 +123,6 @@ impl SigilSidecar {
         &mut self.mcp_session
     }
 }
+
+#[cfg(test)]
+mod tests;

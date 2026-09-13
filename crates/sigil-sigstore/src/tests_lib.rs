@@ -31,6 +31,46 @@ mod tests {
     }
 
     #[test]
+    fn pem_csr_roundtrips_through_der() {
+        let signing_key =
+            SigningKey::from_bytes(GenericArray::from_slice(&[7u8; 48])).expect("valid scalar");
+        let csr_der = build_csr(&signing_key).expect("csr");
+        let pem = pem_csr(&csr_der).expect("pem");
+        assert!(pem.starts_with("-----BEGIN CERTIFICATE REQUEST-----"));
+        assert!(pem
+            .trim_end()
+            .ends_with("-----END CERTIFICATE REQUEST-----"));
+        // PEM decode must yield the identical DER.
+        use der::DecodePem;
+        let reparsed = CertReq::from_pem(&pem).expect("pem parse");
+        use der::Encode;
+        assert_eq!(reparsed.to_der().expect("re-der"), csr_der);
+    }
+
+    #[test]
+    fn decode_chain_certs_accepts_pem_and_der_base64() {
+        use base64::Engine as _;
+        let signing_key =
+            SigningKey::from_bytes(GenericArray::from_slice(&[9u8; 48])).expect("valid scalar");
+        let cert_der = build_csr(&signing_key).expect("csr"); // DER bytes as payload
+        let b64 = base64::engine::general_purpose::STANDARD.encode(&cert_der);
+        // PEM form: wrap the same DER in PEM framing manually.
+        let pem = format!("-----BEGIN CERTIFICATE-----\n{b64}\n-----END CERTIFICATE-----");
+        let mixed = vec![b64.clone(), pem];
+        let der = decode_chain_certs(&mixed).expect("decode");
+        // Both forms decode to the same payload, concatenated leaf-first.
+        let mut expected = cert_der.clone();
+        expected.extend_from_slice(&cert_der);
+        assert_eq!(der, expected);
+    }
+
+    #[test]
+    fn decode_chain_certs_rejects_bad_base64() {
+        let err = decode_chain_certs(&["not!!!base64".to_string()]).expect_err("must fail");
+        assert!(matches!(err, SigstoreError::Fulcio(_)));
+    }
+
+    #[test]
     fn ambient_source_resolves_env_token() {
         // Unique variable name: never touch a real ambient token in tests.
         let var = "SIGIL_TEST_OIDC_TOKEN_XYZ";
