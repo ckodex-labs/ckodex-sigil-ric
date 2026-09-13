@@ -142,6 +142,8 @@ jobs:
 
       - name: Rust toolchain
         uses: dtolnay/rust-toolchain@1.78.0
+        with:
+          components: llvm-tools-preview
 
       - name: Zig toolchain
         uses: mlugg/setup-zig@v1
@@ -150,6 +152,25 @@ jobs:
 
       - name: Test workspace
         run: cargo test --workspace
+
+      - name: Install cargo-llvm-cov
+        uses: taiki-e/install-action@cargo-llvm-cov
+
+      # Governance target is 80% lines; measured baseline is 74.01%
+      # (2026-Q1, see docs/TRAJECTORY.md C1). The gate is a no-regression
+      # floor below the baseline; ratchet it as uncovered paths get tests.
+      - name: Coverage gate
+        run: |
+          cargo llvm-cov --workspace --lcov \
+            --output-path "$RUNNER_TEMP/lcov.info" \
+            --fail-under-lines 70
+
+      - name: Upload coverage report
+        uses: actions/upload-artifact@v4
+        with:
+          name: lcov
+          path: ${{ runner.temp }}/lcov.info
+          if-no-files-found: error
 
       - name: Clippy workspace
         run: cargo clippy --workspace --all-targets -- -D warnings

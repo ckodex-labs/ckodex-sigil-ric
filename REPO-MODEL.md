@@ -148,8 +148,11 @@ Library crates never use `anyhow`; CLI never exposes typed errors to callers.
 - TUF trust root is an embedded snapshot (`tuf.rs:15-40`); online refresh
   exists behind `sigstore-trust-root`'s `tuf` feature but is not wired —
   decision pending (TRAJECTORY A3).
-- Coverage target ≥80% has no configured tool (no tarpaulin/llvm-cov config
-  found) — how is it measured?
+- Coverage is measured: `cargo llvm-cov --workspace` reports 74.01% lines /
+  69.86% fns / 75.39% regions vs the ≥80% governance target. CI gates a
+  no-regression floor at 70%. Open: close the 6-point gap — `sigil-server`
+  facade (0%), sigstore network paths (0%, need mock/offline harness),
+  `trust/verify.rs` (0%), `video.rs` (43%).
 - Evidence persistence lands on `EvidenceSink<R>` + `JsonlEvidenceSink`
   (append-only JSONL) in `sigil-core/src/sink.rs`, shared by
   `EvidenceBundle` (engine, fail-closed) and `McpEvidenceRecord`

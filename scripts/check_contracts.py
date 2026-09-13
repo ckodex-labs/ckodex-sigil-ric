@@ -39,6 +39,33 @@ def collect_test_files() -> list[str]:
     return files
 
 
+def module_tree_files(rel: str) -> list[Path]:
+    """Resolve a contract pin to every file in its module tree.
+
+    Rust modules refactor between `foo.rs` and `foo/{mod,...}.rs` shapes;
+    a pin must survive that. Resolution:
+      - `foo.rs`      -> `foo.rs` + `foo/**/*.rs`
+      - `foo/mod.rs`  -> `foo/**/*.rs` (the whole module dir)
+      - `src/lib.rs`  -> the crate's entire `src/**/*.rs`
+      - missing `foo.rs` with a live `foo/` dir -> `foo/**/*.rs`
+      - non-`.rs` pins -> the file itself
+    """
+    path = ROOT / rel
+    if path.suffix != ".rs":
+        return [path]
+
+    files: list[Path] = []
+    if path.is_file():
+        files.append(path)
+    tree_dir = path.parent if path.name in ("lib.rs", "main.rs", "mod.rs") else path.with_suffix("")
+    if tree_dir.is_dir():
+        files.extend(tree_dir.rglob("*.rs"))
+    files = sorted(set(files))
+    if not files:
+        raise SystemExit(f"no source found for contract pin: {rel}")
+    return files
+
+
 def main() -> int:
     contracts = read(CONTRACTS)
     scorecard = read(SCORECARD)
@@ -178,10 +205,11 @@ def main() -> int:
     }
 
     for rel, needles in source_checks.items():
+        tree = "\n".join(read(path) for path in module_tree_files(rel))
         require_all(
-            read(ROOT / rel),
+            tree,
             needles,
-            scope=rel,
+            scope=f"{rel} (+ module tree)",
         )
 
     test_files = collect_test_files()

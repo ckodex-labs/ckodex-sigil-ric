@@ -63,7 +63,7 @@
   "open_questions": [
     "Is sigil-server transport planned or descoped? Spec lines 346 vs 906 disagree.",
     "Is TUF trust-root refresh wired or intentionally static snapshot?",
-    "How is the >=80% coverage target measured? No coverage tool configured.",
+    "Coverage measured via cargo llvm-cov in CI: 74.01% lines vs 80% target; gate is a 70% no-regression floor. Open: close the gap — sigil-server 0%, sigstore network paths 0%, trust/verify.rs 0%, video.rs 43%.",
     "Evidence persistence lands on sigil-core::sink (EvidenceSink<R> + JsonlEvidenceSink) shared by EvidenceBundle and McpEvidenceRecord; open: non-JSONL backends and retry/backoff policy for transient sink failures (LIVE-006 text).",
     "Is PyO3 a planned migration for pysigil or a stale spec claim?"
   ]
