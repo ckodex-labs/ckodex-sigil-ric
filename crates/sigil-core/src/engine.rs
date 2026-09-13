@@ -6,18 +6,33 @@ use crate::{
     policy::Policy,
     scan::run_scan,
     signing::{receipt_message, ReceiptSignature, ReceiptSigner},
+    sink::EvidenceSink,
     taint::apply_provenance,
-    types::{ByteSegment, Provenance, RepresentationReceipt, SigilOutput, TextSegment},
+    types::{
+        ByteSegment, EvidenceBundle, Provenance, RepresentationReceipt, SigilOutput, TextSegment,
+    },
     vocab::Vocab,
 };
 use sha2::{Digest, Sha384};
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct Sigil {
     vocab: Vocab,
     policy: Policy,
     receipt_signer: Option<Arc<dyn ReceiptSigner>>,
+    evidence_sink: Option<Arc<Mutex<dyn EvidenceSink<EvidenceBundle> + Send>>>,
+}
+
+impl std::fmt::Debug for Sigil {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Sigil")
+            .field("vocab", &self.vocab)
+            .field("policy", &self.policy)
+            .field("receipt_signer", &self.receipt_signer.is_some())
+            .field("evidence_sink", &self.evidence_sink.is_some())
+            .finish()
+    }
 }
 
 impl Sigil {
@@ -26,6 +41,7 @@ impl Sigil {
             vocab,
             policy,
             receipt_signer: None,
+            evidence_sink: None,
         })
     }
 
@@ -34,6 +50,18 @@ impl Sigil {
     /// material lives in the signer, never in `Policy`.
     pub fn with_receipt_signer(mut self, signer: Arc<dyn ReceiptSigner>) -> Self {
         self.receipt_signer = Some(signer);
+        self
+    }
+
+    /// Attach an evidence sink. When present, every emitted
+    /// `EvidenceBundle` is written through it before the output is
+    /// returned — a sink error fails the call rather than emitting a
+    /// bundle whose `persisted` flag would be false (LIVE-003).
+    pub fn with_evidence_sink(
+        mut self,
+        sink: Arc<Mutex<dyn EvidenceSink<EvidenceBundle> + Send>>,
+    ) -> Self {
+        self.evidence_sink = Some(sink);
         self
     }
 
@@ -127,7 +155,16 @@ impl Sigil {
             });
         }
 
-        Ok(emit_output(&self.policy, merged, report, receipt))
+        let mut output = emit_output(&self.policy, merged, report, receipt);
+        if let (Some(bundle), Some(sink)) = (&mut output.evidence, &self.evidence_sink) {
+            bundle.persisted = true;
+            sink.lock()
+                .map_err(|_| {
+                    crate::error::SigilError::Io(std::io::Error::other("evidence sink poisoned"))
+                })?
+                .record(bundle)?;
+        }
+        Ok(output)
     }
 }
 

@@ -99,6 +99,7 @@ mod keygen_signing_tests {
             Vocab::tiktoken("cl100k_base"),
             Policy::default(),
             Some(&signer),
+            None,
         )
         .expect("engine");
         let output = engine.scan_text("key loop probe").expect("scan");

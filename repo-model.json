@@ -64,7 +64,7 @@
     "Is sigil-server transport planned or descoped? Spec lines 346 vs 906 disagree.",
     "Is TUF trust-root refresh wired or intentionally static snapshot?",
     "How is the >=80% coverage target measured? No coverage tool configured.",
-    "MCP evidence persistence lands on EvidenceSink + JsonlEvidenceSink (sigil-mcp/src/sink.rs); open: non-JSONL backends and extending the sink to non-MCP scan evidence (B2).",
+    "Evidence persistence lands on sigil-core::sink (EvidenceSink<R> + JsonlEvidenceSink) shared by EvidenceBundle and McpEvidenceRecord; open: non-JSONL backends and retry/backoff policy for transient sink failures (LIVE-006 text).",
     "Is PyO3 a planned migration for pysigil or a stale spec claim?"
   ]
 }

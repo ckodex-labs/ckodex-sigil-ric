@@ -3,6 +3,8 @@ use anyhow::{anyhow, Context, Result};
 use sigil_core::engine::Sigil;
 use sigil_core::policy::Policy;
 use sigil_core::signing::ReceiptSigner;
+use sigil_core::sink::{EvidenceSink, JsonlEvidenceSink};
+use sigil_core::types::EvidenceBundle;
 use sigil_core::{EcdsaP384Signer, Vocab};
 use sigil_mcp::ResponseSchema;
 use sigil_multimodal::MultimodalEngine;
@@ -30,17 +32,36 @@ pub fn load_signing_key(
     Ok(Some(std::sync::Arc::new(signer)))
 }
 
-/// Construct the core engine, attaching the receipt signer when configured.
+/// Open the shared `--evidence-log` JSONL sink, if the flag is set.
+pub fn open_evidence_sink(
+    path: Option<&PathBuf>,
+) -> Result<Option<std::sync::Arc<std::sync::Mutex<JsonlEvidenceSink>>>> {
+    path.map(|p| {
+        JsonlEvidenceSink::open(p)
+            .map(|sink| std::sync::Arc::new(std::sync::Mutex::new(sink)))
+            .with_context(|| format!("open evidence log {}", p.display()))
+    })
+    .transpose()
+}
+
+/// Construct the core engine, attaching the receipt signer and evidence
+/// sink when configured.
 pub fn build_sigil(
     vocab: Vocab,
     policy: Policy,
     receipt_signer: Option<&std::sync::Arc<dyn ReceiptSigner>>,
+    evidence_sink: Option<&std::sync::Arc<std::sync::Mutex<JsonlEvidenceSink>>>,
 ) -> Result<Sigil> {
-    let sigil = Sigil::new(vocab, policy)?;
-    Ok(match receipt_signer {
-        Some(signer) => sigil.with_receipt_signer(std::sync::Arc::clone(signer)),
-        None => sigil,
-    })
+    let mut sigil = Sigil::new(vocab, policy)?;
+    if let Some(signer) = receipt_signer {
+        sigil = sigil.with_receipt_signer(std::sync::Arc::clone(signer));
+    }
+    if let Some(sink) = evidence_sink {
+        let sink: std::sync::Arc<std::sync::Mutex<dyn EvidenceSink<EvidenceBundle> + Send>> =
+            sink.clone();
+        sigil = sigil.with_evidence_sink(sink);
+    }
+    Ok(sigil)
 }
 
 /// Construct the multimodal engine, attaching the receipt signer when configured.

@@ -32,7 +32,7 @@ impl McpGate {
 pub struct McpSession {
     gate: McpGate,
     combined_taint: Severity,
-    evidence_sink: Option<Arc<Mutex<dyn EvidenceSink + Send>>>,
+    evidence_sink: Option<Arc<Mutex<dyn EvidenceSink<McpEvidenceRecord> + Send>>>,
 }
 
 impl std::fmt::Debug for McpSession {
@@ -56,7 +56,10 @@ impl McpSession {
 
     /// A session whose evidence records are persisted to `sink` — every
     /// `inspect_response` writes one record before returning.
-    pub fn with_evidence_sink(gate: McpGate, sink: Arc<Mutex<dyn EvidenceSink + Send>>) -> Self {
+    pub fn with_evidence_sink(
+        gate: McpGate,
+        sink: Arc<Mutex<dyn EvidenceSink<McpEvidenceRecord> + Send>>,
+    ) -> Self {
         Self {
             evidence_sink: Some(sink),
             ..Self::new(gate)

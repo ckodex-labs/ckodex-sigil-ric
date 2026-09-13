@@ -35,7 +35,9 @@ pub fn build_evidence(
             EvidenceFormat::Cbor => crate::types::EvidenceFormat::Cbor,
             EvidenceFormat::Protobuf => crate::types::EvidenceFormat::Protobuf,
         },
-        persisted: true,
+        // LIVE-003: built is not persisted — a configured `EvidenceSink`
+        // sets this to `true` only after the write is confirmed.
+        persisted: false,
         summary,
         timestamp_unix_ms,
     }

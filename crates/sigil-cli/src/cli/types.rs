@@ -24,6 +24,11 @@ pub struct Cli {
     /// --signing-key. Requires network access to the Fulcio endpoint.
     #[arg(long, conflicts_with = "signing_key")]
     pub sigstore_keyless: bool,
+    /// Append-only JSONL evidence log. When present, every emitted
+    /// `EvidenceBundle` (scan path) and `McpEvidenceRecord` (mcp command)
+    /// is written to this file before results are returned.
+    #[arg(long)]
+    pub evidence_log: Option<PathBuf>,
     #[command(subcommand)]
     pub command: Commands,
 }
@@ -211,10 +216,6 @@ pub struct McpCommand {
     pub text: Option<String>,
     #[arg(long)]
     pub schema: Option<PathBuf>,
-    /// Append-only JSONL evidence log — each inspected response writes one
-    /// `McpEvidenceRecord` line before the inspection result is returned.
-    #[arg(long)]
-    pub evidence_log: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]

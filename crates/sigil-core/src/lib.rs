@@ -10,6 +10,7 @@ pub mod parallel;
 pub mod policy;
 pub mod scan;
 pub mod signing;
+pub mod sink;
 pub mod taint;
 pub mod tokenizer_ffi;
 pub mod types;
@@ -21,6 +22,7 @@ pub use error::{Result, SigilError};
 pub use parallel::TokenizerActor;
 pub use policy::Policy;
 pub use signing::{EcdsaP384Signer, ReceiptSignature, ReceiptSigner, SignatureVerifyError};
+pub use sink::{EvidenceSink, JsonlEvidenceSink};
 pub use types::{
     BoundaryContext, ByteRange, ByteSegment, DlpAction, DlpFinding, DlpKind, EntropyProfile,
     EvidenceBundle, EvidenceFormat, FlagReason, Grapheme, InputAssessment, Provenance,

@@ -85,7 +85,7 @@ impl std::io::Write for SharedWriter {
 
 struct FailingSink;
 
-impl EvidenceSink for FailingSink {
+impl EvidenceSink<McpEvidenceRecord> for FailingSink {
     fn record(&mut self, _record: &McpEvidenceRecord) -> Result<()> {
         Err(sigil_core::error::SigilError::Io(std::io::Error::other(
             "disk full",

@@ -11,7 +11,7 @@ use sigil_core::signing::ReceiptSigner;
 use sigil_core::types::{Provenance, TextSegment};
 use sigil_core::vocab::SpecialTokenMode;
 use sigil_core::{TokenizerActor, Vocab};
-use sigil_mcp::{JsonlEvidenceSink, McpGate, McpScanConfig, McpSession};
+use sigil_mcp::{McpEvidenceRecord, McpGate, McpScanConfig, McpSession};
 use sigil_multimodal::{ModalInput, Modality};
 use sigil_probe::{
     BaselineProfile, BoundaryProbe, CanaryCase, FingerprintProbe, ProbeConfig, ProbeEngine,
@@ -42,6 +42,7 @@ pub fn run() -> Result<()> {
     } else {
         None
     };
+    let evidence_sink = open_evidence_sink(cli.evidence_log.as_ref())?;
 
     match cli.command {
         Commands::Keygen(command) => {
@@ -49,7 +50,12 @@ pub fn run() -> Result<()> {
             print_json(&JsonResult { result: outcome })?;
         }
         Commands::Tokenize(command) => {
-            let sigil = build_sigil(vocab, policy, receipt_signer.as_ref())?;
+            let sigil = build_sigil(
+                vocab,
+                policy,
+                receipt_signer.as_ref(),
+                evidence_sink.as_ref(),
+            )?;
             let output = sigil.process_text_segments(&[TextSegment {
                 text: &read_text(&command)?,
                 provenance: Provenance::User,
@@ -116,7 +122,12 @@ pub fn run() -> Result<()> {
             }
         }
         Commands::Scan(command) => {
-            let sigil = build_sigil(vocab, policy, receipt_signer.as_ref())?;
+            let sigil = build_sigil(
+                vocab,
+                policy,
+                receipt_signer.as_ref(),
+                evidence_sink.as_ref(),
+            )?;
             let output = sigil.process_text_segments(&[TextSegment {
                 text: &read_text(&command)?,
                 provenance: Provenance::User,
@@ -125,11 +136,13 @@ pub fn run() -> Result<()> {
         }
         Commands::Mcp(command) => {
             let gate = McpGate::new(policy, McpScanConfig::default(), vocab)?;
-            let mut session = match &command.evidence_log {
-                Some(path) => McpSession::with_evidence_sink(
-                    gate,
-                    std::sync::Arc::new(std::sync::Mutex::new(JsonlEvidenceSink::open(path)?)),
-                ),
+            let mut session = match &evidence_sink {
+                Some(sink) => {
+                    let sink: std::sync::Arc<
+                        std::sync::Mutex<dyn sigil_mcp::EvidenceSink<McpEvidenceRecord> + Send>,
+                    > = sink.clone();
+                    McpSession::with_evidence_sink(gate, sink)
+                }
                 None => McpSession::new(gate),
             };
             let response = read_command_text(&command.input, &command.text)?;
@@ -252,6 +265,7 @@ pub fn run() -> Result<()> {
                 Vocab::tiktoken("cl100k_base"),
                 policy,
                 receipt_signer.as_ref(),
+                evidence_sink.as_ref(),
             )?
             .process_text_segments(&[TextSegment {
                 text: &text,

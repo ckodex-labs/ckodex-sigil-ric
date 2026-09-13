@@ -72,6 +72,8 @@ def main() -> int:
             "ReceiptSigner",
             "EcdsaP384Signer",
             "DsseEnvelope",
+            "EvidenceSink",
+            "JsonlEvidenceSink",
         ],
         "crates/sigil-cli/src/cli/commands.rs": [
             "ReceiptVerificationOutcome",

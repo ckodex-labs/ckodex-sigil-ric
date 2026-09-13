@@ -161,7 +161,7 @@ then measurement, then detection depth, then packaging. Each item is a
 | A3 | TUF trust-root freshness: embedded snapshot is documented design; decide online refresh (`sigstore-trust-root` `tuf` feature) vs static-by-design | `tuf.rs:15-40` | decision needed |
 | **B. Evidence persistence** | | | |
 | B1 | MCP evidence records persist to a sink — spec MUST ("every MCP evidence record MUST eventually be persisted") vs current in-memory `update_history` | `sigil-mcp/src/sink.rs` (`EvidenceSink` trait + `JsonlEvidenceSink` append-only backend); `session.rs` `with_evidence_sink` persists before returning, fail-closed on sink error; `--evidence-log` CLI flag; 2 new tests | **done** |
-| B2 | Same sink surface for scan/evidence records beyond MCP | `sigil-core/src/evidence.rs` | design |
+| B2 | Same sink surface for scan/evidence records beyond MCP | `sigil-core/src/sink.rs` — `EvidenceSink<R>`/`JsonlEvidenceSink` moved to core, generic over `Serialize`; `sigil-mcp::sink` re-exports for API stability; `Sigil::with_evidence_sink` persists `EvidenceBundle` fail-closed; global `--evidence-log` shares one JSONL stream between scan bundles and MCP records. **Found+fixed:** `EvidenceBundle.persisted` was hardcoded `true` at build (`evidence.rs`) — now `false` until a sink confirms the write | **done** |
 | **C. Measurement gates** | | | |
 | C1 | Coverage: wire `cargo-llvm-cov` (or tarpaulin), enforce ≥80% in `ci.yml` — target exists, no tool configured | `.github/workflows/ci.yml`; governance hard limits | open |
 | C2 | Extend `check_contracts.py` to discover module trees automatically (currently hand-maintained path map) | `scripts/check_contracts.py` | open |
