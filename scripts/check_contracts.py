@@ -83,6 +83,8 @@ def main() -> int:
             "ServerTrustProfile",
             "McpInspection",
             "McpEvidenceRecord",
+            "EvidenceSink",
+            "JsonlEvidenceSink",
         ],
         "crates/sigil-probe/src/lib.rs": [
             "ProbeConfig",

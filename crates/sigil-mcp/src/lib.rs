@@ -6,9 +6,11 @@
 
 mod helpers;
 mod session;
+mod sink;
 mod types;
 
 pub use session::{McpGate, McpSession};
+pub use sink::{EvidenceSink, JsonlEvidenceSink};
 pub use types::{
     ContentType, McpEvidenceRecord, McpInspection, McpScanConfig, ResourcePolicy, ResponseSchema,
     Result, ServerHistory, ServerTrustProfile,

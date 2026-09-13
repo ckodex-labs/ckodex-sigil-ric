@@ -43,6 +43,7 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `ServerTrustProfile`
 - `McpInspection`
 - `McpEvidenceRecord`
+- `EvidenceSink` / `JsonlEvidenceSink` (sigil-mcp::sink)
 - `ProbeConfig`
 - `HealthReport`
 - `HealthAction`

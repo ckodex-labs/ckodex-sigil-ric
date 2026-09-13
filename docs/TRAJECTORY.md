@@ -160,7 +160,7 @@ then measurement, then detection depth, then packaging. Each item is a
 | A2 | Rekor log binding: `entry.log_id` vs `trust.rekor_log_id` | already wired — `trust/verify.rs` step 5 returns `LogIdMismatch` (repomodel open question was stale) | **done** (pre-existing) |
 | A3 | TUF trust-root freshness: embedded snapshot is documented design; decide online refresh (`sigstore-trust-root` `tuf` feature) vs static-by-design | `tuf.rs:15-40` | decision needed |
 | **B. Evidence persistence** | | | |
-| B1 | MCP evidence records persist to a sink — spec MUST ("every MCP evidence record MUST eventually be persisted") vs current in-memory `update_history` | `sigil-mcp/src/session.rs:127`; `SIGIL-SPEC.md:1327` | open |
+| B1 | MCP evidence records persist to a sink — spec MUST ("every MCP evidence record MUST eventually be persisted") vs current in-memory `update_history` | `sigil-mcp/src/sink.rs` (`EvidenceSink` trait + `JsonlEvidenceSink` append-only backend); `session.rs` `with_evidence_sink` persists before returning, fail-closed on sink error; `--evidence-log` CLI flag; 2 new tests | **done** |
 | B2 | Same sink surface for scan/evidence records beyond MCP | `sigil-core/src/evidence.rs` | design |
 | **C. Measurement gates** | | | |
 | C1 | Coverage: wire `cargo-llvm-cov` (or tarpaulin), enforce ≥80% in `ci.yml` — target exists, no tool configured | `.github/workflows/ci.yml`; governance hard limits | open |

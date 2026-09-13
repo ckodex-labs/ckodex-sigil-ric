@@ -1,4 +1,5 @@
 use crate::helpers::{compose_verdict, stable_hash, truncate_output, validate_schema};
+use crate::sink::EvidenceSink;
 use crate::types::*;
 use sigil_core::{
     engine::Sigil,
@@ -6,6 +7,7 @@ use sigil_core::{
     types::{FlagReason, Provenance, Severity, TextSegment, TrustLevel, Verdict},
     Vocab,
 };
+use std::sync::{Arc, Mutex};
 
 #[derive(Clone, Debug)]
 pub struct McpGate {
@@ -26,10 +28,21 @@ impl McpGate {
     }
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone)]
 pub struct McpSession {
     gate: McpGate,
     combined_taint: Severity,
+    evidence_sink: Option<Arc<Mutex<dyn EvidenceSink + Send>>>,
+}
+
+impl std::fmt::Debug for McpSession {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("McpSession")
+            .field("gate", &self.gate)
+            .field("combined_taint", &self.combined_taint)
+            .field("evidence_sink", &self.evidence_sink.is_some())
+            .finish()
+    }
 }
 
 impl McpSession {
@@ -37,6 +50,16 @@ impl McpSession {
         Self {
             gate,
             combined_taint: Severity::None,
+            evidence_sink: None,
+        }
+    }
+
+    /// A session whose evidence records are persisted to `sink` — every
+    /// `inspect_response` writes one record before returning.
+    pub fn with_evidence_sink(gate: McpGate, sink: Arc<Mutex<dyn EvidenceSink + Send>>) -> Self {
+        Self {
+            evidence_sink: Some(sink),
+            ..Self::new(gate)
         }
     }
 
@@ -109,6 +132,18 @@ impl McpSession {
             tokens_consumed: token_budget_used,
             sigil_version: self.gate.sigil.policy().sigil.version.clone(),
         });
+
+        if let Some(sink) = &self.evidence_sink {
+            // Fail closed: an inspection whose evidence cannot be persisted
+            // is an error, not a verdict without a record.
+            sink.lock()
+                .map_err(|_| {
+                    sigil_core::error::SigilError::Io(std::io::Error::other(
+                        "evidence sink poisoned",
+                    ))
+                })?
+                .record(&evidence)?;
+        }
 
         Ok(McpInspection {
             server_id: server_id.to_string(),

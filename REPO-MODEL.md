@@ -150,6 +150,10 @@ Library crates never use `anyhow`; CLI never exposes typed errors to callers.
   decision pending (TRAJECTORY A3).
 - Coverage target ≥80% has no configured tool (no tarpaulin/llvm-cov config
   found) — how is it measured?
-- Spec: "every MCP evidence record MUST eventually be persisted" — where does
-  `McpEvidenceRecord` persistence land? Currently in-memory session history.
+- Spec: "every MCP evidence record MUST eventually be persisted" — resolved:
+  `EvidenceSink` trait + `JsonlEvidenceSink` (append-only JSONL) in
+  `sigil-mcp/src/sink.rs`; `McpSession::with_evidence_sink` persists each
+  record fail-closed before returning the inspection. Open: which backend
+  beyond JSONL (riegeli-rs candidate), and whether the sink extends to
+  non-MCP scan evidence (B2).
 - Python binding is ctypes; is PyO3 a planned migration or a stale spec claim?

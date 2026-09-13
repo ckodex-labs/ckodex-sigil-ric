@@ -211,6 +211,10 @@ pub struct McpCommand {
     pub text: Option<String>,
     #[arg(long)]
     pub schema: Option<PathBuf>,
+    /// Append-only JSONL evidence log — each inspected response writes one
+    /// `McpEvidenceRecord` line before the inspection result is returned.
+    #[arg(long)]
+    pub evidence_log: Option<PathBuf>,
 }
 
 #[derive(clap::Args, Debug)]

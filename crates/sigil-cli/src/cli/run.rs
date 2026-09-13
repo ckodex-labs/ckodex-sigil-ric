@@ -11,7 +11,7 @@ use sigil_core::signing::ReceiptSigner;
 use sigil_core::types::{Provenance, TextSegment};
 use sigil_core::vocab::SpecialTokenMode;
 use sigil_core::{TokenizerActor, Vocab};
-use sigil_mcp::{McpGate, McpScanConfig, McpSession};
+use sigil_mcp::{JsonlEvidenceSink, McpGate, McpScanConfig, McpSession};
 use sigil_multimodal::{ModalInput, Modality};
 use sigil_probe::{
     BaselineProfile, BoundaryProbe, CanaryCase, FingerprintProbe, ProbeConfig, ProbeEngine,
@@ -124,8 +124,14 @@ pub fn run() -> Result<()> {
             print_json(&JsonResult { result: output })?;
         }
         Commands::Mcp(command) => {
-            let mut session =
-                McpSession::new(McpGate::new(policy, McpScanConfig::default(), vocab)?);
+            let gate = McpGate::new(policy, McpScanConfig::default(), vocab)?;
+            let mut session = match &command.evidence_log {
+                Some(path) => McpSession::with_evidence_sink(
+                    gate,
+                    std::sync::Arc::new(std::sync::Mutex::new(JsonlEvidenceSink::open(path)?)),
+                ),
+                None => McpSession::new(gate),
+            };
             let response = read_command_text(&command.input, &command.text)?;
             let schema = match command.schema {
                 Some(path) => Some(parse_schema(&path)?),
