@@ -2,7 +2,6 @@ use crate::trust::types::{TrustError, TrustRoot};
 use p256::ecdsa::{
     signature::Verifier as _, Signature as P256Signature, VerifyingKey as P256VerifyingKey,
 };
-use p256::elliptic_curve::generic_array::GenericArray;
 use x509_cert::certificate::Certificate;
 use x509_cert::time::Time;
 pub(crate) fn validate_chain(chain_der: &[Vec<u8>], trust: &TrustRoot) -> Result<(), TrustError> {
@@ -73,7 +72,11 @@ fn verify_cert_signature(cert: &Certificate, issuer: &Certificate) -> Result<(),
     // Fulcio uses ECDSA P-256 for CA certificates.
     let verifying_key = P256VerifyingKey::from_sec1_bytes(issuer_pub)
         .map_err(|e| TrustError::ChainValidation(format!("issuer key parse: {e}")))?;
-    let signature = P256Signature::from_bytes(GenericArray::from_slice(sig_bytes))
+    // X.509 carries ECDSA-Sig-Value as DER SEQUENCE{r,s}; accept the fixed
+    // 64-byte form too for synthetic fixtures. `GenericArray::from_slice`
+    // would panic on the ~71-byte DER input — parse without panicking.
+    let signature = P256Signature::from_der(sig_bytes)
+        .or_else(|_| P256Signature::from_slice(sig_bytes))
         .map_err(|_| TrustError::ChainValidation("signature parse failed".into()))?;
     verifying_key
         .verify(&tbs_der, &signature)

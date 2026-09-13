@@ -4,7 +4,6 @@ use base64::Engine as _;
 use p256::ecdsa::{
     signature::Verifier as _, Signature as P256Signature, VerifyingKey as P256VerifyingKey,
 };
-use p256::elliptic_curve::generic_array::GenericArray;
 use sha2::{Digest as _, Sha256};
 pub(crate) fn verify_rekor_set(
     entry: &RekorEntry,
@@ -24,7 +23,10 @@ pub(crate) fn verify_rekor_set(
     // Rekor uses ECDSA P-256 with SHA-256.
     let verifying_key = P256VerifyingKey::from_sec1_bytes(rekor_public_key)
         .map_err(|e| TrustError::SetFailed(format!("key parse: {e}")))?;
-    let signature = P256Signature::from_bytes(GenericArray::from_slice(&set_bytes))
+    // `Signature::from_slice` returns Err on wrong-length input; the
+    // `GenericArray::from_slice` it replaces would panic on a malformed
+    // (non-64-byte) SET from the wire.
+    let signature = P256Signature::from_slice(&set_bytes)
         .map_err(|_| TrustError::SetFailed("signature parse failed".into()))?;
     verifying_key
         .verify(canonical.as_bytes(), &signature)
