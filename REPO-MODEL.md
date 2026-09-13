@@ -145,8 +145,9 @@ Library crates never use `anyhow`; CLI never exposes typed errors to callers.
 
 - Is `sigil-server` transport (gRPC/HTTP/MCP proxy) planned or descoped?
   Spec §4 table and §module map disagree (346 vs 906).
-- TUF trust root is an embedded snapshot (`tuf.rs`); is online refresh wired
-  or intentionally static?
+- TUF trust root is an embedded snapshot (`tuf.rs:15-40`); online refresh
+  exists behind `sigstore-trust-root`'s `tuf` feature but is not wired —
+  decision pending (TRAJECTORY A3).
 - Coverage target ≥80% has no configured tool (no tarpaulin/llvm-cov config
   found) — how is it measured?
 - Spec: "every MCP evidence record MUST eventually be persisted" — where does

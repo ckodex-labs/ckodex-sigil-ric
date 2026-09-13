@@ -102,19 +102,34 @@ pub(crate) fn check_san_identity(leaf: &Certificate, expected: &str) -> Result<(
                 expected: expected.to_string(),
                 got: "no SAN extension".to_string(),
             })?;
-    // The SAN extension value is a DER-encoded GeneralNames sequence.
-    // For a basic check, we look for the expected identity string in the
-    // extension value bytes. A full implementation would parse the
-    // GeneralNames ASN.1 structure, but this byte-level check is
-    // sufficient for identity matching and avoids a complex ASN.1 parser.
-    let san_bytes = san_ext.extn_value.as_bytes();
-    let san_str = String::from_utf8_lossy(san_bytes);
-    if san_str.contains(expected) {
+    // The SAN extension value is a DER-encoded GeneralNames sequence
+    // (RFC 5280 §4.2.1.6). Parse it and require an exact match against a
+    // string-bearing GeneralName — substring matching would let a
+    // certificate for `alice@x.com.evil.com` satisfy an expected identity of
+    // `alice@x.com`. Fulcio encodes the OIDC identity as a
+    // uniformResourceIdentifier (workload) or rfc822Name (email) SAN.
+    use der::Decode as _;
+    use x509_cert::ext::pkix::name::GeneralName;
+    let names: Vec<GeneralName> =
+        Vec::from_der(san_ext.extn_value.as_bytes()).map_err(|e| TrustError::SanMismatch {
+            expected: expected.to_string(),
+            got: format!("unparseable SAN extension: {e}"),
+        })?;
+    let matched = names.iter().any(|name| {
+        let value: &str = match name {
+            GeneralName::Rfc822Name(s)
+            | GeneralName::DnsName(s)
+            | GeneralName::UniformResourceIdentifier(s) => s.as_ref(),
+            _ => return false,
+        };
+        value == expected
+    });
+    if matched {
         Ok(())
     } else {
         Err(TrustError::SanMismatch {
             expected: expected.to_string(),
-            got: format!("SAN does not contain '{expected}'"),
+            got: "no SAN entry exactly matches".to_string(),
         })
     }
 }

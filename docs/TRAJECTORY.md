@@ -156,8 +156,8 @@ then measurement, then detection depth, then packaging. Each item is a
 | Phase | Item | Evidence / driver | Status |
 |---|---|---|---|
 | **A. Trust-path hardening** | | | |
-| A1 | SAN identity: replace substring match with proper `GeneralNames` ASN.1 parse — current `san_str.contains(expected)` is spoofable (`alice@x.com.evil.com` contains `alice@x.com`) | `trust/chain.rs:105-120` (comment admits shortcut); x509-cert exposes `ext::pkix::name::GeneralNames` | open |
-| A2 | Rekor log binding: compare `entry.log_id` against `trust.rekor_log_id` — `LogIdMismatch` variant exists but is never returned | `trust/types.rs` (variant), `trust/rekor.rs` (never checked) | open |
+| A1 | SAN identity: replace substring match with proper `GeneralNames` ASN.1 parse — substring was spoofable (`alice@x.com.evil.com` contains `alice@x.com`) | `trust/chain.rs` `check_san_identity` — now exact-matches `Rfc822Name`/`DnsName`/`UniformResourceIdentifier` GeneralNames (RFC 5280 §4.2.1.6); 3 regression tests | **done** |
+| A2 | Rekor log binding: `entry.log_id` vs `trust.rekor_log_id` | already wired — `trust/verify.rs` step 5 returns `LogIdMismatch` (repomodel open question was stale) | **done** (pre-existing) |
 | A3 | TUF trust-root freshness: embedded snapshot is documented design; decide online refresh (`sigstore-trust-root` `tuf` feature) vs static-by-design | `tuf.rs:15-40` | decision needed |
 | **B. Evidence persistence** | | | |
 | B1 | MCP evidence records persist to a sink — spec MUST ("every MCP evidence record MUST eventually be persisted") vs current in-memory `update_history` | `sigil-mcp/src/session.rs:127`; `SIGIL-SPEC.md:1327` | open |

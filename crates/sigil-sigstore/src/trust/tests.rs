@@ -230,3 +230,97 @@ fn rekor_binding_rejects_wrong_signature() {
         .expect_err("wrong signature must fail");
     assert!(matches!(err, TrustError::RekorBinding(_)));
 }
+
+/// Build a leaf `Certificate` whose SAN extension carries `identity` as a
+/// uniformResourceIdentifier GeneralName — the shape Fulcio uses for
+/// workload identities. Signature and chain fields are inert; the test only
+/// exercises `check_san_identity`.
+fn cert_with_uri_san(identity: &str) -> x509_cert::certificate::Certificate {
+    use der::asn1::{BitString, Ia5String, OctetString, UtcTime};
+    use der::Encode;
+    use std::time::{Duration, SystemTime, UNIX_EPOCH};
+    use x509_cert::certificate::{Certificate, TbsCertificate, Version};
+    use x509_cert::ext::pkix::name::{GeneralName, GeneralNames};
+    use x509_cert::ext::Extension;
+    use x509_cert::name::Name;
+    use x509_cert::serial_number::SerialNumber;
+    use x509_cert::time::{Time, Validity};
+
+    let names: GeneralNames = vec![GeneralName::UniformResourceIdentifier(
+        Ia5String::new(identity).expect("ia5"),
+    )];
+    let san_value = OctetString::new(names.to_der().expect("san der")).expect("octets");
+    let san_ext = Extension {
+        extn_id: const_oid::ObjectIdentifier::new_unwrap("2.5.29.17"),
+        critical: false,
+        extn_value: san_value,
+    };
+
+    let now = SystemTime::now().duration_since(UNIX_EPOCH).expect("clock");
+    let not_before =
+        UtcTime::from_unix_duration(Duration::from_secs(now.as_secs() - 60)).expect("time");
+    let not_after =
+        UtcTime::from_unix_duration(Duration::from_secs(now.as_secs() + 3600)).expect("time");
+
+    // Minimal P-256 SPKI — check_san_identity never touches the key.
+    let signing_key = p256::ecdsa::SigningKey::from_slice(&[7u8; 32]).expect("key");
+    let public_key = p256::PublicKey::from(signing_key.verifying_key());
+    let spki = x509_cert::spki::SubjectPublicKeyInfoOwned::from_key(public_key).expect("spki");
+    let algorithm = x509_cert::spki::AlgorithmIdentifierOwned {
+        oid: const_oid::db::rfc5912::ECDSA_WITH_SHA_256,
+        parameters: None,
+    };
+
+    Certificate {
+        tbs_certificate: TbsCertificate {
+            version: Version::V3,
+            serial_number: SerialNumber::new(&[1]).expect("serial"),
+            signature: algorithm.clone(),
+            issuer: Name::default(),
+            validity: Validity {
+                not_before: Time::UtcTime(not_before),
+                not_after: Time::UtcTime(not_after),
+            },
+            subject: Name::default(),
+            subject_public_key_info: spki,
+            issuer_unique_id: None,
+            subject_unique_id: None,
+            extensions: Some(vec![san_ext]),
+        },
+        signature_algorithm: algorithm,
+        signature: BitString::new(0, vec![0u8; 64]).expect("bitstring"),
+    }
+}
+
+#[test]
+fn san_exact_match_accepted() {
+    let cert =
+        cert_with_uri_san("https://github.com/org/repo/.github/workflows/ci.yml@refs/heads/main");
+    assert_eq!(
+        crate::trust::chain::check_san_identity(
+            &cert,
+            "https://github.com/org/repo/.github/workflows/ci.yml@refs/heads/main"
+        ),
+        Ok(())
+    );
+}
+
+#[test]
+fn san_substring_decoy_rejected() {
+    // The pre-fix substring check would accept this: the decoy SAN *contains*
+    // the expected identity as a substring.
+    let cert = cert_with_uri_san("alice@example.com.evil.example");
+    assert!(matches!(
+        crate::trust::chain::check_san_identity(&cert, "alice@example.com"),
+        Err(TrustError::SanMismatch { .. })
+    ));
+}
+
+#[test]
+fn san_wrong_identity_rejected() {
+    let cert = cert_with_uri_san("https://github.com/org/repo-a");
+    assert!(matches!(
+        crate::trust::chain::check_san_identity(&cert, "https://github.com/org/repo-b"),
+        Err(TrustError::SanMismatch { .. })
+    ));
+}
