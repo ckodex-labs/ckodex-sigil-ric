@@ -147,6 +147,34 @@ CV-RIC-001/001b Tags detection · 002 strip+raw digest · 003/003b merge boundar
 
 ## 4. Open work queue (recommended order)
 
+### 4.1 Next phases (post-modularization, from REPO-MODEL)
+
+Phases ordered by risk: trust-path correctness first, then spec-MUST gaps,
+then measurement, then detection depth, then packaging. Each item is a
+`feature/*` branch off `develop`.
+
+| Phase | Item | Evidence / driver | Status |
+|---|---|---|---|
+| **A. Trust-path hardening** | | | |
+| A1 | SAN identity: replace substring match with proper `GeneralNames` ASN.1 parse — current `san_str.contains(expected)` is spoofable (`alice@x.com.evil.com` contains `alice@x.com`) | `trust/chain.rs:105-120` (comment admits shortcut); x509-cert exposes `ext::pkix::name::GeneralNames` | open |
+| A2 | Rekor log binding: compare `entry.log_id` against `trust.rekor_log_id` — `LogIdMismatch` variant exists but is never returned | `trust/types.rs` (variant), `trust/rekor.rs` (never checked) | open |
+| A3 | TUF trust-root freshness: embedded snapshot is documented design; decide online refresh (`sigstore-trust-root` `tuf` feature) vs static-by-design | `tuf.rs:15-40` | decision needed |
+| **B. Evidence persistence** | | | |
+| B1 | MCP evidence records persist to a sink — spec MUST ("every MCP evidence record MUST eventually be persisted") vs current in-memory `update_history` | `sigil-mcp/src/session.rs:127`; `SIGIL-SPEC.md:1327` | open |
+| B2 | Same sink surface for scan/evidence records beyond MCP | `sigil-core/src/evidence.rs` | design |
+| **C. Measurement gates** | | | |
+| C1 | Coverage: wire `cargo-llvm-cov` (or tarpaulin), enforce ≥80% in `ci.yml` — target exists, no tool configured | `.github/workflows/ci.yml`; governance hard limits | open |
+| C2 | Extend `check_contracts.py` to discover module trees automatically (currently hand-maintained path map) | `scripts/check_contracts.py` | open |
+| **D. Detection depth** | | | |
+| D1 | Audio steganalysis gen-2: Goertzel per-frequency bins (cheap, catches weak frequency-hopping that band-energy misses) | `spectral/mod.rs`; research: MDPI AS 14/14/6000 | open |
+| D2 | Injection detection gen-2: multiscale perplexity needs a model — either document as out-of-scope or integrate a perplexity signal via `sigil-probe` | `lfdd.rs`; research: arXiv:2311.11509 | design |
+| **E. Deliverables** | | | |
+| E1 | `sigil-server` transport: gRPC/HTTP + MCP proxy — spec §4 table vs §module map disagreed; decide planned vs descoped | `sigil-server/src/lib.rs:41` (facade only) | decision needed |
+| E2 | `libsigil` cdylib + `sigil.wasm` targets | `SIGIL-SPEC.md:342-343` | planned |
+| E3 | Python binding: PyO3 vs ctypes decision | `bindings/python/` is ctypes today | decision needed |
+
+### 4.2 Completed queue (history)
+
 | # | Item | Class | Notes |
 |---|---|---|---|
 | 1a | in-toto/DSSE attestation layer | **done** | `attestation.rs`, `sigil-cli attest` / `verify-attestation` |
