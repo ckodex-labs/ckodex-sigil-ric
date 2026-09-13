@@ -197,6 +197,50 @@ mod tests {
         assert_eq!(err, PerceptionError::DecodeFailed);
     }
 
+    /// Real MP4 fixture generated with:
+    /// `ffmpeg -f lavfi -i color=c=black:s=16x16:d=0.2:r=5 -f lavfi -i sine=frequency=440:duration=0.2 -c:v libx264 -c:a aac -shortest`
+    #[test]
+    fn video_adapter_parses_real_mp4_inventory() {
+        let bytes = std::fs::read(concat!(
+            env!("CARGO_MANIFEST_DIR"),
+            "/tests/fixtures/tiny_av.mp4"
+        ))
+        .expect("fixture");
+        let adapter = VideoAdapter;
+        let report = adapter
+            .perceive(&ArtifactRef {
+                source_id: "tiny".to_string(),
+                bytes: &bytes,
+                media_type: Some("video/mp4".to_string()),
+            })
+            .expect("real mp4 must parse");
+
+        let prop = |suffix: &str| {
+            report
+                .properties
+                .iter()
+                .find(|(k, _)| k.ends_with(suffix))
+                .map(|(_, v)| v.clone())
+        };
+        assert_eq!(prop("video_tracks").as_deref(), Some("1"));
+        assert_eq!(prop("audio_tracks").as_deref(), Some("1"));
+        // tkhd dimensions are 16.16 fixed point: 16.0 renders as "1048576".
+        assert_eq!(prop("video0.width").as_deref(), Some("1048576"));
+        assert_eq!(prop("video0.height").as_deref(), Some("1048576"));
+        assert!(prop("video0.duration_secs").is_some());
+
+        // The metadata channel renders the track inventory as text.
+        let metadata = report
+            .channels
+            .iter()
+            .find(|c| c.channel_kind == ChannelKind::Metadata)
+            .expect("metadata channel");
+        assert!(metadata.content.contains("video_tracks = 1"));
+        assert!(metadata.content.contains("audio_tracks = 1"));
+        assert_eq!(report.media_type, "video/mp4");
+        assert!(!report.artifact_digest.is_empty());
+    }
+
     #[test]
     fn video_adapter_id_is_correct() {
         let adapter = VideoAdapter;

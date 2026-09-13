@@ -222,3 +222,102 @@ pub fn tokenizer_for_name(name: &str) -> Result<Arc<ZigTokenizer>, ZigTokenizerE
         .insert(name.to_string(), tokenizer.clone());
     Ok(tokenizer)
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn cl100k() -> Arc<ZigTokenizer> {
+        tokenizer_for_name("cl100k_base").expect("cl100k tokenizer")
+    }
+
+    #[test]
+    fn encode_piece_matches_ordinary_shape() {
+        let tok = cl100k();
+        let piece = tok.encode_piece("hello").expect("encode_piece");
+        let ordinary = tok.encode_ordinary("hello").expect("encode_ordinary");
+        assert!(!piece.is_empty());
+        assert_eq!(piece.len(), ordinary.len());
+        for (p, o) in piece.iter().zip(ordinary.iter()) {
+            assert_eq!(p.token_id, o.token_id);
+            assert_eq!((p.start, p.end), (o.start, o.end));
+        }
+    }
+
+    #[test]
+    fn encode_single_token_returns_id() {
+        let tok = cl100k();
+        let spans = tok.encode_ordinary("hello").expect("encode");
+        if spans.len() == 1 {
+            let id = tok.encode_single_token("hello").expect("single token");
+            assert_eq!(id, spans[0].token_id);
+        }
+    }
+
+    #[test]
+    fn decode_bytes_roundtrips() {
+        let tok = cl100k();
+        let text = "round trip through zig";
+        let spans = tok.encode_ordinary(text).expect("encode");
+        let ids: Vec<u32> = spans.iter().map(|s| s.token_id).collect();
+        let bytes = tok.decode_bytes(&ids).expect("decode");
+        assert_eq!(bytes, text.as_bytes());
+    }
+
+    #[test]
+    fn decode_empty_input_returns_empty() {
+        let tok = cl100k();
+        assert_eq!(tok.decode_bytes(&[]).expect("decode"), Vec::<u8>::new());
+    }
+
+    #[test]
+    fn special_token_lookup_hit_and_miss() {
+        let tok = cl100k();
+        let eot = tok
+            .special_token_id("<|endoftext|>")
+            .expect("special lookup");
+        assert_eq!(eot, Some(100257));
+        let missing = tok
+            .special_token_id("<|definitely_not_a_token|>")
+            .expect("lookup");
+        assert_eq!(missing, None);
+    }
+
+    #[test]
+    fn open_rejects_unknown_encoding() {
+        let err =
+            ZigTokenizer::open("not_a_real_encoding_name").expect_err("unknown encoding must fail");
+        assert_eq!(err, ZigTokenizerError::UnknownEncoding);
+    }
+
+    #[test]
+    fn error_codes_map_to_variants() {
+        assert_eq!(
+            ZigTokenizerError::from_code(1),
+            ZigTokenizerError::UnknownEncoding
+        );
+        assert_eq!(
+            ZigTokenizerError::from_code(2),
+            ZigTokenizerError::InvalidUtf8
+        );
+        assert_eq!(
+            ZigTokenizerError::from_code(3),
+            ZigTokenizerError::TokenNotFound
+        );
+        assert_eq!(
+            ZigTokenizerError::from_code(4),
+            ZigTokenizerError::AllocFailed
+        );
+        assert_eq!(
+            ZigTokenizerError::from_code(99),
+            ZigTokenizerError::InvalidInput
+        );
+    }
+
+    #[test]
+    fn tokenizer_cache_returns_shared_handle() {
+        let a = tokenizer_for_name("cl100k_base").expect("first");
+        let b = tokenizer_for_name("cl100k_base").expect("second");
+        assert!(Arc::ptr_eq(&a, &b));
+    }
+}
