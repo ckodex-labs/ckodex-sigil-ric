@@ -18,17 +18,8 @@ sigil-multimodal = { path = "../sigil-multimodal" }
 sigil-s = { path = "../sigil-s" }
 sigil-perception = { version = "0.3.0", path = "../sigil-perception" }
 sigil-sigstore = { version = "0.3.0", path = "../sigil-sigstore" }
-sigil-vt = { version = "0.3.0", path = "../sigil-vt", optional = true }
+sigil-vt = { version = "0.3.0", path = "../sigil-vt" }
 clap_complete = "4.5.67"
-
-[features]
-# `vt` injects the Ghostty-backed terminal-escape scanner when
-# `[scan.terminal_escapes] enabled = true`. Opt-in: building it requires
-# zig 0.15.2 (libghostty-vt-sys compiles ghostty's C lib) and network
-# access to fetch the pinned ghostty source. A CLI built without it still
-# honors the policy — the kernel records `TerminalStatus::Skipped`
-# ("no scanner injected") as visible evidence rather than silently passing.
-vt = ["dep:sigil-vt"]
 
 [dev-dependencies]
 tempfile = "3"

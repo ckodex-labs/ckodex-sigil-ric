@@ -79,6 +79,54 @@ fn dcs_is_high_csi_is_low() {
 }
 
 #[test]
+fn extension_channels_are_high() {
+    for command in [
+        "rxvt_extension",
+        "iterm2_extension",
+        "kitty_clipboard_protocol",
+        "conemu_run_process",
+        "conemu_gui_macro",
+    ] {
+        let (findings, _) = detect(vec![seq(
+            TerminalSequenceKind::Osc {
+                command: command.to_string(),
+            },
+            0,
+            10,
+            "",
+        )]);
+        assert_eq!(
+            findings[0].severity,
+            Severity::High,
+            "command {command} should be High"
+        );
+    }
+}
+
+#[test]
+fn mode_and_drop_oscs_are_medium() {
+    for command in [
+        "kitty_dnd_protocol",
+        "conemu_xterm_emulation",
+        "conemu_show_message_box",
+    ] {
+        let (findings, _) = detect(vec![seq(
+            TerminalSequenceKind::Osc {
+                command: command.to_string(),
+            },
+            0,
+            10,
+            "",
+        )]);
+        assert_eq!(
+            findings[0].severity,
+            Severity::Medium,
+            "command {command} should be Medium"
+        );
+    }
+}
+
+#[test]
 fn unclassified_osc_is_low() {
     let (findings, _) = detect(vec![seq(
         TerminalSequenceKind::Osc {

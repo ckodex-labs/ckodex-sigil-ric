@@ -138,15 +138,24 @@ fn classify(seq: &TerminalSequence) -> Option<(Severity, &'static str)> {
     let risk = match &seq.kind {
         TerminalSequenceKind::Osc { command } => match command.as_str() {
             "clipboard_contents" => (Severity::High, "clipboard-write OSC"),
+            "conemu_run_process" | "conemu_gui_macro" => (Severity::High, "ConEmu automation OSC"),
+            "rxvt_extension" | "iterm2_extension" | "kitty_clipboard_protocol" => (
+                Severity::High,
+                "extension-channel OSC (clipboard/eval/file-drop)",
+            ),
             "hyperlink_start" | "hyperlink_end" => {
                 (Severity::Medium, "hyperlink OSC (display/target smuggling)")
             }
             "change_window_title" | "conemu_change_tab_title" => {
                 (Severity::Medium, "window-title OSC (spoofing)")
             }
-            "show_desktop_notification" => (Severity::Medium, "notification OSC (spoofing)"),
+            "show_desktop_notification" | "conemu_show_message_box" => {
+                (Severity::Medium, "notification OSC (spoofing)")
+            }
             "report_pwd" => (Severity::Medium, "cwd-report OSC (information leak)"),
-            "conemu_run_process" | "conemu_gui_macro" => (Severity::High, "ConEmu automation OSC"),
+            "kitty_dnd_protocol" | "conemu_xterm_emulation" => {
+                (Severity::Medium, "terminal-mode/file-drop OSC")
+            }
             _ => (Severity::Low, "OSC sequence"),
         },
         TerminalSequenceKind::Dcs => (Severity::High, "device-control string"),

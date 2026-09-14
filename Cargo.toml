@@ -9,7 +9,8 @@ members = [
     "crates/sigil-s",
     "crates/sigil-cli",
     "crates/sigil-server",
-    "crates/sigil-ffi", "crates/sigil-vt",
+    "crates/sigil-ffi",
+    "crates/sigil-vt",
 ]
 resolver = "2"
 
