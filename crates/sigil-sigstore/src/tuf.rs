@@ -93,11 +93,20 @@ fn convert_trusted_root(trusted: &SigstoreTrustedRoot) -> Result<TrustRoot, Sigs
         .map_err(|e| SigstoreError::Fulcio(format!("rekor log ID base64: {e}")))?;
     let rekor_log_id = hex::encode(&rekor_log_id_bytes);
 
+    // CT log keys for embedded-SCT verification: (log_id, SPKI DER).
+    let ctfe_keys = trusted
+        .ctfe_keys_with_ids()
+        .map_err(|e| SigstoreError::Fulcio(format!("ctfe_keys: {e}")))?
+        .into_iter()
+        .map(|(log_id, key)| (log_id, key.as_bytes().to_vec()))
+        .collect();
+
     Ok(TrustRoot {
         fulcio_root_der,
         fulcio_intermediates_der,
         rekor_public_key: rekor_public_key.clone(),
         rekor_log_id,
+        ctfe_keys,
     })
 }
 
@@ -115,6 +124,9 @@ mod tests {
         assert_eq!(root.rekor_log_id.len(), 64);
         // Rekor public key is a DER-encoded SPKI (starts with 0x30 SEQUENCE).
         assert_eq!(root.rekor_public_key[0], 0x30);
+        // The production root provisions CT log keys — SCT verification
+        // is mandatory for Fulcio-issued certs.
+        assert!(!root.ctfe_keys.is_empty());
     }
 
     #[test]

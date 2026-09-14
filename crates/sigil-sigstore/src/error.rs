@@ -13,6 +13,8 @@ pub enum SigstoreError {
     Fulcio(String),
     #[error("Rekor upload failed: {0}")]
     Rekor(String),
+    #[error("bundle parse/convert failed: {0}")]
+    Bundle(String),
 }
 
 /// Where the OIDC identity token comes from.

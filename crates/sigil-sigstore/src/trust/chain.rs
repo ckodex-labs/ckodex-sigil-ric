@@ -4,7 +4,14 @@ use p256::ecdsa::{
 };
 use x509_cert::certificate::Certificate;
 use x509_cert::time::Time;
-pub(crate) fn validate_chain(chain_der: &[Vec<u8>], trust: &TrustRoot) -> Result<(), TrustError> {
+/// Validate the bundle's certificate chain against the trust root and
+/// return the full parsed chain (`bundle certs + intermediates + root`),
+/// so callers can recover the leaf's issuer (`full_chain[1]`) for
+/// checks that need it (SCT verification).
+pub(crate) fn validate_chain(
+    chain_der: &[Vec<u8>],
+    trust: &TrustRoot,
+) -> Result<Vec<Certificate>, TrustError> {
     use der::Decode;
     let certs: Vec<Certificate> = chain_der
         .iter()
@@ -46,7 +53,8 @@ pub(crate) fn validate_chain(chain_der: &[Vec<u8>], trust: &TrustRoot) -> Result
             "last bundle cert does not chain to root".to_string(),
         ))
     })?;
-    Ok(())
+    full_chain.push(root);
+    Ok(full_chain)
 }
 /// Verify that `cert` is signed by `issuer`'s public key.
 fn verify_cert_signature(cert: &Certificate, issuer: &Certificate) -> Result<(), TrustError> {

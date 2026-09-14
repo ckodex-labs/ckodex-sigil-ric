@@ -8,6 +8,12 @@ pub struct TrustRoot {
     pub rekor_public_key: Vec<u8>,
     /// Rekor log ID (SHA-256 of the DER-encoded Rekor public key, hex).
     pub rekor_log_id: String,
+    /// CT log keys trusted for embedded-SCT verification, as
+    /// `(log_id, spki_der)` pairs distributed by the trust root
+    /// (`TrustedRoot::ctfe_keys_with_ids`). `log_id` is SHA-256 of the
+    /// DER-encoded SubjectPublicKeyInfo. Empty means CT is not provisioned
+    /// for this root — the embedded production root always carries keys.
+    pub ctfe_keys: Vec<(Vec<u8>, Vec<u8>)>,
 }
 /// A Rekor transparency-log entry (v1 shape).
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -65,4 +71,10 @@ pub enum TrustError {
     SignatureFailed(String),
     #[error("Rekor entry binding failed: {0}")]
     RekorBinding(String),
+    #[error("missing embedded SCT extension (OID 1.3.6.1.4.1.11129.2.4.2)")]
+    MissingSct,
+    #[error("SCT verification failed: {0}")]
+    SctFailed(String),
+    #[error("unsupported bundle content: {0}")]
+    BundleUnsupported(String),
 }

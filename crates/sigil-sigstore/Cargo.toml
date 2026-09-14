@@ -21,3 +21,4 @@ getrandom = "0.2"
 p256 = "0.13"
 hex = "0.4"
 sigstore-trust-root = { version = "0.11", default-features = false }
+sigstore-types = { version = "0.11", default-features = false }

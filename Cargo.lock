@@ -2213,6 +2213,7 @@ dependencies = [
  "sha2",
  "sigil-core",
  "sigstore-trust-root",
+ "sigstore-types",
  "thiserror 1.0.69",
  "x509-cert",
 ]

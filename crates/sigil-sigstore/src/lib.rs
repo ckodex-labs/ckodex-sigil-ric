@@ -21,6 +21,7 @@
 pub mod trust;
 pub mod tuf;
 
+mod bundle_convert;
 mod bundle_ops;
 mod bundle_types;
 mod csr;
@@ -28,6 +29,7 @@ mod error;
 mod rekor_upload;
 mod signer;
 
+pub use bundle_convert::parse_upstream_bundle;
 pub use bundle_ops::{build_bundle, verify_bundle};
 pub use bundle_types::{
     BundleCertificate, BundleMessageDigest, BundleMessageSignature, BundleVerificationMaterial,

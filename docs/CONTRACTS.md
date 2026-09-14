@@ -11,7 +11,7 @@ This document defines the stable interfaces and fail-closed boundaries for the S
 | `sigil-probe` | Score drift and health, surface SHIELD trigger evidence | Execute model routing, modify core decisions |
 | `sigil-multimodal` | Fold modality-specific findings into a single assessment; audit fusion boundaries and derive the authority ceiling; own the `PerceptionAdapter` port and map channels to derived provenance | Let a weaker modality override a stronger one; let derived channels claim first-party authority; let adapters choose provenance |
 | `sigil-perception` | Decompose artifacts into text channels (image decode, EXIF inventory, pinned external OCR) | Emit provenance, severities, or verdicts; fetch network resources; execute model calls |
-| `sigil-sigstore` | Sigstore keyless signing: OIDC → Fulcio exchange → ephemeral P-384 signatures; optional Rekor upload | Sign without an OIDC identity; widen trust silently; verify offline (planned increment) |
+| `sigil-sigstore` | Sigstore keyless signing: OIDC → Fulcio exchange → ephemeral P-384 signatures; optional Rekor upload; offline chain-of-trust + SCT + Rekor verification; upstream bundle interop | Sign without an OIDC identity; widen trust silently; accept a bundle without Rekor tlog evidence |
 | `sigil-s` | Produce a parallel semantic verdict and training signal | Downgrade a core deny into allow |
 | Bindings | Expose the tokenizer ABI to other languages | Reimplement policy logic or change token semantics |
 
@@ -31,8 +31,9 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `KeygenOutcome`
 - `DsseEnvelope` (in-toto Statement v1 / DSSE)
 - `SigstoreKeylessSigner` / `RekorEntry` / `SigstoreBundle` (sigil-sigstore)
-- `TrustRoot` / `verify_bundle_with_trust` / `verify_inclusion_proof` (sigil-sigstore::trust)
+- `TrustRoot` / `verify_bundle_with_trust` / `verify_upstream_bundle` / `verify_inclusion_proof` (sigil-sigstore::trust)
 - `trust_root_from_embedded` (sigil-sigstore::tuf)
+- `parse_upstream_bundle` (sigil-sigstore — hybrid boundary: `sigstore-types` wire parse → local verify inputs)
 - `AudioAdapter` / `ExternalTranscript` (sigil-perception::audio)
 - `VideoAdapter` (sigil-perception::video)
 - `DocumentAdapter` (sigil-perception::document)
