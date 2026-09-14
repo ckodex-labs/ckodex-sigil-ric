@@ -29,8 +29,30 @@ pub struct Cli {
     /// is written to this file before results are returned.
     #[arg(long)]
     pub evidence_log: Option<PathBuf>,
+    /// Output format: `auto` renders human output on a terminal and JSON
+    /// when piped; `json`/`human` force the mode.
+    #[arg(long, value_enum, default_value = "auto", global = true)]
+    pub format: OutputFormat,
+    /// Colored output: `auto` enables color on a terminal unless
+    /// `NO_COLOR` is set; `always`/`never` force.
+    #[arg(long, value_enum, default_value = "auto", global = true)]
+    pub color: ColorMode,
     #[command(subcommand)]
     pub command: Commands,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum OutputFormat {
+    Auto,
+    Json,
+    Human,
+}
+
+#[derive(ValueEnum, Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ColorMode {
+    Auto,
+    Always,
+    Never,
 }
 
 #[derive(Subcommand, Debug)]
@@ -52,6 +74,8 @@ pub enum Commands {
     Perceive(PerceiveCommand),
     VerifyAttestation(VerifyAttestationCommand),
     Keygen(KeygenCommand),
+    /// Print a shell completion script to stdout.
+    Completions(CompletionsCommand),
 }
 
 #[derive(clap::Args, Debug)]
@@ -60,6 +84,17 @@ pub struct TextCommand {
     pub input: Option<PathBuf>,
     #[arg(long)]
     pub text: Option<String>,
+    /// Render the full intake→scan→merge→emit pipeline instead of just
+    /// the result (human format only).
+    #[arg(long)]
+    pub explain: bool,
+}
+
+#[derive(clap::Args, Debug)]
+pub struct CompletionsCommand {
+    /// Shell to generate completions for.
+    #[arg(value_enum)]
+    pub shell: clap_complete::Shell,
 }
 
 #[derive(clap::Args, Debug)]
@@ -129,8 +164,10 @@ pub struct BenchCommand {
     pub corpus: Option<String>,
     #[arg(long, value_enum, default_value_t = BenchmarkPreset::Small)]
     pub preset: BenchmarkPreset,
-    #[arg(long, value_enum, default_value_t = BenchmarkOutputFormat::Human)]
-    pub format: BenchmarkOutputFormat,
+    /// Benchmark report serialization (distinct from the global
+    /// `--format` presentation mode).
+    #[arg(long = "report-format", value_enum, default_value_t = BenchmarkOutputFormat::Human)]
+    pub report_format: BenchmarkOutputFormat,
     #[arg(long)]
     pub output: Option<PathBuf>,
     #[arg(long)]

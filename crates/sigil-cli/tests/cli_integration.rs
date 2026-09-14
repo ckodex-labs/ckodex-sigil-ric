@@ -352,3 +352,86 @@ fn probe_reads_samples_file() {
     let out = sigil(&["probe", "--samples", path.to_str().expect("utf8")]);
     ok_result(&out);
 }
+
+// ── output-mode surface: --format / --color / --explain / completions ──
+
+#[test]
+fn format_json_emits_envelope() {
+    let out = sigil(&["--format", "json", "tokenize", "--text", "hello world"]);
+    let result = ok_result(&out);
+    assert!(result["token_ids"].is_array(), "result: {result}");
+}
+
+#[test]
+fn format_human_renders_verdict_banner() {
+    let out = sigil(&["--format", "human", "tokenize", "--text", "hello world"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("ALLOW"), "stdout: {stdout}");
+    assert!(stdout.contains("TOKENS"));
+    assert!(stdout.contains("RECEIPT"));
+    // not a JSON envelope
+    assert!(!stdout.trim_start().starts_with('{'));
+}
+
+#[test]
+fn format_human_flag_verdict_survives_presentation() {
+    // zero-width space → FLAG under the default policy; the human view
+    // must carry the verdict, never launder it
+    let out = sigil(&["--format", "human", "scan", "--text", "hello\u{200B}world"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(stdout.contains("FLAG"), "stdout: {stdout}");
+    assert!(
+        stdout.contains("\\u{200b}"),
+        "invisible char must be escaped"
+    );
+    assert!(!stdout.contains('\u{200B}'));
+}
+
+#[test]
+fn explain_renders_pipeline_stages() {
+    let out = sigil(&[
+        "--format",
+        "human",
+        "tokenize",
+        "--explain",
+        "--text",
+        "hello world",
+    ]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    for stage in ["INTAKE", "SCAN", "MERGE", "EMIT"] {
+        assert!(stdout.contains(stage), "missing {stage}: {stdout}");
+    }
+}
+
+#[test]
+fn color_never_emits_no_ansi() {
+    let out = sigil(&[
+        "--format", "human", "--color", "never", "tokenize", "--text", "hi",
+    ]);
+    assert!(out.status.success());
+    assert!(!out.stdout.contains(&0x1b));
+}
+
+#[test]
+fn color_always_emits_ansi() {
+    let out = sigil(&[
+        "--format", "human", "--color", "always", "tokenize", "--text", "hi",
+    ]);
+    assert!(out.status.success());
+    assert!(out.stdout.contains(&0x1b));
+}
+
+#[test]
+fn completions_bash_prints_script() {
+    let out = sigil(&["completions", "bash"]);
+    assert!(out.status.success());
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    assert!(
+        stdout.contains("_sigil"),
+        "stdout head: {}",
+        &stdout[..200.min(stdout.len())]
+    );
+}

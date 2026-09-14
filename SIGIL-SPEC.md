@@ -362,7 +362,17 @@ SIGIL ships as a standalone, embeddable package — same philosophy as Valance.
 ### 4.1 CLI Interface
 
 The binary is `sigil-cli` (workspace crate `sigil-cli`). Global flags: `--policy <toml>`,
-`--vocab <name>` (default `cl100k_base`). All results are emitted as JSON.
+`--vocab <name>` (default `cl100k_base`).
+
+Output modes: `--format auto|json|human` (default `auto`: human rendering on a
+terminal, JSON when piped) and `--color auto|always|never` (`auto` honors
+`NO_COLOR`). The JSON envelope (`{"result": …}`) is the stable machine contract;
+human output renders the same kernel result — verdicts, findings, receipt, and
+evidence status — it never recomputes or amends them. Invisible and control
+codepoints are rendered as `\u{…}` escapes in human output so flagged spans are
+visibly inspectable. `tokenize --explain`/`scan --explain` add stage narration
+(INTAKE → SCAN → MERGE → EMIT). `sigil-cli completions <shell>` prints a shell
+completion script.
 
 ```bash
 # Tokenize with security analysis
@@ -403,7 +413,9 @@ $ sigil-cli mcp --input tool-response.json
 
 Subcommands: `tokenize`, `tokenize-batch`, `decode`, `decode-batch`, `bench`
 (alias `benchmark`), `telemetry`, `scan`, `mcp`, `probe`, `multimodal`, `sentinel`,
-`verify-receipt`, `keygen`, `perceive`. Global flag `--signing-key <pem>` signs every emitted
+`verify-receipt`, `keygen`, `perceive`, `attest`, `verify-attestation`,
+`completions`. `bench` selects its report serialization with `--report-format`
+(`human|json|csv|jsonl`). Global flag `--signing-key <pem>` signs every emitted
 receipt (PKCS#8 PEM, OpenSSL-interoperable; private file written mode 600). Global flag
 `--sigstore-keyless` signs every receipt with a Fulcio-issued ephemeral P-384 certificate
 exchanged for the ambient OIDC token (`SIGSTORE_ID_TOKEN`); requires network at signing

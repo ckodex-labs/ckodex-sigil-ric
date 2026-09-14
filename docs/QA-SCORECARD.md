@@ -28,6 +28,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Go binding encode/decode parity | Go `cgo` wrapper | `bindings/go/cmd/sigil-bench`, CI binding smoke job |
 | Throughput regression and batch consistency | CLI benchmark harness | `bench/baselines/*`, `crates/sigil-cli/src/cli/benchmark.rs`, CI benchmark job |
 | CLI dispatch, keygen → signed scan → verify-receipt → attest → verify-attestation chains, keyless fail-closed | `sigil-cli` binary surface | `crates/sigil-cli/tests/cli_integration.rs` |
+| Presentation integrity — human mode carries kernel verdicts unchanged, invisible codepoints rendered visibly, JSON contract preserved under `auto`/`json` | `sigil-cli` output modes | `crates/sigil-cli/src/cli/tests_human.rs`, `crates/sigil-cli/tests/cli_integration.rs` |
 
 ## QA gates
 

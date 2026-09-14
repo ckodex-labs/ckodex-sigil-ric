@@ -2,6 +2,8 @@ pub mod benchmark;
 pub mod benchmark_render;
 pub mod commands;
 pub mod helpers;
+pub mod human;
+pub mod human_reports;
 pub mod output;
 pub mod results;
 pub mod run;
@@ -9,6 +11,9 @@ pub mod types;
 
 #[cfg(test)]
 mod tests_bench;
+
+#[cfg(test)]
+mod tests_human;
 
 #[cfg(test)]
 mod tests_verify;

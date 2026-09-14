@@ -5,8 +5,9 @@ use crate::cli::helpers::*;
 use crate::cli::output::*;
 use crate::cli::results::*;
 use crate::cli::types::*;
+use crate::cli::{human, human_reports};
 use anyhow::{anyhow, Context, Result};
-use clap::Parser;
+use clap::{CommandFactory, Parser};
 use sigil_core::signing::ReceiptSigner;
 use sigil_core::types::{Provenance, TextSegment};
 use sigil_core::vocab::SpecialTokenMode;
@@ -23,6 +24,7 @@ use std::fs;
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+    let printer = Printer::detect(cli.format, cli.color);
     let policy = load_policy(cli.policy.as_ref())?;
     let vocab_name = cli.vocab.clone();
     let vocab = Vocab::tiktoken(vocab_name.clone());
@@ -47,7 +49,15 @@ pub fn run() -> Result<()> {
     match cli.command {
         Commands::Keygen(command) => {
             let outcome = keygen_command(&command)?;
-            print_json(&JsonResult { result: outcome })?;
+            printer.emit(&outcome, |o| human_reports::render_keygen(o, printer.color))?;
+        }
+        Commands::Completions(command) => {
+            clap_complete::generate(
+                command.shell,
+                &mut Cli::command(),
+                "sigil-cli",
+                &mut std::io::stdout(),
+            );
         }
         Commands::Tokenize(command) => {
             let sigil = build_sigil(
@@ -56,11 +66,15 @@ pub fn run() -> Result<()> {
                 receipt_signer.as_ref(),
                 evidence_sink.as_ref(),
             )?;
+            let text = read_text(&command)?;
+            let explain = command.explain;
             let output = sigil.process_text_segments(&[TextSegment {
-                text: &read_text(&command)?,
+                text: &text,
                 provenance: Provenance::User,
             }])?;
-            print_json(&JsonResult { result: output })?;
+            printer.emit(&output, |o| {
+                human::render_sigil(o, Some(&text), explain, printer.color)
+            })?;
         }
         Commands::TokenizeBatch(command) => {
             let inputs = read_batch_text(&command)?;
@@ -69,22 +83,23 @@ pub fn run() -> Result<()> {
             } else {
                 actor.encode_batch(&inputs)?
             };
-            print_json(&JsonResult {
-                result: BatchTokenizeResult::from_encoded(inputs, encoded),
+            let result = BatchTokenizeResult::from_encoded(inputs, encoded);
+            printer.emit(&result, |r| {
+                human_reports::render_batch_tokenize(r, printer.color)
             })?;
         }
         Commands::Decode(command) => {
             let ids = read_token_ids(&command)?;
             let text = vocab.decode(&ids);
-            print_json(&JsonResult {
-                result: DecodeResult { ids, text },
-            })?;
+            let result = DecodeResult { ids, text };
+            printer.emit(&result, |r| human_reports::render_decode(r, printer.color))?;
         }
         Commands::DecodeBatch(command) => {
             let batches = read_token_batches(&command)?;
             let texts = actor.decode_batch(&batches)?;
-            print_json(&JsonResult {
-                result: BatchDecodeResult { batches, texts },
+            let result = BatchDecodeResult { batches, texts };
+            printer.emit(&result, |r| {
+                human_reports::render_batch_decode(r, printer.color)
             })?;
         }
         Commands::Bench(command) => {
@@ -102,7 +117,7 @@ pub fn run() -> Result<()> {
             if let Some(baseline_dir) = command.baseline_dir.as_ref() {
                 compare_benchmark_baselines(baseline_dir, &result)?;
             }
-            let rendered = render_benchmark_output(&result, command.format)?;
+            let rendered = render_benchmark_output(&result, command.report_format)?;
             if let Some(path) = command.output.as_ref() {
                 fs::write(path, rendered).with_context(|| format!("write {}", path.display()))?;
             } else {
@@ -128,11 +143,15 @@ pub fn run() -> Result<()> {
                 receipt_signer.as_ref(),
                 evidence_sink.as_ref(),
             )?;
+            let text = read_text(&command)?;
+            let explain = command.explain;
             let output = sigil.process_text_segments(&[TextSegment {
-                text: &read_text(&command)?,
+                text: &text,
                 provenance: Provenance::User,
             }])?;
-            print_json(&JsonResult { result: output })?;
+            printer.emit(&output, |o| {
+                human::render_sigil(o, Some(&text), explain, printer.color)
+            })?;
         }
         Commands::Mcp(command) => {
             let gate = McpGate::new(policy, McpScanConfig::default(), vocab)?;
@@ -156,7 +175,7 @@ pub fn run() -> Result<()> {
                 &response,
                 schema.as_ref(),
             )?;
-            print_json(&JsonResult { result: inspection })?;
+            printer.emit(&inspection, |i| human_reports::render_mcp(i, printer.color))?;
         }
         Commands::Probe(command) => {
             let samples: Vec<ProbeSample> = load_json_array(command.samples.as_ref())?;
@@ -171,7 +190,7 @@ pub fn run() -> Result<()> {
                 ProbeConfig::default(),
             );
             let report = engine.analyze(&samples, &canaries, &fingerprints, &boundaries);
-            print_json(&JsonResult { result: report })?;
+            printer.emit(&report, |r| human_reports::render_probe(r, printer.color))?;
         }
         Commands::Multimodal(command) => {
             let engine = build_multimodal_engine(policy, vocab, receipt_signer.as_ref())?;
@@ -240,23 +259,50 @@ pub fn run() -> Result<()> {
                 });
             }
             let assessment = engine.analyze(&inputs)?;
-            print_json(&JsonResult { result: assessment })?;
+            printer.emit(&assessment, |a| {
+                human_reports::render_multimodal(a, printer.color)
+            })?;
         }
         Commands::VerifyReceipt(command) => {
             let outcome = verify_receipt_command(&command)?;
-            print_json(&JsonResult { result: outcome })?;
+            printer.emit(&outcome, |o| {
+                human_reports::render_verification(
+                    o.valid,
+                    &format!(
+                        "  algorithm   {}\n  key id      {}\n",
+                        o.algorithm.as_deref().unwrap_or("-"),
+                        o.key_id.as_deref().unwrap_or("-")
+                    ),
+                    o.error.as_deref(),
+                    printer.color,
+                )
+            })?;
         }
         Commands::Attest(command) => {
             let envelope = attest_command(&command)?;
-            print_json(&JsonResult { result: envelope })?;
+            printer.emit(&envelope, |e| {
+                human_reports::render_attest(e, printer.color)
+            })?;
         }
         Commands::Perceive(command) => {
             let outcome = perceive_command(command, policy, vocab, receipt_signer.as_ref())?;
-            print_json(&JsonResult { result: outcome })?;
+            printer.emit(&outcome, |o| {
+                human_reports::render_perceive(o, printer.color)
+            })?;
         }
         Commands::VerifyAttestation(command) => {
             let outcome = verify_attestation_command(&command)?;
-            print_json(&JsonResult { result: outcome })?;
+            printer.emit(&outcome, |o| {
+                human_reports::render_verification(
+                    o.valid,
+                    &format!(
+                        "  payload     {}\n",
+                        o.payload_type.as_deref().unwrap_or("-")
+                    ),
+                    o.error.as_deref(),
+                    printer.color,
+                )
+            })?;
         }
         Commands::Sentinel(command) => {
             let model = SentinelModel::default();
@@ -274,9 +320,13 @@ pub fn run() -> Result<()> {
             let sentinel = model.classify(&text, Some(&sigil_output.assessment));
             if command.compose {
                 let composite = compose_with_sigil(&sigil_output.assessment, &sentinel);
-                print_json(&JsonResult { result: composite })?;
+                printer.emit(&composite, |c| {
+                    human_reports::render_composite(c, printer.color)
+                })?;
             } else {
-                print_json(&JsonResult { result: sentinel })?;
+                printer.emit(&sentinel, |s| {
+                    human_reports::render_sentinel(s, printer.color)
+                })?;
             }
         }
     }

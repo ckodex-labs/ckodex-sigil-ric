@@ -18,6 +18,7 @@ sigil-multimodal = { path = "../sigil-multimodal" }
 sigil-s = { path = "../sigil-s" }
 sigil-perception = { version = "0.3.0", path = "../sigil-perception" }
 sigil-sigstore = { version = "0.3.0", path = "../sigil-sigstore" }
+clap_complete = "4.5.67"
 
 [dev-dependencies]
 tempfile = "3"

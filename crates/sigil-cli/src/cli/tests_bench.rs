@@ -23,7 +23,7 @@ mod tests {
             manifest: None,
             corpus: None,
             preset: BenchmarkPreset::Small,
-            format: BenchmarkOutputFormat::Human,
+            report_format: BenchmarkOutputFormat::Human,
             output: None,
             baseline_dir: None,
             refresh_baselines: false,
