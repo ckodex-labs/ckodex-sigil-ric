@@ -26,6 +26,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Python binding encode/decode parity | Python `ctypes` wrapper | `bindings/python/benchmark.py`, CI binding smoke job |
 | Go binding encode/decode parity | Go `cgo` wrapper | `bindings/go/cmd/sigil-bench`, CI binding smoke job |
 | Throughput regression and batch consistency | CLI benchmark harness | `bench/baselines/*`, `crates/sigil-cli/src/cli/benchmark.rs`, CI benchmark job |
+| CLI dispatch, keygen → signed scan → verify-receipt → attest → verify-attestation chains, keyless fail-closed | `sigil-cli` binary surface | `crates/sigil-cli/tests/cli_integration.rs` |
 
 ## QA gates
 
