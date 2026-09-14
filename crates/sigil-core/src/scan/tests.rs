@@ -252,3 +252,82 @@ fn invalid_custom_pattern_regex_is_skipped() {
         .iter()
         .all(|f| !matches!(f.kind, DlpKind::Custom(_))));
 }
+
+#[test]
+fn terminal_enabled_without_scanner_is_skipped() {
+    let mut policy = Policy::default();
+    policy.scan.terminal_escapes.enabled = true;
+    let report = dlp_report_for(&policy, "plain text");
+    assert!(matches!(
+        report.terminal.expect("report").status,
+        crate::terminal::TerminalStatus::Skipped { .. }
+    ));
+}
+
+#[test]
+fn terminal_disabled_produces_no_report() {
+    let policy = Policy::default();
+    let report = dlp_report_for(&policy, "\x1b]52;c;YQ==\x07");
+    assert!(report.terminal.is_none());
+}
+
+#[test]
+fn terminal_scanner_finding_reaches_report_and_annotations() {
+    use crate::terminal::{TerminalSequence, TerminalSequenceKind, TerminalSequenceScanner};
+    struct StubScanner;
+    impl TerminalSequenceScanner for StubScanner {
+        fn name(&self) -> &str {
+            "stub"
+        }
+        fn scan(&self, _bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
+            Ok(vec![TerminalSequence {
+                byte_range: crate::types::ByteRange::new(0, 14),
+                kind: TerminalSequenceKind::Osc {
+                    command: "clipboard_contents".to_string(),
+                },
+                detail: "OSC".to_string(),
+            }])
+        }
+    }
+    let mut policy = Policy::default();
+    policy.scan.terminal_escapes.enabled = true;
+    let graphemes =
+        crate::intake::intake_text_segment("\x1b]52;c;YQ==\x07 tail", 0, &policy).unwrap();
+    let mut tainted = apply_provenance(graphemes, Provenance::User);
+    let report =
+        crate::scan::run_scan_with_engines(&policy, &mut tainted, None, Some(&StubScanner));
+    let terminal = report.terminal.expect("report");
+    assert!(matches!(
+        terminal.status,
+        crate::terminal::TerminalStatus::Evaluated
+    ));
+    assert_eq!(terminal.sequence_count, 1);
+    assert!(report.findings.iter().any(|f| f
+        .detectors
+        .contains(&crate::types::DetectorId::TerminalEscape)
+        && f.severity == Severity::High));
+}
+
+#[test]
+fn terminal_scanner_error_is_failed_evidence() {
+    use crate::terminal::{TerminalSequence, TerminalSequenceScanner};
+    struct FailingScanner;
+    impl TerminalSequenceScanner for FailingScanner {
+        fn name(&self) -> &str {
+            "failing"
+        }
+        fn scan(&self, _bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
+            Err("osc parser died".to_string())
+        }
+    }
+    let mut policy = Policy::default();
+    policy.scan.terminal_escapes.enabled = true;
+    let graphemes = crate::intake::intake_text_segment("text", 0, &policy).unwrap();
+    let mut tainted = apply_provenance(graphemes, Provenance::User);
+    let report =
+        crate::scan::run_scan_with_engines(&policy, &mut tainted, None, Some(&FailingScanner));
+    assert!(matches!(
+        report.terminal.expect("report").status,
+        crate::terminal::TerminalStatus::Failed { .. }
+    ));
+}

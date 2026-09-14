@@ -13,6 +13,9 @@ pub struct ScanReport {
     /// Multiscale perplexity-anomaly evidence, present whenever the
     /// detector was enabled — including `Skipped`/`Failed` outcomes.
     pub perplexity: Option<crate::perplexity::PerplexityReport>,
+    /// Terminal-escape (VT control-sequence) evidence, present whenever
+    /// the detector was enabled — including `Skipped`/`Failed` outcomes.
+    pub terminal: Option<crate::terminal::TerminalReport>,
 }
 
 impl ScanReport {

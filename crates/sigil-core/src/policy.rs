@@ -301,6 +301,35 @@ impl Default for PerplexityPolicy {
     }
 }
 
+/// Terminal-escape (VT control-sequence) detection (F2). Opt-in:
+/// disabled by default. Detection requires an injected
+/// `TerminalSequenceScanner` (e.g. `sigil-vt`'s Ghostty-backed engine);
+/// enabled-without-scanner reports `Skipped`, never a silent pass.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct TerminalEscapesPolicy {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Cap on sequences converted to findings — bounds output volume on
+    /// hostile input dense with escapes.
+    #[serde(default = "TerminalEscapesPolicy::default_max_sequences")]
+    pub max_sequences: usize,
+}
+
+impl TerminalEscapesPolicy {
+    fn default_max_sequences() -> usize {
+        512
+    }
+}
+
+impl Default for TerminalEscapesPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            max_sequences: Self::default_max_sequences(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScanPolicy {
     #[serde(default = "ScanPolicy::default_true")]
@@ -327,6 +356,8 @@ pub struct ScanPolicy {
     pub dlp: DlpPolicy,
     #[serde(default)]
     pub perplexity: PerplexityPolicy,
+    #[serde(default)]
+    pub terminal_escapes: TerminalEscapesPolicy,
 }
 
 impl ScanPolicy {
@@ -362,6 +393,7 @@ impl Default for ScanPolicy {
             entropy_deviation: Self::default_entropy_deviation(),
             dlp: DlpPolicy::default(),
             perplexity: PerplexityPolicy::default(),
+            terminal_escapes: TerminalEscapesPolicy::default(),
         }
     }
 }

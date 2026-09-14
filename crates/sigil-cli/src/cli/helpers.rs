@@ -52,6 +52,8 @@ pub fn build_sigil(
     receipt_signer: Option<&std::sync::Arc<dyn ReceiptSigner>>,
     evidence_sink: Option<&std::sync::Arc<std::sync::Mutex<JsonlEvidenceSink>>>,
 ) -> Result<Sigil> {
+    #[cfg(feature = "vt")]
+    let terminal_escapes = policy.scan.terminal_escapes.enabled;
     let mut sigil = Sigil::new(vocab, policy)?;
     if let Some(signer) = receipt_signer {
         sigil = sigil.with_receipt_signer(std::sync::Arc::clone(signer));
@@ -60,6 +62,13 @@ pub fn build_sigil(
         let sink: std::sync::Arc<std::sync::Mutex<dyn EvidenceSink<EvidenceBundle> + Send>> =
             sink.clone();
         sigil = sigil.with_evidence_sink(sink);
+    }
+    #[cfg(feature = "vt")]
+    if terminal_escapes {
+        let scanner: std::sync::Arc<
+            dyn sigil_core::terminal::TerminalSequenceScanner + Send + Sync,
+        > = std::sync::Arc::new(sigil_vt::GhosttyScanner::new());
+        sigil = sigil.with_terminal_scanner(scanner);
     }
     Ok(sigil)
 }

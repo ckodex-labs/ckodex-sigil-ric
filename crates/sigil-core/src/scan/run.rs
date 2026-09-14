@@ -19,6 +19,20 @@ pub fn run_scan_with_scorer(
     tainted: &mut [TaintedGrapheme],
     scorer: Option<&dyn crate::perplexity::SurprisalScorer>,
 ) -> ScanReport {
+    run_scan_with_engines(policy, tainted, scorer, None)
+}
+
+/// Scan with injected engines: a [`SurprisalScorer`] for perplexity and a
+/// [`TerminalSequenceScanner`] for VT control-sequence detection. When
+/// `scan.terminal_escapes` is enabled but no scanner is injected the
+/// report records `Skipped` — enabled-but-unwired is evidence, not a
+/// silent pass.
+pub fn run_scan_with_engines(
+    policy: &Policy,
+    tainted: &mut [TaintedGrapheme],
+    scorer: Option<&dyn crate::perplexity::SurprisalScorer>,
+    terminal_scanner: Option<&dyn crate::terminal::TerminalSequenceScanner>,
+) -> ScanReport {
     let map = TextMap::new(tainted);
     let mut findings = Vec::new();
     let mut dlp_findings = Vec::new();
@@ -78,6 +92,26 @@ pub fn run_scan_with_scorer(
         perplexity = Some(preport);
     }
 
+    let mut terminal = None;
+    if policy.scan.terminal_escapes.enabled {
+        let treport = match terminal_scanner {
+            None => crate::terminal::TerminalReport::skipped("none", "no scanner injected"),
+            Some(scanner) => match scanner.scan(map.text.as_bytes()) {
+                Ok(sequences) => {
+                    let (tfindings, treport) = crate::terminal::detect_terminal_escapes(
+                        &sequences,
+                        scanner.name(),
+                        policy.scan.terminal_escapes.max_sequences,
+                    );
+                    findings.extend(tfindings);
+                    treport
+                }
+                Err(e) => crate::terminal::TerminalReport::failed(scanner.name(), e),
+            },
+        };
+        terminal = Some(treport);
+    }
+
     annotate_graphemes(tainted, &findings);
     let summary = summarize_findings(&findings);
     ScanReport {
@@ -89,6 +123,7 @@ pub fn run_scan_with_scorer(
         injection_score: summary.injection_score,
         slow_rate: None,
         perplexity,
+        terminal,
     }
 }
 

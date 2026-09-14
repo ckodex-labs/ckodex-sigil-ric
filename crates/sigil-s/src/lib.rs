@@ -309,6 +309,7 @@ mod tests {
             dlp_findings: Vec::new(),
             injection_score: 1.0,
             perplexity: None,
+            terminal: None,
         };
         let sentinel = SentinelModel::default().classify("benign", None);
         let composite = compose_with_sigil(&assessment, &sentinel);
