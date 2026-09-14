@@ -263,3 +263,92 @@ fn perceive_video_fixture() {
     ]);
     ok_result(&out);
 }
+
+// ── file-input helpers (cli/helpers.rs) ─────────────────────────────
+
+#[test]
+fn tokenize_reads_text_from_input_file() {
+    let dir = tmpdir();
+    let path = dir.path().join("in.txt");
+    std::fs::write(&path, "hello world").expect("write");
+    let out = sigil(&["tokenize", "--input", path.to_str().expect("utf8")]);
+    ok_result(&out);
+}
+
+#[test]
+fn tokenize_input_and_text_are_mutually_exclusive() {
+    let dir = tmpdir();
+    let path = dir.path().join("in.txt");
+    std::fs::write(&path, "x").expect("write");
+    let out = sigil(&[
+        "tokenize",
+        "--input",
+        path.to_str().expect("utf8"),
+        "--text",
+        "y",
+    ]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn tokenize_batch_reads_json_array_file() {
+    let dir = tmpdir();
+    let path = dir.path().join("texts.json");
+    std::fs::write(&path, r#"["hello world","second"]"#).expect("write");
+    let out = sigil(&["tokenize-batch", "--input", path.to_str().expect("utf8")]);
+    let result = ok_result(&out);
+    assert!(result.is_object() || result.is_array(), "result: {result}");
+}
+
+#[test]
+fn tokenize_batch_accepts_repeated_text_flags() {
+    let out = sigil(&["tokenize-batch", "--text", "a", "--text", "b"]);
+    ok_result(&out);
+}
+
+#[test]
+fn decode_batch_reads_json_id_arrays_file() {
+    let dir = tmpdir();
+    let path = dir.path().join("ids.json");
+    std::fs::write(&path, r#"[[15339,1917],[15339]]"#).expect("write");
+    let out = sigil(&["decode-batch", "--input", path.to_str().expect("utf8")]);
+    ok_result(&out);
+}
+
+#[test]
+fn decode_batch_without_input_fails() {
+    let out = sigil(&["decode-batch"]);
+    assert!(!out.status.success());
+}
+
+#[test]
+fn mcp_gate_with_schema_file() {
+    let dir = tmpdir();
+    let schema = dir.path().join("schema.json");
+    std::fs::write(&schema, r#"{"required_fields":[]}"#).expect("write");
+    let out = sigil(&[
+        "mcp",
+        "--server-id",
+        "toolserver",
+        "--request-hash",
+        "abc123",
+        "--text",
+        "benign tool output",
+        "--schema",
+        schema.to_str().expect("utf8"),
+    ]);
+    ok_result(&out);
+}
+
+#[test]
+fn probe_reads_samples_file() {
+    let dir = tmpdir();
+    let path = dir.path().join("samples.json");
+    std::fs::write(
+        &path,
+        r#"[{"input":"q1","output":"a1","latency_ms":5},{"input":"q2","output":"a2"}]"#,
+    )
+    .expect("write");
+    let out = sigil(&["probe", "--samples", path.to_str().expect("utf8")]);
+    ok_result(&out);
+}

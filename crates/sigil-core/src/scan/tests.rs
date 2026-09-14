@@ -78,3 +78,97 @@ fn base64_gate_rejects_short_and_broken_runs() {
     let contiguous = format!("{}{}", "A".repeat(31), "B".repeat(31));
     assert!(looks_like_base64(&contiguous));
 }
+
+fn dlp_report_for(policy: &Policy, text: &str) -> super::types::ScanReport {
+    let graphemes = crate::intake::intake_text_segment(text, 0, policy).unwrap();
+    let mut tainted = apply_provenance(graphemes, Provenance::User);
+    run_scan(policy, &mut tainted)
+}
+
+#[test]
+fn email_actions_map_to_severity_and_dlp_action() {
+    use crate::policy::EmailAction;
+    use crate::types::{DlpAction, DlpKind};
+    for (action, severity, dlp_action) in [
+        (EmailAction::Redact, Severity::Low, DlpAction::Redact),
+        (EmailAction::Flag, Severity::Medium, DlpAction::Flag),
+        (EmailAction::Deny, Severity::High, DlpAction::Deny),
+    ] {
+        let mut policy = Policy::default();
+        policy.scan.dlp.emails = action;
+        let report = dlp_report_for(&policy, "reach me at user@example.com");
+        let finding = report
+            .dlp_findings
+            .iter()
+            .find(|f| f.kind == DlpKind::Email)
+            .expect("email finding");
+        assert_eq!(finding.severity, severity);
+        assert_eq!(finding.action, dlp_action);
+    }
+}
+
+#[test]
+fn email_off_suppresses_email_findings() {
+    use crate::policy::EmailAction;
+    use crate::types::DlpKind;
+    let mut policy = Policy::default();
+    policy.scan.dlp.emails = EmailAction::Off;
+    let report = dlp_report_for(&policy, "reach me at user@example.com");
+    assert!(report.dlp_findings.iter().all(|f| f.kind != DlpKind::Email));
+}
+
+#[test]
+fn custom_pattern_inline_regex_flags() {
+    use crate::types::DlpKind;
+    let mut policy = Policy::default();
+    policy.scan.dlp.custom_patterns = vec!["SECRET-[0-9]+".to_string()];
+    let report = dlp_report_for(&policy, "leaked SECRET-42 inside");
+    assert!(report
+        .dlp_findings
+        .iter()
+        .any(|f| matches!(f.kind, DlpKind::Custom(_))));
+}
+
+#[test]
+fn custom_pattern_toml_file_loads() {
+    use crate::types::DlpKind;
+    let path = std::env::temp_dir().join(format!("sigil-dlp-patterns-{}.toml", std::process::id()));
+    std::fs::write(&path, "patterns = [\"TOKEN-[A-Z]+\"]").unwrap();
+    let mut policy = Policy::default();
+    policy.scan.dlp.custom_patterns = vec![path.to_string_lossy().to_string()];
+    let report = dlp_report_for(&policy, "contains TOKEN-ABC here");
+    assert!(report
+        .dlp_findings
+        .iter()
+        .any(|f| matches!(f.kind, DlpKind::Custom(_))));
+    let _ = std::fs::remove_file(&path);
+}
+
+#[test]
+fn disabled_dlp_detectors_emit_no_findings() {
+    use crate::types::DlpKind;
+    let mut policy = Policy::default();
+    policy.scan.dlp.credit_cards = false;
+    policy.scan.dlp.ssn = false;
+    policy.scan.dlp.api_keys = false;
+    let report = dlp_report_for(
+        &policy,
+        "card 4111 1111 1111 1111 ssn 123-45-6789 key AKIAIOSFODNN7EXAMPLE",
+    );
+    assert!(report
+        .dlp_findings
+        .iter()
+        .all(|f| { !matches!(f.kind, DlpKind::CreditCard | DlpKind::Ssn | DlpKind::ApiKey) }));
+}
+
+#[test]
+fn invalid_custom_pattern_regex_is_skipped() {
+    use crate::types::DlpKind;
+    let mut policy = Policy::default();
+    policy.scan.dlp.custom_patterns = vec!["[unclosed".to_string()];
+    let report = dlp_report_for(&policy, "anything goes");
+    assert!(report
+        .dlp_findings
+        .iter()
+        .all(|f| !matches!(f.kind, DlpKind::Custom(_))));
+}

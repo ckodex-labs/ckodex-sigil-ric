@@ -5,6 +5,15 @@ use crate::types::{DetectorId, DlpAction, DlpFinding, DlpKind, ScanFinding, Seve
 use once_cell::sync::Lazy;
 use regex::Regex;
 
+fn email_verdict(action: &EmailAction) -> Option<(Severity, DlpAction)> {
+    match action {
+        EmailAction::Off => None,
+        EmailAction::Redact => Some((Severity::Low, DlpAction::Redact)),
+        EmailAction::Flag => Some((Severity::Medium, DlpAction::Flag)),
+        EmailAction::Deny => Some((Severity::High, DlpAction::Deny)),
+    }
+}
+
 pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Vec<ScanFinding>) {
     let mut dlp = Vec::new();
     let mut findings = Vec::new();
@@ -83,41 +92,27 @@ pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Ve
         }
     }
 
-    match &policy.scan.dlp.emails {
-        EmailAction::Off => {}
-        action => {
-            static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
-                Regex::new(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b").expect("email regex")
+    if let Some((severity, action)) = email_verdict(&policy.scan.dlp.emails) {
+        static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+            Regex::new(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b").expect("email regex")
+        });
+        for capture in EMAIL_RE.find_iter(&map.text) {
+            let byte_range = map.source_range_for(capture.start(), capture.end());
+            dlp.push(DlpFinding {
+                kind: DlpKind::Email,
+                byte_range,
+                severity,
+                action,
+                confidence: 0.90,
+                sample: redact_sample(capture.as_str()),
             });
-            for capture in EMAIL_RE.find_iter(&map.text) {
-                let byte_range = map.source_range_for(capture.start(), capture.end());
-                let severity = match action {
-                    EmailAction::Redact => Severity::Low,
-                    EmailAction::Flag => Severity::Medium,
-                    EmailAction::Deny => Severity::High,
-                    EmailAction::Off => Severity::None,
-                };
-                dlp.push(DlpFinding {
-                    kind: DlpKind::Email,
-                    byte_range,
-                    severity,
-                    action: match action {
-                        EmailAction::Redact => DlpAction::Redact,
-                        EmailAction::Flag => DlpAction::Flag,
-                        EmailAction::Deny => DlpAction::Deny,
-                        EmailAction::Off => DlpAction::Off,
-                    },
-                    confidence: 0.90,
-                    sample: redact_sample(capture.as_str()),
-                });
-                findings.push(ScanFinding {
-                    byte_range,
-                    severity,
-                    detectors: vec![DetectorId::DlpEmail],
-                    confidence: 0.90,
-                    evidence: "email address".to_string(),
-                });
-            }
+            findings.push(ScanFinding {
+                byte_range,
+                severity,
+                detectors: vec![DetectorId::DlpEmail],
+                confidence: 0.90,
+                evidence: "email address".to_string(),
+            });
         }
     }
 

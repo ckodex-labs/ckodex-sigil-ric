@@ -222,3 +222,97 @@ fn create_minimal_pdf_with_text(text: &str) -> Vec<u8> {
     doc.save_to(&mut buf).expect("serialize PDF");
     buf
 }
+
+#[test]
+fn adapter_identity_accessors() {
+    let adapter = DocumentAdapter;
+    assert_eq!(adapter.modality(), sigil_multimodal::Modality::Document);
+    assert!(adapter.adapter_id().contains("document"));
+}
+
+#[test]
+fn unknown_media_type_falls_back_to_text_when_bytes_are_text() {
+    let report = DocumentAdapter
+        .perceive(&ArtifactRef {
+            source_id: "doc-unknown".to_string(),
+            bytes: b"plain ascii content with no magic bytes",
+            media_type: Some("application/x-vendor-custom".to_string()),
+        })
+        .expect("perceive");
+    let channel = report
+        .channels
+        .iter()
+        .find(|c| c.channel_kind == ChannelKind::TextLayer)
+        .expect("text channel via fallback");
+    assert!(channel.content.contains("plain ascii"));
+}
+
+#[test]
+fn pdf_without_extractable_text_emits_metadata_channel() {
+    // Bytes lopdf cannot parse AND whose raw scan finds no paren string
+    // literals → zero extractable text → Metadata channel, not TextLayer.
+    let bytes = b"%PDF-1.4\n\x00\x01\x02\x03binary-no-literals-here\n%%EOF";
+    let report = DocumentAdapter
+        .perceive(&ArtifactRef {
+            source_id: "doc-empty".to_string(),
+            bytes,
+            media_type: Some("application/pdf".to_string()),
+        })
+        .expect("perceive");
+    let channel = &report.channels[0];
+    assert_eq!(channel.channel_kind, ChannelKind::Metadata);
+    assert!(channel.truncated);
+    assert!(channel.content.contains("pdf_text_extracted = 0"));
+}
+
+#[test]
+fn zero_page_pdf_emits_metadata_channel() {
+    use lopdf::{dictionary, Document, Object};
+    let mut doc = Document::with_version("1.4");
+    let pages_id = doc.add_object(dictionary! {
+        "Type" => "Pages", "Count" => 0, "Kids" => Vec::<Object>::new(),
+    });
+    let catalog_id = doc.add_object(dictionary! { "Type" => "Catalog", "Pages" => pages_id });
+    doc.trailer.set("Root", catalog_id);
+    let mut bytes = Vec::new();
+    doc.save_to(&mut bytes).expect("serialize");
+    let report = DocumentAdapter
+        .perceive(&ArtifactRef {
+            source_id: "doc-nopages".to_string(),
+            bytes: &bytes,
+            media_type: Some("application/pdf".to_string()),
+        })
+        .expect("perceive");
+    assert_eq!(report.channels[0].channel_kind, ChannelKind::Metadata);
+}
+
+#[test]
+fn page_by_page_salvage_recovers_good_pages_and_skips_failures() {
+    // lopdf tolerates most corruption (missing Contents, bad Resources)
+    // without erroring, so the batch path in extract_pdf_text_via_lopdf
+    // is hard to force through the public API. Exercise the salvage
+    // helper directly: a valid page plus a nonexistent page number —
+    // extract_text on the missing page errors, the good page is kept.
+    use lopdf::Document;
+    let bytes = create_minimal_pdf_with_text("salvage me");
+    let doc = Document::load_mem(&bytes).expect("load pdf");
+    let real_page: u32 = *doc.get_pages().keys().next().expect("a page");
+    let (text, any_ok) = extract_pdf_text_page_by_page(&doc, &[real_page, 9999]);
+    assert!(any_ok);
+    assert!(text.contains("salvage me"));
+
+    // All pages failing → any_ok = false → caller marks truncated.
+    let (_text, any_ok) = extract_pdf_text_page_by_page(&doc, &[9999]);
+    assert!(!any_ok);
+}
+
+#[test]
+fn extract_via_lopdf_reports_page_count() {
+    use lopdf::Document;
+    let bytes = create_minimal_pdf_with_text("hello pdf");
+    let doc = Document::load_mem(&bytes).expect("load pdf");
+    let (text, truncated, page_count) = extract_pdf_text_via_lopdf(&doc);
+    assert!(!truncated);
+    assert_eq!(page_count, 1);
+    assert!(text.contains("hello pdf"));
+}
