@@ -10,12 +10,18 @@
 //! Rust parsing crate) to our `crate::trust::TrustRoot` (the struct our
 //! verification code consumes).
 //!
-//! **Trust anchor:** the embedded root is pinned at crate build time. For
-//! production freshness, callers SHOULD periodically update the crate or
-//! use the async `TrustedRoot::production()` method (behind the `tuf`
-//! feature) to fetch the latest trust root via the full TUF protocol.
-//! The embedded root is sufficient for offline verification of signatures
-//! created while the embedded root was current.
+//! **Trust anchor (decided: embedded snapshot only):** the embedded root
+//! is pinned at `sigstore-trust-root` crate build time. Online TUF refresh
+//! via `TrustedRoot::production()` (the crate's `tuf` feature) is
+//! deliberately NOT adopted: a network-fetchable trust root turns a
+//! verification boundary into a live-update surface whose integrity then
+//! depends on transport + TUF metadata freshness at verify time — the
+//! wrong default for a library that must verify offline and reproducibly.
+//! Freshness is delivered by bumping the `sigstore-trust-root` dependency,
+//! which is reviewable, signable, and bisectable. The embedded root is
+//! sufficient for offline verification of signatures created while the
+//! embedded root was current; operators needing fresher roots should pin
+//! a newer crate version rather than fetch at runtime.
 
 use base64::Engine as _;
 use sigstore_trust_root::SigstoreInstance;
