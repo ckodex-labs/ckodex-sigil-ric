@@ -110,6 +110,19 @@ fn upstream_bundle_without_tlog_entries_is_rejected() {
 }
 
 #[test]
+fn real_cosign_dsse_bundle_parses_upstream_then_rejects() {
+    // Real cosign-produced v0.3 bundle (sigstore-rs tests/data) — DSSE
+    // envelope content. `sigstore-types` must parse the real wire format
+    // (certificate + tlogEntries + timestampVerificationData); the
+    // boundary then rejects DSSE explicitly — the local path verifies
+    // message-signature bundles only.
+    let json = include_str!("../../tests/fixtures/bundle_v03_dsse.json");
+    let err = parse_upstream_bundle(json).expect_err("DSSE bundle must be rejected");
+    assert!(matches!(err, crate::SigstoreError::Bundle(_)));
+    assert!(err.to_string().contains("DSSE"), "unexpected error: {err}");
+}
+
+#[test]
 fn upstream_non_v03_media_type_fails_at_verify() {
     // A v0.2 bundle parses but must be rejected by the media-type check
     // in verify_bundle_with_trust.
