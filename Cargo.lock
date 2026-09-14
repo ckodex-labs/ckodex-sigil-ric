@@ -2096,6 +2096,7 @@ dependencies = [
  "sigil-probe",
  "sigil-s",
  "sigil-sigstore",
+ "tempfile",
  "toml",
 ]
 
