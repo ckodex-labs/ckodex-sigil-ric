@@ -1,6 +1,6 @@
 use crate::bundle_ops::getrandom_fill;
 use crate::error::*;
-use crate::signer::RekorEntry;
+use crate::signer::RekorUploadReceipt;
 use base64::Engine as _;
 use p384::ecdsa::{SigningKey, VerifyingKey};
 use p384::elliptic_curve::generic_array::GenericArray;
@@ -13,7 +13,7 @@ pub fn upload_to_rekor(
     message: &[u8],
     signature: &[u8],
     public_key_pem: &str,
-) -> Result<RekorEntry, SigstoreError> {
+) -> Result<RekorUploadReceipt, SigstoreError> {
     #[derive(Deserialize)]
     struct RekorResponse {
         #[serde(flatten)]
@@ -66,7 +66,7 @@ pub fn upload_to_rekor(
         .get("logIndex")
         .and_then(|v| v.as_i64())
         .unwrap_or_default();
-    Ok(RekorEntry {
+    Ok(RekorUploadReceipt {
         log_id,
         log_index,
         uuid,

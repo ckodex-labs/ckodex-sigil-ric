@@ -13,12 +13,13 @@ pub struct SigstoreKeylessSigner {
     /// Fulcio (exposed via `ReceiptSigner::certificate_chain`).
     certificate_chain_der: Vec<u8>,
     /// Rekor log entry, present when the signature was uploaded.
-    rekor_entry: Mutex<Option<RekorEntry>>,
+    rekor_entry: Mutex<Option<RekorUploadReceipt>>,
 }
 
-/// Rekor transparency-log entry for a hashedrekord upload.
+/// Rekor upload response (log_id/log_index/uuid) — the producer-side
+/// receipt, distinct from `trust::RekorEntry`, the verifier-side record.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-pub struct RekorEntry {
+pub struct RekorUploadReceipt {
     pub log_id: String,
     pub log_index: i64,
     pub uuid: String,
@@ -94,7 +95,7 @@ impl SigstoreKeylessSigner {
     }
 
     /// The Rekor entry captured during this signer's lifetime, if uploaded.
-    pub fn rekor_entry(&self) -> Option<RekorEntry> {
+    pub fn rekor_entry(&self) -> Option<RekorUploadReceipt> {
         self.rekor_entry.lock().expect("rekor mutex").clone()
     }
 }

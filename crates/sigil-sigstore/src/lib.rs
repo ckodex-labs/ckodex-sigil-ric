@@ -37,7 +37,7 @@ pub use bundle_types::{
 };
 pub use error::{OidcSource, SigstoreError, FULCIO_URL, REKOR_URL};
 pub use rekor_upload::upload_to_rekor;
-pub use signer::{RekorEntry, SigstoreKeylessSigner};
+pub use signer::{RekorUploadReceipt, SigstoreKeylessSigner};
 
 #[cfg(test)]
 mod bundle_tests;

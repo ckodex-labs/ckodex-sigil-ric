@@ -13,6 +13,7 @@ This document defines the stable interfaces and fail-closed boundaries for the S
 | `sigil-perception` | Decompose artifacts into text channels (image decode, EXIF inventory, pinned external OCR) | Emit provenance, severities, or verdicts; fetch network resources; execute model calls |
 | `sigil-sigstore` | Sigstore keyless signing: OIDC → Fulcio exchange → ephemeral P-384 signatures; optional Rekor upload; offline chain-of-trust + SCT + Rekor verification; upstream bundle interop | Sign without an OIDC identity; widen trust silently; accept a bundle without Rekor tlog evidence |
 | `sigil-s` | Produce a parallel semantic verdict and training signal | Downgrade a core deny into allow |
+| `sigil-ffi` | Produce `libsigil` (cdylib) — re-export the `zig_tiktoken_*` C ABI from a Rust-built artifact | Add new ABI surface; change token semantics; thin Rust-side wrappers |
 | Bindings | Expose the tokenizer ABI to other languages | Reimplement policy logic or change token semantics |
 
 ## Canonical public contracts
@@ -30,7 +31,7 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `ReceiptVerificationOutcome`
 - `KeygenOutcome`
 - `DsseEnvelope` (in-toto Statement v1 / DSSE)
-- `SigstoreKeylessSigner` / `RekorEntry` / `SigstoreBundle` (sigil-sigstore)
+- `SigstoreKeylessSigner` / `RekorUploadReceipt` (producer upload receipt) / `trust::RekorEntry` (verifier record) / `SigstoreBundle` (sigil-sigstore)
 - `TrustRoot` / `verify_bundle_with_trust` / `verify_upstream_bundle` / `verify_inclusion_proof` (sigil-sigstore::trust)
 - `trust_root_from_embedded` (sigil-sigstore::tuf)
 - `parse_upstream_bundle` (sigil-sigstore — hybrid boundary: `sigstore-types` wire parse → local verify inputs)
@@ -59,6 +60,8 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `SentinelVerdict`
 - `CompositeVerdict`
 - `zig_tiktoken_*` C ABI
+- `libsigil` shared-library artifact (`crates/sigil-ffi` cdylib: same `zig_tiktoken_*` exports + `sigil_version`)
+- `sigil.wasm` artifact (`scripts/build_wasm.sh` — wasm32-freestanding reactor, `memory` + `zig_tiktoken_*` exports)
 
 ## Contract rules
 
