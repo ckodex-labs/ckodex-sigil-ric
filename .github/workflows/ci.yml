@@ -262,6 +262,18 @@ jobs:
           python3 -m py_compile bindings/python/sigil_tiktoken/__init__.py bindings/python/benchmark.py
           python3 bindings/python/benchmark.py --json --rounds 1 --corpus bench/corpora/small.json
 
+      - name: Build libsigil cdylib and sigil.wasm artifacts
+        run: |
+          cargo build -p sigil-ffi --release
+          scripts/build_wasm.sh
+          ls -l target/release/libsigil.* zig/tiktoken/zig-out/sigil.wasm
+
+      - name: Python binding smoke against libsigil
+        env:
+          SIGIL_TIKTOKEN_LIB: ${{ github.workspace }}/target/release/libsigil.so
+          PYTHONPATH: ${{ github.workspace }}/bindings/python
+        run: python3 bindings/python/benchmark.py --json --rounds 1 --corpus bench/corpora/small.json
+
       - name: Go binding smoke
         working-directory: bindings/go
         run: |

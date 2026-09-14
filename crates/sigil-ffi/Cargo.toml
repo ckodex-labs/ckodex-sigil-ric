@@ -1,0 +1,16 @@
+[package]
+name = "sigil-ffi"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+license.workspace = true
+build = "build.rs"
+
+[lib]
+# `libsigil` — the C ABI shared-library artifact (spec §4). Re-exports the
+# `zig_tiktoken_*` ABI documented in `bindings/c/sigil_tiktoken.h` so FFI
+# consumers can link a Rust-produced artifact instead of the raw Zig build.
+name = "sigil"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]

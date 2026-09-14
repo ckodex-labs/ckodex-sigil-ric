@@ -77,6 +77,17 @@ int zig_tiktoken_special_token_id(
     uint32_t *out_id
 );
 
+/* `libsigil` artifact additions (crates/sigil-ffi only — not present in
+ * the raw zig/tiktoken build). Callers must tolerate their absence when
+ * linking the Zig-produced library directly. */
+
+/* NUL-terminated artifact version string ("x.y.z"). */
+const char *sigil_version(void);
+
+/* Internal export-table pin — keeps the zig_tiktoken_* symbols reachable
+ * in the cdylib. Not part of the consumer ABI. */
+size_t sigil_ffi_pin(void);
+
 #ifdef __cplusplus
 }
 #endif

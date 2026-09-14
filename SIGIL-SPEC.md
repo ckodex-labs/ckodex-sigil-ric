@@ -339,8 +339,8 @@ SIGIL ships as a standalone, embeddable package — same philosophy as Valance.
 | `ckx-sigil` | Rust crate — core library | `crates.io` |
 | `ckx-sigil-mcp` | Rust crate — MCP security gate | `crates.io` |
 | `ckx-sigil-probe` | Rust crate — model health query engine | `crates.io` |
-| `libsigil` | C ABI shared library — planned; header ships at `bindings/c/sigil_tiktoken.h` | FFI consumers |
-| `sigil.wasm` | WebAssembly module — planned, not yet wired | Browser / edge / serverless |
+| `libsigil` | C ABI shared library — `crates/sigil-ffi` cdylib (`cargo build -p sigil-ffi --release`); ABI at `bindings/c/sigil_tiktoken.h` | FFI consumers |
+| `sigil.wasm` | WebAssembly module — `scripts/build_wasm.sh` (wasm32-freestanding reactor; `memory` + `zig_tiktoken_*` exports) | Browser / edge / serverless |
 | `sigil` | CLI tool (tokenize, scan, mcp, probe) | Operators / CI pipelines |
 | `sigil_tiktoken` | Python bindings (ctypes over the Zig shared library) | ML ecosystem integration |
 | `sigil-server` | Sidecar composition façade; gRPC/HTTP transport planned | Inference pipeline sidecar |
@@ -951,9 +951,9 @@ ckodex-labs/sigil/
     └── results/                # Benchmark baselines
 ```
 
-> Planned but not yet present as crates: `sigil-ffi` (C ABI `libsigil`),
-> `sigil-wasm` (WASM target), and a dedicated `sigil-bench` crate — see §4
-> Delivery Artifacts. Executable conformance vectors live at
+> `sigil-ffi` (C ABI `libsigil`) and `sigil.wasm` ship as build targets
+> rather than feature crates — see §4 Delivery Artifacts. A dedicated
+> `sigil-bench` crate remains planned. Executable conformance vectors live at
 > `crates/sigil-core/tests/conformance_vectors.rs` (CV-RIC-001..008), not
 > under `formal/`.
 
