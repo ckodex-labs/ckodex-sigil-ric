@@ -150,10 +150,8 @@ jobs:
         with:
           version: 0.15.2
 
-      # sigil-vt is excluded: libghostty-vt requires rust >= 1.90 and zig
-      # to build ghostty's C lib — it runs in its own lane (vt job below).
       - name: Test workspace
-        run: cargo test --workspace --exclude sigil-vt
+        run: cargo test --workspace
 
       - name: Install cargo-llvm-cov
         uses: taiki-e/install-action@cargo-llvm-cov
@@ -162,7 +160,7 @@ jobs:
       # (see docs/TRAJECTORY.md C1). The floor is now at the target.
       - name: Coverage gate
         run: |
-          cargo llvm-cov --workspace --exclude sigil-vt --lcov \
+          cargo llvm-cov --workspace --lcov \
             --output-path "$RUNNER_TEMP/lcov.info" \
             --fail-under-lines 80
 
@@ -174,7 +172,7 @@ jobs:
           if-no-files-found: error
 
       - name: Clippy workspace
-        run: cargo clippy --workspace --exclude sigil-vt --all-targets -- -D warnings
+        run: cargo clippy --workspace --all-targets -- -D warnings
 
       - name: Build Zig tokenizer
         run: zig build-lib -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig
@@ -282,11 +280,12 @@ jobs:
           go test ./...
           go run ./cmd/sigil-bench --json --rounds 1 --corpus ../../bench/corpora/small.json
 
-  vt:
-    # libghostty-vt needs rust >= 1.90 (crate rust-version) and zig 0.15.2
-    # (its pinned ghostty source) — a dedicated lane keeps the workspace
-    # MSRV lane at 1.78. Build fetches the pinned ghostty source.
-    name: Terminal-escape scanner (sigil-vt)
+  vt-conformance:
+    # Cross-checks sigil-vt's owned OSC table against libghostty-vt's
+    # fuzzed parser (the `conformance` feature). libghostty-vt needs rust
+    # >= 1.90 and zig 0.15.2 for its pinned ghostty source — confined to
+    # this lane; the runtime path never touches the FFI dep.
+    name: OSC table conformance vs ghostty
     needs: verify
     runs-on: ubuntu-latest
     steps:
@@ -301,11 +300,8 @@ jobs:
         with:
           version: 0.15.2
 
-      - name: Test scanner
-        run: cargo test -p sigil-vt
+      - name: Conformance tests
+        run: cargo test -p sigil-vt --features conformance
 
-      - name: Test CLI with vt feature
-        run: cargo test -p sigil-cli --features vt
-
-      - name: Clippy vt
-        run: cargo clippy -p sigil-vt -p sigil-cli --features vt --all-targets -- -D warnings
+      - name: Clippy conformance
+        run: cargo clippy -p sigil-vt --features conformance --all-targets -- -D warnings

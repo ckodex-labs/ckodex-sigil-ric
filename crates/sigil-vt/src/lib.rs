@@ -1,16 +1,22 @@
-//! Ghostty-backed [`TerminalSequenceScanner`] (F2).
+//! `sigil-vt` — built-in [`TerminalSequenceScanner`] for the terminal-
+//! escape detector (F2).
 //!
-//! `libghostty-vt` is the VT engine extracted from the Ghostty terminal —
-//! its `osc::Parser` is the fuzzed, upstream-maintained classifier for
-//! OSC commands (clipboard writes, hyperlink smuggling, title/notification
-//! spoofing, ConEmu automation). This crate owns *extraction and
-//! classification*; `sigil-core` owns severity mapping and verdicts.
+//! Sequence *framing* (CSI/DCS/OSC/ESC spans, byte ranges) is a minimal
+//! purpose-built lexer. OSC payload *classification* maps the command
+//! selector (`Ps`) to a command name using a table derived from ghostty's
+//! `osc.zig` state trie (pinned commit `a887df4`, reviewed against source).
+//! Command names intentionally match ghostty's `Command` snake_case
+//! spellings so `sigil-core`'s severity map stays aligned with the
+//! upstream taxonomy.
 //!
-//! The outer CSI/DCS/ESC span lexer here is intentionally minimal —
-//! sequence *framing*, not emulation. A full `Terminal`/`Screen`
-//! side-effect diff (emulate the consumer) is a planned follow-up.
+//! Boundary discipline: this crate extracts and classifies — `sigil-core`
+//! owns severity mapping, evidence text, and verdicts. A `conformance`
+//! cargo feature cross-checks this table against `libghostty-vt`'s
+//! fuzzed parser (build-time cost: rust ≥1.90 + zig 0.15.2 + ghostty
+//! source fetch — kept out of the default build).
 
 use sigil_core::terminal::{TerminalSequence, TerminalSequenceKind, TerminalSequenceScanner};
+use sigil_core::types::ByteRange;
 
 const ESC: u8 = 0x1B;
 const BEL: u8 = 0x07;
@@ -22,21 +28,19 @@ const C1_OSC: u8 = 0x9D;
 const C1_PM: u8 = 0x9E;
 const C1_APC: u8 = 0x9F;
 
-/// Ghostty-backed sequence scanner.
+/// Built-in VT sequence scanner (no emulator, no FFI).
 #[derive(Default)]
-pub struct GhosttyScanner;
+pub struct VtScanner;
 
-impl GhosttyScanner {
+impl VtScanner {
     pub fn new() -> Self {
         Self
     }
 }
 
-impl TerminalSequenceScanner for GhosttyScanner {
+impl TerminalSequenceScanner for VtScanner {
     fn name(&self) -> &str {
-        // engine identity — evidence names the parser that classified
-        // the sequence, not the crate
-        "libghostty-vt 0.2.1 (osc)"
+        "sigil-vt osc-table"
     }
 
     fn scan(&self, bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
@@ -48,11 +52,12 @@ impl TerminalSequenceScanner for GhosttyScanner {
                 ESC if i + 1 < bytes.len() => match bytes[i + 1] {
                     b'[' => {
                         i = csi_end(bytes, i + 2, |e| {
-                            out.push(TerminalSequence {
-                                byte_range: sigil_core::types::ByteRange::new(start, e),
-                                kind: TerminalSequenceKind::Csi,
-                                detail: csi_detail(&bytes[start..e]),
-                            });
+                            out.push(seq(
+                                start,
+                                e,
+                                TerminalSequenceKind::Csi,
+                                csi_detail(&bytes[start..e]),
+                            ));
                         })
                     }
                     b']' => i = osc_end(bytes, i + 2, start, &mut out),
@@ -61,29 +66,32 @@ impl TerminalSequenceScanner for GhosttyScanner {
                         i = st_end(bytes, i + 2, start, &mut out, TerminalSequenceKind::Escape)
                     }
                     _ => {
-                        out.push(TerminalSequence {
-                            byte_range: sigil_core::types::ByteRange::new(start, start + 2),
-                            kind: TerminalSequenceKind::Escape,
-                            detail: format!("ESC {}", printable(bytes[i + 1])),
-                        });
+                        out.push(seq(
+                            start,
+                            start + 2,
+                            TerminalSequenceKind::Escape,
+                            format!("ESC {}", printable(bytes[i + 1])),
+                        ));
                         i += 2;
                     }
                 },
                 ESC => {
-                    out.push(TerminalSequence {
-                        byte_range: sigil_core::types::ByteRange::new(start, start + 1),
-                        kind: TerminalSequenceKind::Escape,
-                        detail: "lone ESC".to_string(),
-                    });
+                    out.push(seq(
+                        start,
+                        start + 1,
+                        TerminalSequenceKind::Escape,
+                        "lone ESC".into(),
+                    ));
                     i += 1;
                 }
                 C1_CSI => {
                     i = csi_end(bytes, i + 1, |e| {
-                        out.push(TerminalSequence {
-                            byte_range: sigil_core::types::ByteRange::new(start, e),
-                            kind: TerminalSequenceKind::Csi,
-                            detail: csi_detail(&bytes[start..e]),
-                        });
+                        out.push(seq(
+                            start,
+                            e,
+                            TerminalSequenceKind::Csi,
+                            csi_detail(&bytes[start..e]),
+                        ));
                     })
                 }
                 C1_OSC => i = osc_end(bytes, i + 1, start, &mut out),
@@ -94,6 +102,14 @@ impl TerminalSequenceScanner for GhosttyScanner {
             }
         }
         Ok(out)
+    }
+}
+
+fn seq(start: usize, end: usize, kind: TerminalSequenceKind, detail: String) -> TerminalSequence {
+    TerminalSequence {
+        byte_range: ByteRange::new(start, end),
+        kind,
+        detail,
     }
 }
 
@@ -113,36 +129,8 @@ fn csi_end(bytes: &[u8], mut i: usize, mut emit: impl FnMut(usize)) -> usize {
     i
 }
 
-/// Consume an OSC sequence: payload to BEL or ST (`ESC \` or 0x9C),
-/// classified by `libghostty-vt`'s OSC parser.
-fn osc_end(bytes: &[u8], mut i: usize, start: usize, out: &mut Vec<TerminalSequence>) -> usize {
-    let payload_start = i;
-    while i < bytes.len() && bytes[i] != BEL && bytes[i] != C1_ST {
-        if bytes[i] == ESC && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-            break;
-        }
-        i += 1;
-    }
-    let terminator = if i < bytes.len() { bytes[i] } else { BEL };
-    let end = if i < bytes.len() {
-        if bytes[i] == ESC {
-            i + 2
-        } else {
-            i + 1
-        }
-    } else {
-        i
-    };
-    let command = classify_osc(&bytes[payload_start..i], terminator);
-    out.push(TerminalSequence {
-        byte_range: sigil_core::types::ByteRange::new(start, end.min(bytes.len())),
-        kind: TerminalSequenceKind::Osc { command },
-        detail: "OSC".to_string(),
-    });
-    end.min(bytes.len())
-}
-
-/// Consume an ST-terminated sequence (DCS/SOS/PM/APC).
+/// Consume an ST-terminated sequence (OSC/DCS/SOS/PM/APC). Returns the
+/// exclusive end; emits via `out`.
 fn st_end(
     bytes: &[u8],
     mut i: usize,
@@ -165,37 +153,147 @@ fn st_end(
     } else {
         i
     };
-    out.push(TerminalSequence {
-        byte_range: sigil_core::types::ByteRange::new(start, end.min(bytes.len())),
-        kind,
-        detail: "ST-terminated".to_string(),
-    });
-    end.min(bytes.len())
+    let end = end.min(bytes.len());
+    out.push(seq(start, end, kind, "ST-terminated".into()));
+    end
 }
 
-/// Classify an OSC payload with `libghostty-vt`'s parser → snake_case
-/// command name for the kernel's severity map.
-fn classify_osc(payload: &[u8], terminator: u8) -> String {
-    let mut parser = match libghostty_vt::osc::Parser::new() {
-        Ok(p) => p,
-        Err(_) => return "unclassified".to_string(),
-    };
-    for &b in payload {
-        parser.next_byte(b);
-    }
-    snake(&format!("{:?}", parser.end(terminator).command_type()))
-}
-
-fn snake(dbg: &str) -> String {
-    let head = dbg.split(['(', '{']).next().unwrap_or(dbg).trim();
-    let mut out = String::with_capacity(head.len() + 4);
-    for (i, c) in head.chars().enumerate() {
-        if c.is_uppercase() && i > 0 {
-            out.push('_');
+/// Consume an OSC sequence: payload to BEL or ST, then classify the
+/// payload's command selector.
+fn osc_end(bytes: &[u8], mut i: usize, start: usize, out: &mut Vec<TerminalSequence>) -> usize {
+    let payload_start = i;
+    while i < bytes.len() && bytes[i] != BEL && bytes[i] != C1_ST {
+        if bytes[i] == ESC && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
+            break;
         }
-        out.push(c.to_ascii_lowercase());
+        i += 1;
     }
-    out
+    let end = if i < bytes.len() {
+        if bytes[i] == ESC {
+            i + 2
+        } else {
+            i + 1
+        }
+    } else {
+        i
+    };
+    let end = end.min(bytes.len());
+    let command = classify_osc(&bytes[payload_start..i.min(bytes.len())]);
+    out.push(seq(
+        start,
+        end,
+        TerminalSequenceKind::Osc { command },
+        "OSC".into(),
+    ));
+    end
+}
+
+/// Classify an OSC payload (`Ps ; Pt`) by its numeric selector.
+///
+/// Table derived from ghostty `src/terminal/osc.zig` (commit `a887df4`):
+/// which selectors the upstream parser recognizes and which command each
+/// produces. Names match the `libghostty-vt` Rust `CommandType`
+/// spellings — note the wrapper differs from the Zig field name on
+/// `conemu_gui_macro` (Zig: `conemu_guimacro`); we follow the Rust API
+/// since that is what the conformance feature verifies against. Anything
+/// unrecognized or malformed is `"unclassified"` — the kernel still
+/// records a finding (a control sequence in admitted text is reportable
+/// regardless of whether we can name it).
+fn classify_osc(payload: &[u8]) -> String {
+    let mut fields = payload.split(|&b| b == b';');
+    let selector = fields.next().unwrap_or(b"");
+    let command = match digits(selector) {
+        Some(52) => "clipboard_contents",
+        Some(8) => hyperlink_kind(&mut fields),
+        Some(9) => osc9_kind(&mut fields),
+        Some(0) | Some(2) => "change_window_title",
+        Some(1) => "change_window_icon",
+        Some(7) => "report_pwd",
+        Some(777) => rxvt_kind(&mut fields),
+        Some(1337) => iterm2_kind(&mut fields),
+        Some(5522) => "kitty_clipboard_protocol",
+        Some(21) => "kitty_color_protocol",
+        Some(66) => "kitty_text_sizing",
+        Some(72) => "kitty_dnd_protocol",
+        Some(133) => "semantic_prompt",
+        Some(3008) => "context_signal",
+        Some(4..=5) | Some(10..=19) | Some(104) | Some(110..=119) => "color_operation",
+        _ => "unclassified",
+    };
+    command.to_string()
+}
+
+/// OSC 8: `8;params;uri` — non-empty URI (or an `id=` param) opens a
+/// hyperlink; empty URI closes one (ghostty `hyperlink.zig`).
+fn hyperlink_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
+    let params = fields.next().unwrap_or(b"");
+    let uri = fields.next().unwrap_or(b"");
+    if !uri.is_empty()
+        || params
+            .split(|&b| b == b':')
+            .any(|seg| seg.starts_with(b"id="))
+    {
+        "hyperlink_start"
+    } else {
+        "hyperlink_end"
+    }
+}
+
+/// OSC 777 (rxvt extension): only `notify` is a notification; every
+/// other extension — `perl-eval`, `xterm-256color`, arbitrary future
+/// exts — is an opaque extension channel (ghostty calls it invalid;
+/// we flag it `rxvt_extension`, which the kernel maps High since the
+/// family includes perl-eval).
+fn rxvt_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
+    match fields.next() {
+        Some(b"notify") => "show_desktop_notification",
+        _ => "rxvt_extension",
+    }
+}
+
+/// OSC 1337 (iTerm2): the dangerous subcommands re-map to canonical
+/// commands — `Copy=` writes the clipboard, `CurrentDir=` reports cwd
+/// (ghostty `iterm2.zig`). All other keys stay `iterm2_extension`
+/// (High — the family carries clipboard-write and remote-host vars).
+fn iterm2_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
+    let kv = fields.next().unwrap_or(b"");
+    let key = kv.split(|&b| b == b'=').next().unwrap_or(b"");
+    match key {
+        b"Copy" => "clipboard_contents",
+        b"CurrentDir" => "report_pwd",
+        _ => "iterm2_extension",
+    }
+}
+
+/// OSC 9: ConEmu subcommands carry a numeric second field
+/// (`9;N;...`, ghostty `osc9.zig`); anything else is an iTerm2-style
+/// desktop notification.
+fn osc9_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
+    let sub = fields.next().unwrap_or(b"");
+    match digits(sub) {
+        Some(1) => "conemu_sleep",
+        Some(2) => "conemu_show_message_box",
+        Some(3) => "conemu_change_tab_title",
+        Some(4) => "conemu_progress_report",
+        Some(5) => "conemu_wait_input",
+        Some(6) => "conemu_gui_macro",
+        Some(7) => "conemu_run_process",
+        Some(8) => "conemu_output_environment_variable",
+        Some(10) => "conemu_xterm_emulation",
+        Some(11) => "conemu_comment",
+        Some(12) => "semantic_prompt",
+        _ => "show_desktop_notification",
+    }
+}
+
+/// Parse a field of pure ASCII digits into a u16 (None on empty/overflow).
+fn digits(field: &[u8]) -> Option<u16> {
+    if field.is_empty() || !field.iter().all(|b| b.is_ascii_digit()) {
+        return None;
+    }
+    field.iter().try_fold(0u16, |acc, b| {
+        acc.checked_mul(10)?.checked_add((b - b'0') as u16)
+    })
 }
 
 fn csi_detail(seq: &[u8]) -> String {
@@ -213,68 +311,4 @@ fn printable(b: u8) -> String {
 }
 
 #[cfg(test)]
-mod tests {
-    use super::*;
-
-    fn scan(bytes: &[u8]) -> Vec<TerminalSequence> {
-        GhosttyScanner::new().scan(bytes).expect("scan")
-    }
-
-    #[test]
-    fn plain_text_yields_nothing() {
-        assert!(scan(b"hello world").is_empty());
-    }
-
-    #[test]
-    fn osc52_clipboard_classified() {
-        let seqs = scan(b"pre\x1b]52;c;Y2xpcA==\x07post");
-        assert_eq!(seqs.len(), 1);
-        assert_eq!(
-            seqs[0].kind,
-            TerminalSequenceKind::Osc {
-                command: "clipboard_contents".to_string()
-            }
-        );
-        assert_eq!(seqs[0].byte_range.start, 3);
-    }
-
-    #[test]
-    fn osc8_hyperlink_classified() {
-        let seqs = scan(b"\x1b]8;;https://evil.example\x1b\\click me\x1b]8;;\x1b\\");
-        assert_eq!(seqs.len(), 2);
-        assert!(matches!(
-            &seqs[0].kind,
-            TerminalSequenceKind::Osc { command } if command == "hyperlink_start"
-        ));
-        assert!(matches!(
-            &seqs[1].kind,
-            TerminalSequenceKind::Osc { command } if command == "hyperlink_end"
-        ));
-    }
-
-    #[test]
-    fn csi_and_esc_and_dcs_spans() {
-        let seqs = scan(b"a\x1b[31mRED\x1b[0m \x1bPq\x1b\\");
-        assert_eq!(seqs.len(), 3);
-        assert_eq!(seqs[0].kind, TerminalSequenceKind::Csi);
-        assert_eq!(seqs[1].kind, TerminalSequenceKind::Csi);
-        assert_eq!(seqs[2].kind, TerminalSequenceKind::Dcs);
-        assert_eq!(seqs[0].byte_range.start, 1);
-    }
-
-    #[test]
-    fn c1_osc_form_detected() {
-        let seqs = scan(b"x\x9d52;c;YQ==\x9cy");
-        assert_eq!(seqs.len(), 1);
-        assert!(
-            matches!(&seqs[0].kind, TerminalSequenceKind::Osc { command } if command == "clipboard_contents")
-        );
-    }
-
-    #[test]
-    fn lone_esc_reported() {
-        let seqs = scan(b"end\x1b");
-        assert_eq!(seqs.len(), 1);
-        assert_eq!(seqs[0].kind, TerminalSequenceKind::Escape);
-    }
-}
+mod tests;
