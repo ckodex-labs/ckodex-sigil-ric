@@ -207,6 +207,7 @@ pub enum DetectorId {
     RarePattern,
     SlowRateInjection,
     PerplexityAnomaly,
+    TerminalEscape,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -272,6 +273,10 @@ pub struct InputAssessment {
     /// detector ran — carries `Skipped`/`Failed` outcomes too).
     #[serde(default)]
     pub perplexity: Option<crate::perplexity::PerplexityReport>,
+    /// Terminal-escape (VT control-sequence) evidence (`Some` whenever
+    /// the detector ran — carries `Skipped`/`Failed` outcomes too).
+    #[serde(default)]
+    pub terminal: Option<crate::terminal::TerminalReport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -286,6 +291,7 @@ pub enum FlagReason {
     SentinelDisagreement,
     CrossModalSmuggling,
     PerplexityAnomaly,
+    TerminalEscape,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

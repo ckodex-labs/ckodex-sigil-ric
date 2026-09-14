@@ -34,6 +34,9 @@ pub fn render_sigil(
     if let Some(report) = &a.perplexity {
         out.push_str(&format!("  perplexity {}\n", perplexity_line(report)));
     }
+    if let Some(report) = &a.terminal {
+        out.push_str(&format!("  terminal   {}\n", terminal_line(report)));
+    }
     out.push_str(rule());
 
     // ── INTAKE ────────────────────────────────────────────────────
@@ -346,5 +349,19 @@ fn perplexity_line(report: &sigil_core::perplexity::PerplexityReport) -> String 
         ),
         PerplexityStatus::Skipped { reason } => format!("skipped ({reason})"),
         PerplexityStatus::Failed { reason } => format!("failed ({reason})"),
+    }
+}
+
+fn terminal_line(report: &sigil_core::terminal::TerminalReport) -> String {
+    use sigil_core::terminal::TerminalStatus;
+    match &report.status {
+        TerminalStatus::Evaluated => format!(
+            "evaluated · scanner {} · {} sequence{}",
+            report.scanner,
+            report.sequence_count,
+            if report.sequence_count == 1 { "" } else { "s" }
+        ),
+        TerminalStatus::Skipped { reason } => format!("skipped ({reason})"),
+        TerminalStatus::Failed { reason } => format!("failed ({reason})"),
     }
 }

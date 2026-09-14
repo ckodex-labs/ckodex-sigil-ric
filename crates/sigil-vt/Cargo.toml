@@ -1,0 +1,10 @@
+[package]
+name = "sigil-vt"
+version = "0.3.0"
+edition.workspace = true
+rust-version = "1.90"
+license.workspace = true
+
+[dependencies]
+sigil-core = { path = "../sigil-core" }
+libghostty-vt = "=0.2.1"

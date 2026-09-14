@@ -4,7 +4,7 @@ use crate::{
     intake::{intake_bytes_segment, intake_text_segment},
     merge::security_aware_merge,
     policy::Policy,
-    scan::run_scan_with_scorer,
+    scan::run_scan_with_engines,
     signing::{receipt_message, ReceiptSignature, ReceiptSigner},
     sink::EvidenceSink,
     taint::apply_provenance,
@@ -23,6 +23,7 @@ pub struct Sigil {
     receipt_signer: Option<Arc<dyn ReceiptSigner>>,
     evidence_sink: Option<Arc<Mutex<dyn EvidenceSink<EvidenceBundle> + Send>>>,
     surprisal_scorer: Option<Arc<dyn crate::perplexity::SurprisalScorer + Send + Sync>>,
+    terminal_scanner: Option<Arc<dyn crate::terminal::TerminalSequenceScanner + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Sigil {
@@ -44,6 +45,7 @@ impl Sigil {
             receipt_signer: None,
             evidence_sink: None,
             surprisal_scorer: None,
+            terminal_scanner: None,
         })
     }
 
@@ -56,6 +58,19 @@ impl Sigil {
         scorer: Arc<dyn crate::perplexity::SurprisalScorer + Send + Sync>,
     ) -> Self {
         self.surprisal_scorer = Some(scorer);
+        self
+    }
+
+    /// Inject a [`TerminalSequenceScanner`] for the terminal-escape
+    /// detector. Used only when `policy.scan.terminal_escapes.enabled`;
+    /// enabled-without-scanner reports `Skipped` in the assessment's
+    /// `terminal` evidence. The scanner extracts/classifies sequences —
+    /// severity mapping and verdicts remain owned by kernel policy.
+    pub fn with_terminal_scanner(
+        mut self,
+        scanner: Arc<dyn crate::terminal::TerminalSequenceScanner + Send + Sync>,
+    ) -> Self {
+        self.terminal_scanner = Some(scanner);
         self
     }
 
@@ -129,12 +144,15 @@ impl Sigil {
         mut graphemes: Vec<crate::types::TaintedGrapheme>,
         raw_hasher: Sha384,
     ) -> Result<SigilOutput> {
-        let mut report = run_scan_with_scorer(
+        let mut report = run_scan_with_engines(
             &self.policy,
             &mut graphemes,
             self.surprisal_scorer
                 .as_deref()
                 .map(|s| s as &dyn crate::perplexity::SurprisalScorer),
+            self.terminal_scanner
+                .as_deref()
+                .map(|s| s as &dyn crate::terminal::TerminalSequenceScanner),
         );
         let (merged, merge_findings) = security_aware_merge(
             &self.vocab,

@@ -13,6 +13,7 @@ pub mod scan;
 pub mod signing;
 pub mod sink;
 pub mod taint;
+pub mod terminal;
 pub mod tokenizer_ffi;
 pub mod types;
 pub mod vocab;

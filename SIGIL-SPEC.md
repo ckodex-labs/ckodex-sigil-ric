@@ -181,6 +181,11 @@ Sliding windows are scored at several scales; a window whose mean surprisal is a
 
 The surprisal signal comes from a `SurprisalScorer` trait — model code never lives in the kernel. The built-in `SelfSurprisalScorer` is a deterministic order-k character n-gram model fit to the input itself (offline, zero dependencies); LM-grade scorers plug in through `Sigil::with_surprisal_scorer`. Scores become *findings* — the kernel's severity→verdict mapping owns every verdict (`Medium` → `Flag`, `Deny` under `Mode::Strict`). Scorer failure is evidence-visible (`PerplexityStatus::Failed`), never silent, never self-decided. Honest scope: the built-in scorer flags statistical outliers, not same-style English instructions — that requires an injected LM scorer. Disabled by default; enable via `[scan.perplexity] enabled = true`.
 
+**3f. Terminal-Escape Detection** *(optional, policy-gated)*
+Text destined for a terminal is also a representation boundary: embedded VT/ANSI control sequences can hijack clipboards (OSC 52), smuggle hyperlinks whose display text disagrees with the target URI (OSC 8), spoof titles/notifications, or forge output via CSI/DCS. SIGIL flags invisible *codepoints*; this detector flags control *sequences*.
+
+Sequence extraction comes from a `TerminalSequenceScanner` trait — emulator code never lives in the kernel. The `sigil-vt` crate supplies the `libghostty-vt`-backed implementation (Ghostty's fuzzed OSC parser classifies the command taxonomy; CSI/DCS/ESC framing is a minimal span lexer). Sequences become *findings* — the kernel owns severity mapping (clipboard-write/ConEmu automation/DCS → `High`; hyperlink/title/notification/cwd-report → `Medium`; unclassified → `Low`) and the verdict path (`FlagReason::TerminalEscape`). Enabled-without-scanner records `TerminalStatus::Skipped`; scanner errors record `Failed` — visible evidence, never silent. Disabled by default; enable via `[scan.terminal_escapes] enabled = true`.
+
 Output: `Vec<ScanResult>` — each grapheme now carries a `ThreatAssessment`:
 
 ```rust
@@ -329,6 +334,10 @@ min_scales = 2                  # scales a flag cluster must span to report
 min_units = 128                 # shorter inputs → Skipped
 max_windows = 512               # total windows across scales — cost bound
 model_order = 4                 # char n-gram context order (built-in scorer)
+
+[scan.terminal_escapes]
+enabled = false                 # opt-in: needs an injected scanner (sigil-vt)
+max_sequences = 512             # sequence cap per input — cost bound
 
 [merge]
 suppress_cross_boundary = true

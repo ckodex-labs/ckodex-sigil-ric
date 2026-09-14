@@ -35,6 +35,7 @@ fn sentinel_never_weakens_a_core_deny() {
         dlp_findings: Vec::new(),
         injection_score: 0.0,
         perplexity: None,
+        terminal: None,
     };
     let sentinel = SentinelVerdict {
         threat_score: 0.0,
