@@ -206,6 +206,7 @@ pub enum DetectorId {
     AudioSteganography,
     RarePattern,
     SlowRateInjection,
+    PerplexityAnomaly,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -267,6 +268,10 @@ pub struct InputAssessment {
     pub entropy_profile: EntropyProfile,
     pub dlp_findings: Vec<DlpFinding>,
     pub injection_score: f32,
+    /// Multiscale perplexity-anomaly evidence (`Some` whenever the
+    /// detector ran — carries `Skipped`/`Failed` outcomes too).
+    #[serde(default)]
+    pub perplexity: Option<crate::perplexity::PerplexityReport>,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -280,6 +285,7 @@ pub enum FlagReason {
     BehavioralDrift,
     SentinelDisagreement,
     CrossModalSmuggling,
+    PerplexityAnomaly,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

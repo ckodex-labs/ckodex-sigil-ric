@@ -23,6 +23,7 @@ fn composition_preserves_sigil_deny() {
         entropy_profile: Default::default(),
         dlp_findings: Vec::new(),
         injection_score: 1.0,
+        perplexity: None,
     };
     let sentinel = SentinelModel::default().classify("benign", None);
     let composite = compose_with_sigil(&assessment, &sentinel);
@@ -38,6 +39,7 @@ fn disagreement_emits_training_signal() {
         entropy_profile: Default::default(),
         dlp_findings: Vec::new(),
         injection_score: 0.0,
+        perplexity: None,
     };
     let sentinel = SentinelVerdict {
         threat_score: 0.6,

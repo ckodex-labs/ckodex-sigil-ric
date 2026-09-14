@@ -40,6 +40,7 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `DocumentAdapter` (sigil-perception::document)
 - `SpectralReport` / `analyze_spectrum` (sigil-perception::spectral)
 - `detect_rare_patterns` / `detect_slow_rate` (sigil-core::lfdd)
+- `SurprisalScorer` / `SelfSurprisalScorer` / `detect_perplexity_anomalies` / `PerplexityReport` / `PerplexityPolicy` (sigil-core::perplexity — scorer supplies signal, kernel policy owns verdict; `Sigil::with_surprisal_scorer`, `run_scan_with_scorer` are the injection points)
 - `AttestationVerificationOutcome`
 - `McpScanConfig`
 - `ServerTrustProfile`

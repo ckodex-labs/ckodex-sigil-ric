@@ -236,6 +236,71 @@ impl Default for DlpPolicy {
     }
 }
 
+/// Multiscale perplexity-anomaly detection (D2). Opt-in: disabled by
+/// default because statistical surprisal on short inputs is noisy — the
+/// operator chooses to pay the compute/noise cost. When `enabled` and no
+/// external scorer is injected, the kernel uses `SelfSurprisalScorer`
+/// (deterministic order-k char n-gram, offline).
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct PerplexityPolicy {
+    #[serde(default)]
+    pub enabled: bool,
+    /// Window sizes in scored units (characters for the built-in scorer).
+    #[serde(default = "PerplexityPolicy::default_windows")]
+    pub window_sizes: Vec<usize>,
+    /// Robust z-score threshold (median/MAD) for flagging a window.
+    #[serde(default = "PerplexityPolicy::default_z")]
+    pub z_threshold: f32,
+    /// Distinct scales a flag cluster must span to emit a finding.
+    #[serde(default = "PerplexityPolicy::default_min_scales")]
+    pub min_scales: usize,
+    /// Below this many scored units the detector reports `Skipped` —
+    /// statistics are meaningless.
+    #[serde(default = "PerplexityPolicy::default_min_units")]
+    pub min_units: usize,
+    /// Total windows analyzed across all scales — the cost bound.
+    #[serde(default = "PerplexityPolicy::default_max_windows")]
+    pub max_windows: usize,
+    /// N-gram context order for the built-in scorer.
+    #[serde(default = "PerplexityPolicy::default_order")]
+    pub model_order: usize,
+}
+
+impl PerplexityPolicy {
+    fn default_windows() -> Vec<usize> {
+        vec![16, 64, 256]
+    }
+    fn default_z() -> f32 {
+        4.0
+    }
+    fn default_min_scales() -> usize {
+        2
+    }
+    fn default_min_units() -> usize {
+        128
+    }
+    fn default_max_windows() -> usize {
+        512
+    }
+    fn default_order() -> usize {
+        4
+    }
+}
+
+impl Default for PerplexityPolicy {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            window_sizes: Self::default_windows(),
+            z_threshold: Self::default_z(),
+            min_scales: Self::default_min_scales(),
+            min_units: Self::default_min_units(),
+            max_windows: Self::default_max_windows(),
+            model_order: Self::default_order(),
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ScanPolicy {
     #[serde(default = "ScanPolicy::default_true")]
@@ -260,6 +325,8 @@ pub struct ScanPolicy {
     pub entropy_deviation: f32,
     #[serde(default)]
     pub dlp: DlpPolicy,
+    #[serde(default)]
+    pub perplexity: PerplexityPolicy,
 }
 
 impl ScanPolicy {
@@ -294,6 +361,7 @@ impl Default for ScanPolicy {
             entropy_window: Self::default_entropy_window(),
             entropy_deviation: Self::default_entropy_deviation(),
             dlp: DlpPolicy::default(),
+            perplexity: PerplexityPolicy::default(),
         }
     }
 }

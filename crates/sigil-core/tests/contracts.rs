@@ -34,6 +34,7 @@ fn sentinel_never_weakens_a_core_deny() {
         entropy_profile: Default::default(),
         dlp_findings: Vec::new(),
         injection_score: 0.0,
+        perplexity: None,
     };
     let sentinel = SentinelVerdict {
         threat_score: 0.0,

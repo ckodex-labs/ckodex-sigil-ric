@@ -31,6 +31,7 @@ pub fn emit_output(
         entropy_profile: report.entropy_profile,
         dlp_findings: report.dlp_findings.clone(),
         injection_score: report.injection_score,
+        perplexity: report.perplexity.clone(),
     };
     let evidence = match assessment.verdict {
         Verdict::Allow if !matches!(policy.emit.evidence_mode, EvidenceMode::Always) => None,
@@ -130,6 +131,14 @@ fn collect_reasons(report: &ScanReport) -> Vec<FlagReason> {
             .any(|d| matches!(d, crate::types::DetectorId::TokenSmuggling))
     }) {
         reasons.push(FlagReason::Smuggling);
+    }
+    if report.findings.iter().any(|finding| {
+        finding
+            .detectors
+            .iter()
+            .any(|d| matches!(d, crate::types::DetectorId::PerplexityAnomaly))
+    }) {
+        reasons.push(FlagReason::PerplexityAnomaly);
     }
     if reasons.is_empty() && report.threat_count > 0 {
         reasons.push(FlagReason::UnicodeAbuse);

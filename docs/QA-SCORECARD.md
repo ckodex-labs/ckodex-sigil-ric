@@ -20,6 +20,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Unsafe fusion boundaries (cross-trust, cross-role, instruction formation, derived-authority escalation) | `sigil-multimodal` fusion-boundary auditor | `crates/sigil-multimodal/src/tests.rs`, `crates/sigil-multimodal/tests/cross_modal.rs` |
 | Perception-channel authority fabrication (adapter claiming first-party provenance) | `sigil-multimodal` kernel mapping (type-level RIC-R-7) | `crates/sigil-multimodal/src/perception.rs` unit tests |
 | Image-borne instruction injection (OCR channel) | `sigil-perception` image adapter + `sigil-multimodal` kernel scan | `crates/sigil-perception/src/lib.rs` unit tests, `crates/sigil-multimodal/tests/cross_modal.rs` |
+| Camouflaged injection segments (encoded/obfuscated payloads inside prose) | `sigil-core` multiscale perplexity-anomaly detector (`scan.perplexity`, scorer-trait boundary, opt-in) | `crates/sigil-core/src/perplexity/tests.rs`, `crates/sigil-core/src/scan/tests.rs` |
 | Behavioral drift and SHIELD escalation | `sigil-probe` health engine | `crates/sigil-probe/tests/attack_proofs.rs`, `crates/sigil-probe/tests/drift.rs` |
 | Sentinel composition not weakening SIGIL denies | `sigil-s` composition layer | `crates/sigil-s/tests/composition.rs` |
 | Zig tokenizer parity and ABI stability | `zig/tiktoken` backend plus Rust FFI | `crates/sigil-core/tests/tiktoken_parity.rs` |

@@ -176,6 +176,11 @@ Analysis of how the grapheme stream will map to BPE merges, detecting inputs cra
 - Characters inserted specifically to force/prevent certain merges
 - Adversarial inputs designed to produce specific token sequences through BPE edge cases
 
+**3e. Multiscale Perplexity-Anomaly Detection** *(optional, policy-gated)*  
+Sliding windows are scored at several scales; a window whose mean surprisal is a robust outlier (median/MAD z-score) — corroborated across `min_scales` scales — produces a `PerplexityAnomaly` finding. This catches camouflaged segments that break the document's own predictive statistics: encoded blobs, obfuscated payloads, script switches.
+
+The surprisal signal comes from a `SurprisalScorer` trait — model code never lives in the kernel. The built-in `SelfSurprisalScorer` is a deterministic order-k character n-gram model fit to the input itself (offline, zero dependencies); LM-grade scorers plug in through `Sigil::with_surprisal_scorer`. Scores become *findings* — the kernel's severity→verdict mapping owns every verdict (`Medium` → `Flag`, `Deny` under `Mode::Strict`). Scorer failure is evidence-visible (`PerplexityStatus::Failed`), never silent, never self-decided. Honest scope: the built-in scorer flags statistical outliers, not same-style English instructions — that requires an injected LM scorer. Disabled by default; enable via `[scan.perplexity] enabled = true`.
+
 Output: `Vec<ScanResult>` — each grapheme now carries a `ThreatAssessment`:
 
 ```rust
@@ -315,6 +320,15 @@ ssn = true
 api_keys = true
 emails = "flag"                 # "flag" | "deny" | "redact" | "off"
 custom_patterns = ["patterns/custom.toml"]
+
+[scan.perplexity]
+enabled = false                 # opt-in: noisy on short inputs
+window_sizes = [16, 64, 256]    # units per sliding window (chars, built-in scorer)
+z_threshold = 4.0               # median/MAD robust z-score for flagging
+min_scales = 2                  # scales a flag cluster must span to report
+min_units = 128                 # shorter inputs → Skipped
+max_windows = 512               # total windows across scales — cost bound
+model_order = 4                 # char n-gram context order (built-in scorer)
 
 [merge]
 suppress_cross_boundary = true

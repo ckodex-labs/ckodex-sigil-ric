@@ -7,6 +7,18 @@ use crate::policy::Policy;
 use crate::types::{EntropyProfile, Severity, TaintedGrapheme};
 
 pub fn run_scan(policy: &Policy, tainted: &mut [TaintedGrapheme]) -> ScanReport {
+    run_scan_with_scorer(policy, tainted, None)
+}
+
+/// Scan with an optional injected [`SurprisalScorer`]. When the
+/// perplexity detector is enabled, `scorer` overrides the built-in
+/// `SelfSurprisalScorer` — this is the integration point for LM-grade
+/// scorers (e.g. via `sigil-probe`) without kernel changes.
+pub fn run_scan_with_scorer(
+    policy: &Policy,
+    tainted: &mut [TaintedGrapheme],
+    scorer: Option<&dyn crate::perplexity::SurprisalScorer>,
+) -> ScanReport {
     let map = TextMap::new(tainted);
     let mut findings = Vec::new();
     let mut dlp_findings = Vec::new();
@@ -40,6 +52,32 @@ pub fn run_scan(policy: &Policy, tainted: &mut [TaintedGrapheme]) -> ScanReport 
         ));
     }
 
+    let mut perplexity = None;
+    if policy.scan.perplexity.enabled {
+        let builtin;
+        let scorer: &dyn crate::perplexity::SurprisalScorer = match scorer {
+            Some(s) => s,
+            None => {
+                builtin =
+                    crate::perplexity::SelfSurprisalScorer::new(policy.scan.perplexity.model_order);
+                &builtin
+            }
+        };
+        let (pfindings, preport) = match scorer.score(&map.text) {
+            Ok(units) => crate::perplexity::detect_perplexity_anomalies(
+                &units,
+                &policy.scan.perplexity,
+                scorer.name(),
+            ),
+            Err(e) => (
+                Vec::new(),
+                crate::perplexity::PerplexityReport::failed(scorer.name(), e.to_string()),
+            ),
+        };
+        findings.extend(pfindings);
+        perplexity = Some(preport);
+    }
+
     annotate_graphemes(tainted, &findings);
     let summary = summarize_findings(&findings);
     ScanReport {
@@ -50,6 +88,7 @@ pub fn run_scan(policy: &Policy, tainted: &mut [TaintedGrapheme]) -> ScanReport 
         entropy_profile,
         injection_score: summary.injection_score,
         slow_rate: None,
+        perplexity,
     }
 }
 

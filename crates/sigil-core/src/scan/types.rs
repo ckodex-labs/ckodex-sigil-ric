@@ -10,6 +10,9 @@ pub struct ScanReport {
     /// Slow-rate (cross-input) detection result, if a history was
     /// provided to `run_scan_with_history`.
     pub slow_rate: Option<crate::lfdd::SlowRateReport>,
+    /// Multiscale perplexity-anomaly evidence, present whenever the
+    /// detector was enabled — including `Skipped`/`Failed` outcomes.
+    pub perplexity: Option<crate::perplexity::PerplexityReport>,
 }
 
 impl ScanReport {

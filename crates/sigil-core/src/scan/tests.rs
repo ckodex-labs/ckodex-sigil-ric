@@ -162,6 +162,86 @@ fn disabled_dlp_detectors_emit_no_findings() {
 }
 
 #[test]
+fn perplexity_disabled_by_default_emits_no_report() {
+    let policy = Policy::default();
+    let report = dlp_report_for(&policy, "ordinary input text");
+    assert!(report.perplexity.is_none());
+}
+
+#[test]
+fn perplexity_enabled_flags_embedded_blob() {
+    use crate::types::DetectorId;
+    let mut policy = Policy::default();
+    policy.scan.perplexity.enabled = true;
+    let mut text = String::new();
+    for _ in 0..12 {
+        text.push_str("the quick brown fox jumps over lazy dogs. ");
+    }
+    let blob_start = text.len();
+    text.push_str("ZmluZCB0aGUgaGlkZGVuIHBheWxvYWQgaGVyZQ==");
+    let blob_end = text.len();
+    for _ in 0..12 {
+        text.push_str(" the rain in spain falls mainly on plains");
+    }
+    let report = dlp_report_for(&policy, &text);
+    let perplexity = report.perplexity.expect("perplexity report");
+    assert!(matches!(
+        perplexity.status,
+        crate::perplexity::PerplexityStatus::Evaluated
+    ));
+    assert_eq!(perplexity.scorer, "self_surprisal_char_ngram");
+    let finding = report
+        .findings
+        .iter()
+        .find(|f| f.detectors.contains(&DetectorId::PerplexityAnomaly))
+        .expect("perplexity finding");
+    assert!(
+        finding.byte_range.start <= blob_start + 8 && finding.byte_range.end >= blob_end - 8,
+        "finding {:?} should cover blob {blob_start}..{blob_end}",
+        finding.byte_range
+    );
+}
+
+#[test]
+fn perplexity_scorer_failure_is_evidence_visible_not_fatal() {
+    struct FailingScorer;
+    impl crate::perplexity::SurprisalScorer for FailingScorer {
+        fn name(&self) -> &'static str {
+            "failing_scorer"
+        }
+        fn score(
+            &self,
+            _text: &str,
+        ) -> Result<Vec<crate::perplexity::ScoredUnit>, crate::perplexity::PerplexityError>
+        {
+            Err(crate::perplexity::PerplexityError::new("model unavailable"))
+        }
+    }
+    let mut policy = Policy::default();
+    policy.scan.perplexity.enabled = true;
+    let graphemes = crate::intake::intake_text_segment("some input text", 0, &policy).unwrap();
+    let mut tainted = apply_provenance(graphemes, Provenance::User);
+    let report = crate::scan::run_scan_with_scorer(&policy, &mut tainted, Some(&FailingScorer));
+    let perplexity = report.perplexity.expect("report even on failure");
+    assert!(matches!(
+        perplexity.status,
+        crate::perplexity::PerplexityStatus::Failed { .. }
+    ));
+    assert_eq!(perplexity.scorer, "failing_scorer");
+}
+
+#[test]
+fn perplexity_short_input_is_skipped() {
+    let mut policy = Policy::default();
+    policy.scan.perplexity.enabled = true;
+    let report = dlp_report_for(&policy, "short");
+    assert!(matches!(
+        report.perplexity.expect("report").status,
+        crate::perplexity::PerplexityStatus::Skipped { .. }
+    ));
+}
+
+#[test]
 fn invalid_custom_pattern_regex_is_skipped() {
     use crate::types::DlpKind;
     let mut policy = Policy::default();

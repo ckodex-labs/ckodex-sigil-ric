@@ -7,6 +7,7 @@ pub mod intake;
 pub mod lfdd;
 pub mod merge;
 pub mod parallel;
+pub mod perplexity;
 pub mod policy;
 pub mod scan;
 pub mod signing;

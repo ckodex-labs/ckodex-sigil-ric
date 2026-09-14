@@ -19,14 +19,12 @@
 //!
 //! **Known limitations** (per 2024-2025 prompt injection research):
 //! - N-gram frequency analysis is a first-generation statistical detector.
-//!   Multiscale perplexity signatures (MILCOM 2025) with OC-SVM classifiers
-//!   achieve higher accuracy by capturing local and global predictive
-//!   confidence dynamics across sliding window sizes.
-//! - Token-level perplexity measures (Hu et al., 2023) provide finer
-//!   granularity than n-gram frequency alone.
+//!   The gen-2 multiscale surprisal-anomaly detector lives in
+//!   `crate::perplexity` (arXiv:2311.11509-inspired, policy-gated via
+//!   `scan.perplexity`) — it captures local/global predictive-confidence
+//!   dynamics across sliding window sizes that this flat detector cannot.
 //! - This implementation catches blunt low-frequency patterns but is not
-//!   a model-agnostic unsupervised detector. A future iteration could
-//!   integrate perplexity-based signals from the target LLM.
+//!   a model-agnostic unsupervised detector.
 
 use crate::types::{ByteRange, DetectorId, ScanFinding, Severity};
 use std::collections::HashMap;

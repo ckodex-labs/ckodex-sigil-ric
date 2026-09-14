@@ -4,7 +4,7 @@ use crate::{
     intake::{intake_bytes_segment, intake_text_segment},
     merge::security_aware_merge,
     policy::Policy,
-    scan::run_scan,
+    scan::run_scan_with_scorer,
     signing::{receipt_message, ReceiptSignature, ReceiptSigner},
     sink::EvidenceSink,
     taint::apply_provenance,
@@ -22,6 +22,7 @@ pub struct Sigil {
     policy: Policy,
     receipt_signer: Option<Arc<dyn ReceiptSigner>>,
     evidence_sink: Option<Arc<Mutex<dyn EvidenceSink<EvidenceBundle> + Send>>>,
+    surprisal_scorer: Option<Arc<dyn crate::perplexity::SurprisalScorer + Send + Sync>>,
 }
 
 impl std::fmt::Debug for Sigil {
@@ -42,7 +43,20 @@ impl Sigil {
             policy,
             receipt_signer: None,
             evidence_sink: None,
+            surprisal_scorer: None,
         })
+    }
+
+    /// Inject an external [`SurprisalScorer`] for the perplexity-anomaly
+    /// detector. Used only when `policy.scan.perplexity.enabled`; without
+    /// it the built-in `SelfSurprisalScorer` applies. The scorer supplies
+    /// signal — verdicts remain owned by kernel policy.
+    pub fn with_surprisal_scorer(
+        mut self,
+        scorer: Arc<dyn crate::perplexity::SurprisalScorer + Send + Sync>,
+    ) -> Self {
+        self.surprisal_scorer = Some(scorer);
+        self
     }
 
     /// Attach a receipt signer. When present, every emitted receipt carries
@@ -115,7 +129,13 @@ impl Sigil {
         mut graphemes: Vec<crate::types::TaintedGrapheme>,
         raw_hasher: Sha384,
     ) -> Result<SigilOutput> {
-        let mut report = run_scan(&self.policy, &mut graphemes);
+        let mut report = run_scan_with_scorer(
+            &self.policy,
+            &mut graphemes,
+            self.surprisal_scorer
+                .as_deref()
+                .map(|s| s as &dyn crate::perplexity::SurprisalScorer),
+        );
         let (merged, merge_findings) = security_aware_merge(
             &self.vocab,
             &graphemes,
