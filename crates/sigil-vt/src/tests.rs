@@ -190,25 +190,87 @@ fn csi_command_decoding() {
     }
 }
 
+fn pattern(seqs: &[TerminalSequence]) -> &TerminalSequence {
+    seqs.iter()
+        .find(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. }))
+        .expect("repaint pattern")
+}
+
+fn no_pattern(seqs: &[TerminalSequence]) -> bool {
+    !seqs
+        .iter()
+        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. }))
+}
+
 #[test]
 fn repaint_overwrite_pattern_detected() {
-    // erase-line + carriage-return + rewrite — canonical repaint idiom
+    // erase-line + rewind + rewrite — canonical repaint idiom. The
+    // window compares the row's pre-erase content against what it
+    // ends showing, so evidence carries both representations.
     let seqs = scan(b"ran: apt install\x1b[2K\x1b[Gran: apt update");
-    let pattern = seqs
-        .iter()
-        .find(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. }))
-        .expect("repaint pattern");
+    let p = pattern(&seqs);
     assert_eq!(
-        pattern.kind,
+        p.kind,
         TerminalSequenceKind::Pattern {
             name: "repaint_overwrite".into()
         }
     );
-    // span covers erase seq through the rewritten run
-    assert_eq!(pattern.byte_range.start, 16);
-    assert_eq!(pattern.detail, "repaint after erase_line");
-    // cursor-up + erase + rewrite (previous-line overwrite)
+    // span: first shown byte (0) through the forged run's last byte
+    assert_eq!(p.byte_range, ByteRange::new(0, 38));
+    assert_eq!(
+        p.detail,
+        "repaint: \"ran: apt install\" → \"ran: apt update\""
+    );
+}
+
+#[test]
+fn repaint_displaced_rewrite_detected() {
+    // cursor-up + erase + rewrite at a different column — FORGED lands
+    // on untouched cells while the erased "line1" diverges; the
+    // per-row snapshot path catches what per-cell compares cannot.
     let seqs = scan(b"line1\nline2\x1b[1A\x1b[2KFORGED");
+    let p = pattern(&seqs);
+    assert_eq!(p.detail, "repaint: \"line1\" → \"FORGED\"");
+}
+
+#[test]
+fn repaint_cursor_back_overwrite() {
+    // no erase needed — writing different bytes over shown cells
+    // diverges (cursor-back alone opens the window)
+    let seqs = scan(b"abc\x1b[3DXY");
+    let p = pattern(&seqs);
+    assert_eq!(p.detail, "repaint: \"ab\" → \"XY\"");
+    assert_eq!(p.byte_range, ByteRange::new(0, 9));
+}
+
+#[test]
+fn repaint_backspace_overstrike() {
+    let seqs = scan(b"ab\x08X");
+    let p = pattern(&seqs);
+    assert_eq!(p.detail, "repaint: \"b\" → \"X\"");
+    assert_eq!(p.byte_range, ByteRange::new(1, 4));
+}
+
+#[test]
+fn repaint_survives_scroll_eviction() {
+    // the divergent row scrolls out of the 48-row window — evaluated
+    // at eviction, the finding is still reported
+    let mut input = b"shown\x1b[2K\rforged".to_vec();
+    input.extend(std::iter::repeat(b'\n').take(60));
+    let seqs = scan(&input);
+    let p = pattern(&seqs);
+    assert_eq!(p.detail, "repaint: \"shown\" → \"forged\"");
+}
+
+#[test]
+fn window_bounded_under_long_stream() {
+    // ~1.2MB of lines with a repaint at the start — the window is
+    // bounded, the scan completes, the evicted finding survives
+    let mut input = b"shown\x1b[2K\rforged".to_vec();
+    for _ in 0..120_000 {
+        input.extend_from_slice(b"more text\n");
+    }
+    let seqs = scan(&input);
     assert!(seqs.iter().any(
         |s| matches!(&s.kind, TerminalSequenceKind::Pattern { name } if name == "repaint_overwrite")
     ));
@@ -217,20 +279,17 @@ fn repaint_overwrite_pattern_detected() {
 #[test]
 fn repaint_pattern_negatives() {
     // erase with no following text — capability only, no pattern
-    let seqs = scan(b"text\x1b[2K");
-    assert!(!seqs
-        .iter()
-        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
-    // erase then newline then text — LF closes the window
-    let seqs = scan(b"x\x1b[2K\ny");
-    assert!(!seqs
-        .iter()
-        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
+    assert!(no_pattern(&scan(b"text\x1b[2K")));
+    // erase then newline then text — the erased row ends blank
+    assert!(no_pattern(&scan(b"x\x1b[2K\ny")));
     // SGR color then text — not a repaint trigger
-    let seqs = scan(b"a\x1b[31mred");
-    assert!(!seqs
-        .iter()
-        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
+    assert!(no_pattern(&scan(b"a\x1b[31mred")));
+    // erase of an already-blank row, then text — nothing diverged
+    assert!(no_pattern(&scan(b"\x1b[2Khello")));
+    // cursor-back + byte-identical rewrite — net-zero divergence
+    assert!(no_pattern(&scan(b"abc\x1b[3Dabc")));
+    // erase + byte-identical rewrite — display restored exactly
+    assert!(no_pattern(&scan(b"ab\x1b[2K\rab")));
 }
 
 #[test]
