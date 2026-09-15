@@ -1,22 +1,19 @@
 //! Bounded virtual window — a sliding-screen model of how a terminal
 //! would interpret the byte stream.
 //!
-//! Not an emulator: just enough state (a bounded cell grid, cursor,
-//! scroll region, alternate screen, per-row pre-erase snapshots) to
-//! detect *semantic* divergence — cells overwritten by different bytes,
-//! or rows erased and repainted with different text. That is the
-//! display-vs-stream divergence `repaint_overwrite` flags.
+//! Not an emulator: just enough state (bounded cell grid, cursor,
+//! scroll region, alternate screen, per-row snapshots) to detect
+//! *semantic* divergence — cells overwritten by different bytes or
+//! rows erased and repainted differently (`repaint_overwrite`).
 //!
-//! Quarantine discipline: anything the model cannot faithfully replay
-//! is itself a finding, not silent state —
-//! - `window_degraded`: a row holding non-ASCII bytes (≥0x80, where
-//!   byte cells desync from glyph cells) is erased or overwritten;
-//! - `window_unmodeled` (emitted by the dispatcher): an op outside the
-//!   modeled set — origin mode, DECLRMM, LNM, 132-col, charsets.
+//! Quarantine: anything the model cannot faithfully replay is itself
+//! a finding — `window_degraded` for non-ASCII rows (byte cells
+//! desync from glyph cells) on erase/overwrite, `window_unmodeled`
+//! (dispatcher-emitted) for ops outside the modeled set.
 //!
-//! Remaining limits (documented, not hidden): byte-granular cells; no
-//! scrollback — rows are evaluated at scroll eviction; raw-stream
-//! semantics (LF ≠ CR+LF); left/right margins (DECLRMM) untracked.
+//! Limits (documented, not hidden): byte-granular cells; no scrollback
+//! — rows evaluate at scroll eviction; raw-stream semantics
+//! (LF ≠ CR+LF); DECLRMM margins untracked.
 
 mod findings;
 mod ops;
@@ -25,8 +22,8 @@ use findings::{Overwrite, RowSnap, RowState};
 use sigil_core::types::ByteRange;
 
 /// Window geometry: a sliding 200×48 grid. Anything older has already
-/// scrolled off — replaying beyond that is emulator territory, which
-/// the runtime path deliberately does not enter.
+/// scrolled off — replaying further is emulator territory, which the
+/// runtime path deliberately does not enter.
 pub(crate) const COLS: usize = 200;
 pub(crate) const ROWS: usize = 48;
 
@@ -38,31 +35,45 @@ struct Cell {
     src: usize, // stream offset that wrote it
 }
 
+/// Per-screen saved cursor (DECSC/`?1049`): position plus the mode
+/// bits DECSC carries — pending-wrap and origin (ghostty `SavedCursor`).
+#[derive(Clone, Copy, Default)]
+struct Saved {
+    row: usize,
+    col: usize,
+    wrap: bool,
+    decom: bool,
+}
+
 pub(crate) struct VirtualWindow {
     cells: Vec<Cell>,
     alt: Vec<Cell>,
     on_alt: bool,
     row: usize,
     col: usize,
-    /// DECAWM deferred wrap: after a write at the last column the
-    /// cursor stays put and the next printable wraps — matching
-    /// ghostty's `pending_wrap` (cursor moves and LF clear it without
-    /// wrapping; erases leave it untouched).
+    /// DECAWM deferred wrap (ghostty `pending_wrap`): a write at the
+    /// last column leaves the cursor put; the next printable wraps.
+    /// Cursor moves and LF clear it; erases leave it untouched.
     pending_wrap: bool,
-    saved: (usize, usize),
-    saved_alt: (usize, usize),
+    saved: Saved,
+    saved_alt: Saved,
     /// DECSTBM scroll region (inclusive row bounds, default full).
     scroll_top: usize,
     scroll_bottom: usize,
     insert_mode: bool, // IRM (`CSI 4 h`)
     autowrap: bool,    // DECAWM (`CSI ? 7 h/l`, default on)
+    /// DECOM (`?6`) / DECLRMM (`?69`) flags — the modes are
+    /// quarantined, but the flags change what later ops *mean*:
+    /// `CSI s` is SCOSC only while DECLRMM is off; CUP/VPA are
+    /// region-relative under DECOM.
+    decom: bool,
+    declrmm: bool,
     rows: Vec<RowState>,
     alt_rows: Vec<RowState>,
     overwrites: Vec<Overwrite>,
     findings: Vec<(ByteRange, &'static str, String)>,
     /// First dropped finding's range once the cap is hit — finish()
-    /// reports it as a `window_degraded` marker so suppression is
-    /// itself visible.
+    /// reports it as `window_degraded` so suppression stays visible.
     overflow: Option<ByteRange>,
 }
 
@@ -75,12 +86,14 @@ impl VirtualWindow {
             row: 0,
             col: 0,
             pending_wrap: false,
-            saved: (0, 0),
-            saved_alt: (0, 0),
+            saved: Saved::default(),
+            saved_alt: Saved::default(),
             scroll_top: 0,
             scroll_bottom: ROWS - 1,
             insert_mode: false,
             autowrap: true,
+            decom: false,
+            declrmm: false,
             rows: std::iter::repeat_with(RowState::default)
                 .take(ROWS)
                 .collect(),
@@ -387,18 +400,20 @@ impl VirtualWindow {
     }
 
     /// `CSI s`/`CSI u` and `ESC 7`/`ESC 8` — cursor save/restore,
-    /// tracked per grid.
+    /// tracked per grid. Like xterm's DECSC the slot carries
+    /// pending-wrap and origin mode, not just position.
     pub(crate) fn save_restore(&mut self, save: bool) {
-        let slot = if self.on_alt {
-            &mut self.saved_alt
-        } else {
-            &mut self.saved
-        };
+        let alt = self.on_alt;
         if save {
-            *slot = (self.row, self.col);
+            let s = self.saved_state();
+            if alt {
+                self.saved_alt = s;
+            } else {
+                self.saved = s;
+            }
         } else {
-            (self.row, self.col) = *slot;
-            self.pending_wrap = false; // slot is (row,col) only
+            let s = if alt { self.saved_alt } else { self.saved };
+            self.restore_state(s);
         }
     }
 
@@ -411,8 +426,8 @@ impl VirtualWindow {
     /// change carry pending-wrap, so the flag survives 47/1047.
     fn toggle_alt(&mut self, exit: bool, mode: u16) {
         match (mode, exit, self.on_alt) {
-            (1049, false, true) => self.saved_alt = (self.row, self.col),
-            (1049, false, false) => self.saved = (self.row, self.col),
+            (1049, false, true) => self.saved_alt = self.saved_state(),
+            (1049, false, false) => self.saved = self.saved_state(),
             (1047, true, true) => self.clear_alt(),
             _ => {}
         }
@@ -421,12 +436,22 @@ impl VirtualWindow {
         }
         match (mode, exit) {
             (1049, false) => self.clear_alt(),
-            (1049, true) => {
-                (self.row, self.col) = self.saved;
-                self.pending_wrap = false; // slot is (row,col) only
-            }
+            (1049, true) => self.restore_state(self.saved),
             _ => {}
         }
+    }
+
+    fn saved_state(&self) -> Saved {
+        Saved {
+            row: self.row,
+            col: self.col,
+            wrap: self.pending_wrap,
+            decom: self.decom,
+        }
+    }
+
+    fn restore_state(&mut self, s: Saved) {
+        (self.row, self.col, self.pending_wrap, self.decom) = (s.row, s.col, s.wrap, s.decom);
     }
 
     /// Wipe the alt grid; rows are evaluated first so repaints on a
@@ -436,9 +461,7 @@ impl VirtualWindow {
             self.eval_row(true, r);
         }
         self.flush_events(true);
-        for c in &mut self.alt {
-            *c = Cell::default();
-        }
+        self.alt.fill(Cell::default());
         for s in &mut self.alt_rows {
             *s = RowState::default();
         }

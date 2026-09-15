@@ -199,6 +199,13 @@ mod window_parity {
         // RIS full reset (primary + on alt)
         b"abc\x1b[2Jxyz\x1bcLEAN",
         b"pre\x1b[?1049halt\x1bcback",
+        // DECOM/DECLRMM mode flags: the flags themselves are
+        // quarantined, but ops that keep the same meaning still
+        // replay identically.
+        b"\x1b[?6h\x1b[2;10rxy",    // DECSTBM homes to region under decom
+        b"\x1b[?6h\x1b[2;10r\n\nz", // region scroll under decom
+        b"ab\x1b[?6hcd\x1b[?6lef",  // writes unaffected by decom toggles
+        b"\x1b[?69hab\x1b[?69lcd",  // declrmm toggles, default margins
     ];
 
     /// Compared cell-for-cell against the real emulator.
@@ -218,6 +225,19 @@ mod window_parity {
         input.extend_from_slice(b"\x1b[5Ez");
         let d = divergence(&input);
         assert!(d.is_empty(), "CNL scroll divergence:{d}");
+    }
+
+    /// DECSC/DECRC carry origin mode and pending-wrap (ghostty
+    /// `SavedCursor.{origin, pending_wrap}`), not just position.
+    #[test]
+    fn saved_cursor_carries_mode_state() {
+        // 200 x's → pending wrap at (0,199). `?6h` then DECSC saves
+        // {pos, wrap, decom}; `?6l` + absolute CUP move; DECRC restores
+        // all three — `z` wraps from (0,199) to (1,0) in both models.
+        let mut input = vec![b'x'; 200];
+        input.extend_from_slice(b"\x1b[?6h\x1b7\x1b[?6l\x1b[5;5H\x1b8z");
+        let d = divergence(&input);
+        assert!(d.is_empty(), "saved-state divergence:{d}");
     }
 
     /// Rows scrolled past the top are evicted identically.
