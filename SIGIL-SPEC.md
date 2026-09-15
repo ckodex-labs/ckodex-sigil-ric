@@ -366,7 +366,7 @@ SIGIL ships as a standalone, embeddable package — same philosophy as Valance.
 | `sigil.wasm` | WebAssembly module — `scripts/build_wasm.sh` (wasm32-freestanding reactor; `memory` + `zig_tiktoken_*` exports) | Browser / edge / serverless |
 | `sigil` | CLI tool (tokenize, scan, mcp, probe) | Operators / CI pipelines |
 | `sigil_tiktoken` | Python bindings (ctypes over the Zig shared library) | ML ecosystem integration |
-| `sigil-server` | Sidecar composition façade; gRPC/HTTP transport planned | Inference pipeline sidecar |
+| `sigil-server` | Sidecar composition façade (library only — `SigilSidecar` composes core/MCP/probe/multimodal/sentinel for embedders). gRPC/HTTP transport **descoped**: the validated deployment surfaces are the CLI stdio-JSON contract (MCP's native transport), `libsigil`, and `sigil.wasm`; a network listener would be speculative attack surface on a security boundary — a transport crate can wrap the façade later if a consumer materializes | Inference pipeline sidecar |
 
 ### 4.1 CLI Interface
 

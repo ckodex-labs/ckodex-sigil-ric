@@ -11,6 +11,7 @@ surface:
 - `crates/sigil-sigstore` - Sigstore keyless signing and bundle verification
 - `crates/sigil-s` - semantic sentinel companion
 - `crates/sigil-server` - sidecar composition façade
+- `crates/sigil-vt` - terminal-escape sequence scanner (owned OSC table)
 - `crates/sigil-cli` - operator and CI entrypoint
 
 The source of truth for architecture and formal guarantees remains:

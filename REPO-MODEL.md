@@ -118,14 +118,14 @@ Library crates never use `anyhow`; CLI never exposes typed errors to callers.
 
 | ID | Claimed | Actual | Evidence | Severity | Disposition |
 |---|---|---|---|---|---|
-| D-A | `sigil-server` = "gRPC/HTTP microservice + MCP proxy" | lib-only `SigilSidecar` facade, no bin, no transport deps | `SIGIL-SPEC.md:346` vs `crates/sigil-server/src/lib.rs:41`; `Cargo.toml` has no `[[bin]]` or tonic/axum | medium | fix-docs (mark transport planned) |
-| D-B | `pysigil` = "Python bindings (PyO3)" | ctypes over the Zig shared library | `SIGIL-SPEC.md:345` vs `bindings/python/sigil_tiktoken/__init__.py` (`import ctypes`) | low | fix-docs |
-| D-C | `sigil.wasm` deliverable | no wasm target, feature, or build config anywhere | `SIGIL-SPEC.md:344` vs `grep -rn wasm Cargo.toml crates/*/Cargo.toml` empty | low | fix-docs (mark planned) |
-| D-D | `libsigil` C ABI shared library | only `bindings/c/sigil_tiktoken.h` (header for the Zig tokenizer); no cdylib `crate-type` | `SIGIL-SPEC.md:343` vs `bindings/c/` listing | low | fix-docs (mark planned) |
-| D-E | README crate list covers workspace | omits `sigil-perception` and `sigil-sigstore` | `README.md` list vs `Cargo.toml` members (9 crates) | low | fix-docs |
-| D-F | `verify_bundle_with_trust` documented 6-step verification | doc comment orphaned in old `trust.rs`, lost in split — `trust/verify.rs:7` is undocumented | `crates/sigil-sigstore/src/trust/verify.rs:1-7` | low | fix-code (restore doc) |
-| D-G | `.gitignore` covers ccc index | `.gitignore` has `.ccc/`; tool actually writes `.cocoindex_code/` (14MB sqlite DBs) | `.gitignore` vs `ls .cocoindex_code/` | low | fix-code |
-| D-H | TRAJECTORY references live paths | refs `audio.rs`, `spectral.rs`, `trust.rs`, `vocab.rs` — all replaced by module dirs in the split | `docs/TRAJECTORY.md:105-111` | low | fix-docs |
+| D-A | `sigil-server` = "gRPC/HTTP microservice + MCP proxy" | lib-only `SigilSidecar` facade, no bin, no transport deps | `SIGIL-SPEC.md:369` vs `crates/sigil-server/src/lib.rs:41`; `Cargo.toml` has no `[[bin]]` or tonic/axum | medium | **resolved** — transport descoped (E1 decision): façade stays library-only; spec table updated |
+| D-B | `pysigil` = "Python bindings (PyO3)" | ctypes over the Zig shared library | `SIGIL-SPEC.md:368` vs `bindings/python/sigil_tiktoken/__init__.py` (`import ctypes`) | low | **resolved** — spec corrected; ctypes kept by decision (E3) |
+| D-C | `sigil.wasm` deliverable | no wasm target, feature, or build config anywhere | `SIGIL-SPEC.md:366` — now shipped via `scripts/build_wasm.sh` (E2) | low | **resolved** |
+| D-D | `libsigil` C ABI shared library | only `bindings/c/sigil_tiktoken.h` (header for the Zig tokenizer); no cdylib `crate-type` | `SIGIL-SPEC.md:365` — now shipped via `crates/sigil-ffi` cdylib (E2) | low | **resolved** |
+| D-E | README crate list covers workspace | omitted `sigil-vt` (perception/sigstore already listed) | `README.md` list vs `Cargo.toml` members (11 crates) | low | **resolved** — `sigil-vt` row added |
+| D-F | `verify_bundle_with_trust` documented 6-step verification | doc comment restored — `trust/verify.rs` now documents the full 9-step path (incl. SCT step added by A5) | `crates/sigil-sigstore/src/trust/verify.rs:9-22` | low | **resolved** |
+| D-G | `.gitignore` covers ccc index | fixed — `/.cocoindex_code/*.db` ignored | `.gitignore:24-26` | low | **resolved** |
+| D-H | TRAJECTORY references live paths | the flagged refs (`audio.rs` etc.) are historical narrative *describing the split*, not live-path claims | `docs/TRAJECTORY.md:105-107` | low | **resolved** — narrative context, no fix needed |
 
 ## do_not_touch
 
@@ -143,16 +143,15 @@ Library crates never use `anyhow`; CLI never exposes typed errors to callers.
 
 ## open_questions
 
-- Is `sigil-server` transport (gRPC/HTTP/MCP proxy) planned or descoped?
-  Spec §4 table and §module map disagree (346 vs 906).
-- TUF trust root is an embedded snapshot (`tuf.rs:15-40`); online refresh
-  exists behind `sigstore-trust-root`'s `tuf` feature but is not wired —
-  decision pending (TRAJECTORY A3).
-- Coverage is measured: `cargo llvm-cov --workspace` reports 74.01% lines /
-  69.86% fns / 75.39% regions vs the ≥80% governance target. CI gates a
-  no-regression floor at 70%. Open: close the 6-point gap — `sigil-server`
-  facade (0%), sigstore network paths (0%, need mock/offline harness),
-  `trust/verify.rs` (0%), `video.rs` (43%).
+- ~~Is `sigil-server` transport (gRPC/HTTP/MCP proxy) planned or descoped?~~
+  **Resolved (E1):** descoped — façade stays library-only; CLI stdio-JSON +
+  libsigil + wasm are the deployment surfaces; spec table updated.
+- ~~TUF trust root embedded snapshot vs online refresh~~
+  **Resolved (A3):** embedded snapshot only — freshness via reviewable
+  `sigstore-trust-root` version bumps, not a live-update surface.
+- ~~Coverage vs ≥80% target~~ **Resolved (C1):** workspace at
+  ~85% lines / ~86% regions; CI floor ratcheted 70→80. Residual gaps:
+  sigstore network paths (not offline-testable).
 - Evidence persistence lands on `EvidenceSink<R>` + `JsonlEvidenceSink`
   (append-only JSONL) in `sigil-core/src/sink.rs`, shared by
   `EvidenceBundle` (engine, fail-closed) and `McpEvidenceRecord`
