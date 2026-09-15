@@ -3,7 +3,7 @@
 //! `conformance` — that dep needs rust ≥1.90 + zig 0.15.2 + a ghostty
 //! source fetch, so it stays out of the default test build.
 
-use super::*;
+use crate::osc::classify_osc;
 
 fn ghostty_classify(payload: &[u8]) -> String {
     let mut parser = libghostty_vt::osc::Parser::new().expect("parser");
@@ -79,7 +79,7 @@ mod window_parity {
     use libghostty_vt::terminal::{Point, PointCoordinate};
     use libghostty_vt::{Terminal, TerminalOptions};
 
-    fn ghostty_cells(input: &[u8]) -> Vec<u32> {
+    fn ghostty_state(input: &[u8]) -> (Vec<u32>, (u16, u16, bool)) {
         let mut t = Terminal::new(TerminalOptions {
             cols: COLS as u16,
             rows: ROWS as u16,
@@ -103,20 +103,35 @@ mod window_parity {
                     .unwrap_or(0);
             }
         }
-        out
+        let cursor = (
+            t.cursor_x().unwrap_or(0),
+            t.cursor_y().unwrap_or(0),
+            t.is_cursor_pending_wrap().unwrap_or(false),
+        );
+        (out, cursor)
     }
 
-    fn our_cells(input: &[u8]) -> Vec<u32> {
+    fn our_state(input: &[u8]) -> (Vec<u32>, (usize, usize, bool)) {
         let w = crate::scan_window(input);
-        (0..ROWS * COLS)
-            .map(|i| w.cell_byte(i / COLS, i % COLS) as u32)
-            .collect()
+        (
+            (0..ROWS * COLS)
+                .map(|i| w.cell_byte(i / COLS, i % COLS) as u32)
+                .collect(),
+            w.cursor_state(),
+        )
     }
 
-    /// Both grids, rendered as strings of differing cells.
+    /// Grid + cursor differences between our window and ghostty's.
     fn divergence(input: &[u8]) -> String {
-        let (ours, theirs) = (our_cells(input), ghostty_cells(input));
+        let ((ours, oc), (theirs, tc)) = (our_state(input), ghostty_state(input));
         let mut d = String::new();
+        // ours is (row, col); ghostty reports (x, y) = (col, row).
+        if oc != (tc.1 as usize, tc.0 as usize, tc.2) {
+            d.push_str(&format!(
+                " cursor ours=(r{},c{},wrap={}) ghostty=(r{},c{},wrap={})",
+                oc.0, oc.1, oc.2, tc.1, tc.0, tc.2
+            ));
+        }
         for (i, (a, b)) in ours.iter().zip(&theirs).enumerate() {
             if a != b {
                 let at = (i / COLS, i % COLS);
@@ -127,52 +142,69 @@ mod window_parity {
         d
     }
 
-    /// Every op the window claims to model, compared cell-for-cell
-    /// against the real emulator.
+    /// Every op the window claims to model, as byte streams.
+    const CASES: &[&[u8]] = &[
+        b"hello",
+        b"line1\nline2\nline3",
+        b"abc\r\nXY",
+        b"a\tb\tc",
+        b"x\x1b[197Gt\tz",                    // tab clamps at right margin
+        b"abc\x08X",                          // BS overstrike
+        b"abc\x1b[2DXY",                      // CUB overwrite
+        b"one\ntwo\x1b[Aover",                // CUA + write
+        b"one\ntwo\x1b[1;5H@",                // CUP absolute
+        b"abc\x1b[3G\x1b[2Gq",                // CHA
+        b"abc\x1b[2dq",                       // VPA
+        b"a\x1b[10Eq",                        // CNL mid-screen
+        b"abc\x1b[2Fq",                       // CPL
+        b"ab\x1b[Kcd",                        // EL right
+        b"ab\x1b[2Kcd",                       // EL all
+        b"ab\x1b[1Kz",                        // EL left
+        b"abcdef\x1b[3D\x1b[2P",              // DCH
+        b"abc\x1b[D\x1b[@z",                  // ICH
+        b"abc\x1b[2Xz",                       // ECH
+        b"r1\nr2\nr3\nr4\x1b[3A\x1b[M",       // DL
+        b"r1\nr2\nr3\x1b[2A\x1b[Lx",          // IL
+        b"a\nb\nc\x1b[2S",                    // SU
+        b"a\nb\nc\x1b[2T",                    // SD
+        b"fill\nup\n\x1b[2Jx",                // ED all
+        b"abc\x1b[sXYZ\x1b[u!",               // CSI s/u save+restore
+        b"abc\x1b7XY\x1b8!",                  // ESC 7/8 DECSC/DECRC
+        b"main\x1b[?1049halt stuff",          // 1049 entry: cursor copies
+        b"main\x1b[?1049halt\x1b[?1049lback", // round trip restores
+        b"main\x1b[?47halt",                  // 47: swap only
+        b"pre\x1b[?1047hXY",                  // 1047 entry
+        b"ab\x1b[?1047hcd\x1b[?1047lef",      // 1047 erases alt on exit
+        // Raw C1 bytes (0x84/0x85/0x8D) are NOT display ops:
+        // ghostty renders them as glyphs — we ignore them.
+        b"a\x1bDb",                    // ESC D = IND
+        b"a\x1bEb",                    // ESC E = NEL
+        b"a\x1bMb",                    // ESC M = RI mid-screen
+        b"\x1bMtop",                   // RI at top = scroll down
+        b"r1\nr2\x1b[1A\x1b[2KFORGED", // displaced repaint
+        b"run: apt install\x1b[2K\x1b[Gran: rm -rf /",
+        // DECSTBM scroll region
+        b"r0\nr1\nr2\nr3\x1b[2;3r\n\n\n\nz", // LF scrolls inside region only
+        b"a\nb\nc\nd\x1b[2;3r\x1b[2;1H\x1b[Lx", // IL within region
+        b"a\nb\nc\nd\x1b[2;3r\x1b[2;1H\x1b[M", // DL within region
+        b"a\nb\nc\nd\x1b[2;3r\x1b[2S",       // SU confined to region
+        b"a\nb\nc\nd\x1b[2;3r\x1b[2T",       // SD confined to region
+        b"a\nb\nc\nd\x1b[2;3r\x1b[4;1H\x1bM", // RI at region top
+        b"r0\nr1\nr2\nr3\x1b[2;3r\x1b[r",    // CSI r resets to full
+        // Insert mode (IRM)
+        b"abcd\x1b[2D\x1b[4hXY\x1b[4l!",
+        b"ab\x1b[4hcd\x1b[4lef",
+        // DECAWM off: last-column writes overstrike
+        b"ab\x1b[?7lcd\x1b[?7hef",
+        // RIS full reset (primary + on alt)
+        b"abc\x1b[2Jxyz\x1bcLEAN",
+        b"pre\x1b[?1049halt\x1bcback",
+    ];
+
+    /// Compared cell-for-cell against the real emulator.
     #[test]
     fn modeled_ops_match_ghostty() {
-        let cases: &[&[u8]] = &[
-            b"hello",
-            b"line1\nline2\nline3",
-            b"abc\r\nXY",
-            b"a\tb\tc",
-            b"x\x1b[197Gt\tz",                    // tab clamps at right margin
-            b"abc\x08X",                          // BS overstrike
-            b"abc\x1b[2DXY",                      // CUB overwrite
-            b"one\ntwo\x1b[Aover",                // CUA + write
-            b"one\ntwo\x1b[1;5H@",                // CUP absolute
-            b"abc\x1b[3G\x1b[2Gq",                // CHA
-            b"abc\x1b[2dq",                       // VPA
-            b"a\x1b[10Eq",                        // CNL mid-screen
-            b"abc\x1b[2Fq",                       // CPL
-            b"ab\x1b[Kcd",                        // EL right
-            b"ab\x1b[2Kcd",                       // EL all
-            b"ab\x1b[1Kz",                        // EL left
-            b"abcdef\x1b[3D\x1b[2P",              // DCH
-            b"abc\x1b[D\x1b[@z",                  // ICH
-            b"abc\x1b[2Xz",                       // ECH
-            b"r1\nr2\nr3\nr4\x1b[3A\x1b[M",       // DL
-            b"r1\nr2\nr3\x1b[2A\x1b[Lx",          // IL
-            b"a\nb\nc\x1b[2S",                    // SU
-            b"a\nb\nc\x1b[2T",                    // SD
-            b"fill\nup\n\x1b[2Jx",                // ED all
-            b"abc\x1b[sXYZ\x1b[u!",               // CSI s/u save+restore
-            b"abc\x1b7XY\x1b8!",                  // ESC 7/8 DECSC/DECRC
-            b"main\x1b[?1049halt stuff",          // 1049 entry: cursor copies
-            b"main\x1b[?1049halt\x1b[?1049lback", // round trip restores
-            b"main\x1b[?47halt",                  // 47: swap only
-            b"pre\x1b[?1047hXY",                  // 1047 entry
-            b"ab\x1b[?1047hcd\x1b[?1047lef",      // 1047 erases alt on exit
-            // Raw C1 bytes (0x84/0x85/0x8D) are NOT display ops:
-            // ghostty renders them as glyphs — we ignore them.
-            b"a\x1bDb",                    // ESC D = IND
-            b"a\x1bEb",                    // ESC E = NEL
-            b"a\x1bMb",                    // ESC M = RI mid-screen
-            b"\x1bMtop",                   // RI at top = scroll down
-            b"r1\nr2\x1b[1A\x1b[2KFORGED", // displaced repaint
-            b"run: apt install\x1b[2K\x1b[Gran: rm -rf /",
-        ];
-        for input in cases {
+        for input in CASES {
             let d = divergence(input);
             assert!(d.is_empty(), "grid divergence on {input:?}:{d}");
         }
@@ -229,6 +261,111 @@ mod window_parity {
             input.extend_from_slice(tail);
             let d = divergence(&input);
             assert!(d.is_empty(), "pending-wrap divergence on {tail:?}:{d}");
+        }
+    }
+
+    /// Op alphabet for the differential fuzz — the *modeled* set only.
+    /// Ops outside it are quarantined by `window_unmodeled` findings
+    /// rather than fuzzed, since divergence there is expected.
+    const FUZZ_OPS: &[&[u8]] = &[
+        b"\n",
+        b"\r",
+        b"\t",
+        b"\x08",
+        b"ab",
+        b"XY",
+        b" ",
+        b"\x1b[A",
+        b"\x1b[2B",
+        b"\x1b[3C",
+        b"\x1b[2D",
+        b"\x1b[E",
+        b"\x1b[F",
+        b"\x1b[10G",
+        b"\x1b[2d",
+        b"\x1b[3;5H",
+        b"\x1b[K",
+        b"\x1b[1K",
+        b"\x1b[2K",
+        b"\x1b[J",
+        b"\x1b[1J",
+        b"\x1b[2J",
+        b"\x1b[3X",
+        b"\x1b[2P",
+        b"\x1b[@",
+        b"\x1b[L",
+        b"\x1b[M",
+        b"\x1b[S",
+        b"\x1b[T",
+        b"\x1b[s",
+        b"\x1b[u",
+        b"\x1b7",
+        b"\x1b8",
+        b"\x1bD",
+        b"\x1bE",
+        b"\x1bM",
+        b"\x1bc",
+        b"\x1b[4h",
+        b"\x1b[4l",
+        b"\x1b[?7h",
+        b"\x1b[?7l",
+        b"\x1b[?1049h",
+        b"\x1b[?1049l",
+        b"\x1b[?47h",
+        b"\x1b[?47l",
+        b"\x1b[2;10r",
+        b"\x1b[5;40r",
+        b"\x1b[r",
+    ];
+
+    /// xorshift64 — deterministic, no rand dep.
+    struct Rng(u64);
+    impl Rng {
+        fn next(&mut self) -> u64 {
+            self.0 ^= self.0 << 13;
+            self.0 ^= self.0 >> 7;
+            self.0 ^= self.0 << 17;
+            self.0
+        }
+    }
+
+    /// Cursor check after every op (cheap); full grid once per
+    /// stream — cursor desync is pinpointed at its op.
+    fn fuzz_stream(stream: u64, ops: &[&[u8]]) {
+        let mut t = Terminal::new(TerminalOptions {
+            cols: COLS as u16,
+            rows: ROWS as u16,
+            max_scrollback: 0,
+        })
+        .expect("terminal");
+        let mut input = Vec::new();
+        for (i, op) in ops.iter().enumerate() {
+            input.extend_from_slice(op);
+            t.vt_write(op);
+            let oc = crate::scan_window(&input).cursor_state();
+            let tc = (
+                t.cursor_y().unwrap_or(0) as usize,
+                t.cursor_x().unwrap_or(0) as usize,
+                t.is_cursor_pending_wrap().unwrap_or(false),
+            );
+            assert_eq!(oc, tc, "stream {stream} op {i} {op:?} desync");
+        }
+        let d = divergence(&input);
+        assert!(d.is_empty(), "stream {stream} grid divergence:{d}");
+    }
+
+    /// Differential fuzz: seeded random streams over the modeled op
+    /// set must produce identical final state. Any divergence here is
+    /// a modeling bug — this is how the limit boundary is captured
+    /// empirically.
+    #[test]
+    fn fuzz_modeled_ops_match_ghostty() {
+        let mut rng = Rng(0x9E3779B97F4A7C15);
+        for stream in 0..40u64 {
+            let ops: Vec<&[u8]> = (0..300)
+                .map(|_| FUZZ_OPS[(rng.next() % FUZZ_OPS.len() as u64) as usize])
+                .collect();
+            fuzz_stream(stream, &ops);
         }
     }
 }

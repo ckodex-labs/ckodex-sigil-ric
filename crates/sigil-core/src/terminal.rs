@@ -51,7 +51,9 @@ pub enum TerminalSequenceKind {
     /// Cross-sequence pattern synthesized by the scanner — not a single
     /// sequence. `repaint_overwrite`: an erase/rewind op followed by
     /// printable text (the byte stream says one thing; the display is
-    /// rewritten to another).
+    /// rewritten to another). `window_unmodeled`/`window_degraded`: the
+    /// scanner's display model could not faithfully replay the stream —
+    /// the blind spot itself is reportable.
     Pattern { name: String },
 }
 
@@ -185,6 +187,18 @@ fn classify(seq: &TerminalSequence) -> Option<(Severity, &'static str)> {
         },
         TerminalSequenceKind::Pattern { name } => match name.as_str() {
             "repaint_overwrite" => (Severity::Medium, "screen-repaint pattern (output forgery)"),
+            // The window could not faithfully replay the stream: an
+            // op outside the modeled set, or non-ASCII content on a
+            // rewritten row. Tracking beyond that point is unreliable
+            // — a repaint could hide here, so the gap itself reports.
+            "window_unmodeled" => (
+                Severity::Medium,
+                "unmodeled terminal op (display tracking unreliable)",
+            ),
+            "window_degraded" => (
+                Severity::Medium,
+                "non-ASCII display content rewritten (cell tracking degraded)",
+            ),
             _ => (Severity::Low, "sequence pattern"),
         },
         TerminalSequenceKind::Escape => (Severity::Low, "escape sequence"),
