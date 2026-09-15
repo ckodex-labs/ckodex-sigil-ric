@@ -22,7 +22,9 @@
 use sigil_core::terminal::{TerminalSequence, TerminalSequenceKind, TerminalSequenceScanner};
 use sigil_core::types::ByteRange;
 
+mod osc;
 mod window;
+use osc::osc_end;
 use window::VirtualWindow;
 
 const ESC: u8 = 0x1B;
@@ -89,13 +91,11 @@ fn run(bytes: &[u8]) -> (Vec<TerminalSequence>, VirtualWindow) {
             }
         };
     }
-    for (range, detail) in win.finish() {
+    for (range, name, detail) in win.finish() {
         out.push(seq(
             range.start,
             range.end,
-            TerminalSequenceKind::Pattern {
-                name: "repaint_overwrite".into(),
-            },
+            TerminalSequenceKind::Pattern { name: name.into() },
             detail,
         ));
     }
@@ -121,25 +121,73 @@ fn esc_dispatch(
         b']' => osc_end(bytes, i + 2, i, out),
         b'P' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Dcs),
         b'X' | b'^' | b'_' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Escape),
-        b => {
-            // Single-ESC display ops still drive the window.
-            match b {
-                b'D' => win.line_feed(),         // IND
-                b'E' => win.next_line(),         // NEL
-                b'M' => win.reverse_index(),     // RI
-                b'7' => win.save_restore(true),  // DECSC
-                b'8' => win.save_restore(false), // DECRC
-                _ => {}
-            }
-            out.push(seq(
-                i,
-                i + 2,
-                TerminalSequenceKind::Escape,
-                format!("ESC {}", printable(b)),
-            ));
-            i + 2
-        }
+        0x20..=0x2F => esc_intermediates(bytes, i, out),
+        b => esc_single(b, i, win, out),
     }
+}
+
+/// ESC + intermediates + final: charset selects, DECALN, DECSASD —
+/// they change what bytes render as, so they are quarantined as
+/// unmodeled rather than leaking the final byte into the window.
+fn esc_intermediates(bytes: &[u8], i: usize, out: &mut Vec<TerminalSequence>) -> usize {
+    let mut j = i + 1;
+    while j < bytes.len() && (0x20..=0x2F).contains(&bytes[j]) {
+        j += 1;
+    }
+    if j < bytes.len() && (0x30..=0x7E).contains(&bytes[j]) {
+        j += 1;
+    }
+    out.push(seq(
+        i,
+        j,
+        TerminalSequenceKind::Escape,
+        "ESC intermediates".into(),
+    ));
+    unmodeled(i, j, "ESC intermediates (charset/decsasd)", out);
+    j
+}
+
+/// Single-ESC forms: display ops still drive the window; anything
+/// else is quarantined.
+fn esc_single(b: u8, i: usize, win: &mut VirtualWindow, out: &mut Vec<TerminalSequence>) -> usize {
+    let modeled = match b {
+        b'D' => {
+            win.line_feed(); // IND
+            true
+        }
+        b'E' => {
+            win.next_line(); // NEL
+            true
+        }
+        b'M' => {
+            win.reverse_index(); // RI
+            true
+        }
+        b'7' => {
+            win.save_restore(true); // DECSC
+            true
+        }
+        b'8' => {
+            win.save_restore(false); // DECRC
+            true
+        }
+        b'c' => {
+            win.ris(); // RIS full reset
+            true
+        }
+        b'=' | b'>' => true, // keypad modes — no display state
+        _ => false,
+    };
+    out.push(seq(
+        i,
+        i + 2,
+        TerminalSequenceKind::Escape,
+        format!("ESC {}", printable(b)),
+    ));
+    if !modeled {
+        unmodeled(i, i + 2, "ESC op", out);
+    }
+    i + 2
 }
 
 /// Feed a non-sequence byte to the window: C0 controls drive cursor
@@ -180,7 +228,63 @@ fn csi_span(
             },
             csi_detail(span, command),
         ));
+        if !is_modeled(command) {
+            unmodeled(start, e, &format!("unmodeled CSI op {command}"), out);
+        }
     })
+}
+
+/// CSI ops the window replays (or that are verified no-ops for display
+/// state — SGR, cursor visibility, generic mode sets). Anything else —
+/// `csi_unknown`, origin mode, DECLRMM left/right margins, LNM, 132-col —
+/// can silently desync the model, so it is quarantined as a finding.
+fn is_modeled(command: &str) -> bool {
+    matches!(
+        command,
+        "cursor_up"
+            | "cursor_down"
+            | "cursor_forward"
+            | "cursor_back"
+            | "cursor_next_line"
+            | "cursor_prev_line"
+            | "cursor_column"
+            | "cursor_row"
+            | "cursor_position"
+            | "erase_line"
+            | "erase_display"
+            | "erase_chars"
+            | "delete_chars"
+            | "insert_chars"
+            | "delete_lines"
+            | "insert_lines"
+            | "scroll_up"
+            | "scroll_down"
+            | "scroll_region"
+            | "save_cursor"
+            | "restore_cursor"
+            | "alt_screen"
+            | "insert_mode"
+            | "decawm"
+            | "sgr"
+            | "sgr_conceal"
+            | "cursor_visibility"
+            | "erase_scrollback"
+            | "set_reset_mode"
+    )
+}
+
+/// Quarantine finding: the byte stream exercised a display op the
+/// window cannot faithfully replay — tracking beyond this point is
+/// unreliable, so the op itself is reportable.
+fn unmodeled(start: usize, end: usize, what: &str, out: &mut Vec<TerminalSequence>) {
+    out.push(seq(
+        start,
+        end,
+        TerminalSequenceKind::Pattern {
+            name: "window_unmodeled".into(),
+        },
+        format!("{what}: display state beyond this point is untracked"),
+    ));
 }
 
 /// Bytes that render as glyphs. Excludes C0/C1 controls (0x00–0x1F,
@@ -242,134 +346,6 @@ fn st_end(
     end
 }
 
-/// Consume an OSC sequence: payload to BEL or ST, then classify the
-/// payload's command selector.
-fn osc_end(bytes: &[u8], mut i: usize, start: usize, out: &mut Vec<TerminalSequence>) -> usize {
-    let payload_start = i;
-    while i < bytes.len() && bytes[i] != BEL && bytes[i] != C1_ST {
-        if bytes[i] == ESC && i + 1 < bytes.len() && bytes[i + 1] == b'\\' {
-            break;
-        }
-        i += 1;
-    }
-    let end = if i < bytes.len() {
-        if bytes[i] == ESC {
-            i + 2
-        } else {
-            i + 1
-        }
-    } else {
-        i
-    };
-    let end = end.min(bytes.len());
-    let command = classify_osc(&bytes[payload_start..i.min(bytes.len())]);
-    out.push(seq(
-        start,
-        end,
-        TerminalSequenceKind::Osc { command },
-        "OSC".into(),
-    ));
-    end
-}
-
-/// Classify an OSC payload (`Ps ; Pt`) by its numeric selector.
-///
-/// Table derived from ghostty `src/terminal/osc.zig` (commit `a887df4`):
-/// which selectors the upstream parser recognizes and which command each
-/// produces. Names match the `libghostty-vt` Rust `CommandType`
-/// spellings — note the wrapper differs from the Zig field name on
-/// `conemu_gui_macro` (Zig: `conemu_guimacro`); we follow the Rust API
-/// since that is what the conformance feature verifies against. Anything
-/// unrecognized or malformed is `"unclassified"` — the kernel still
-/// records a finding (a control sequence in admitted text is reportable
-/// regardless of whether we can name it).
-fn classify_osc(payload: &[u8]) -> String {
-    let mut fields = payload.split(|&b| b == b';');
-    let selector = fields.next().unwrap_or(b"");
-    let command = match digits(selector) {
-        Some(52) => "clipboard_contents",
-        Some(8) => hyperlink_kind(&mut fields),
-        Some(9) => osc9_kind(&mut fields),
-        Some(0) | Some(2) => "change_window_title",
-        Some(1) => "change_window_icon",
-        Some(7) => "report_pwd",
-        Some(777) => rxvt_kind(&mut fields),
-        Some(1337) => iterm2_kind(&mut fields),
-        Some(5522) => "kitty_clipboard_protocol",
-        Some(21) => "kitty_color_protocol",
-        Some(66) => "kitty_text_sizing",
-        Some(72) => "kitty_dnd_protocol",
-        Some(133) => "semantic_prompt",
-        Some(3008) => "context_signal",
-        Some(4..=5) | Some(10..=19) | Some(104) | Some(110..=119) => "color_operation",
-        _ => "unclassified",
-    };
-    command.to_string()
-}
-
-/// OSC 8: `8;params;uri` — non-empty URI (or an `id=` param) opens a
-/// hyperlink; empty URI closes one (ghostty `hyperlink.zig`).
-fn hyperlink_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
-    let params = fields.next().unwrap_or(b"");
-    let uri = fields.next().unwrap_or(b"");
-    if !uri.is_empty()
-        || params
-            .split(|&b| b == b':')
-            .any(|seg| seg.starts_with(b"id="))
-    {
-        "hyperlink_start"
-    } else {
-        "hyperlink_end"
-    }
-}
-
-/// OSC 777 (rxvt extension): only `notify` is a notification; every
-/// other extension — `perl-eval`, `xterm-256color`, arbitrary future
-/// exts — is an opaque extension channel (ghostty calls it invalid;
-/// we flag it `rxvt_extension`, which the kernel maps High since the
-/// family includes perl-eval).
-fn rxvt_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
-    match fields.next() {
-        Some(b"notify") => "show_desktop_notification",
-        _ => "rxvt_extension",
-    }
-}
-
-/// OSC 1337 (iTerm2): the dangerous subcommands re-map to canonical
-/// commands — `Copy=` writes the clipboard, `CurrentDir=` reports cwd
-/// (ghostty `iterm2.zig`). All other keys stay `iterm2_extension`
-/// (High — the family carries clipboard-write and remote-host vars).
-fn iterm2_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
-    let kv = fields.next().unwrap_or(b"");
-    let key = kv.split(|&b| b == b'=').next().unwrap_or(b"");
-    match key {
-        b"Copy" => "clipboard_contents",
-        b"CurrentDir" => "report_pwd",
-        _ => "iterm2_extension",
-    }
-}
-
-/// OSC 9: ConEmu subcommands carry a numeric second field
-/// (`9;N;...`, ghostty `osc9.zig`); anything else is an iTerm2-style
-/// desktop notification.
-fn osc9_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
-    let sub = fields.next().unwrap_or(b"");
-    match digits(sub) {
-        Some(1) => "conemu_sleep",
-        Some(2) => "conemu_show_message_box",
-        Some(3) => "conemu_change_tab_title",
-        Some(4) => "conemu_progress_report",
-        Some(5) => "conemu_wait_input",
-        Some(6) => "conemu_gui_macro",
-        Some(7) => "conemu_run_process",
-        Some(8) => "conemu_output_environment_variable",
-        Some(10) => "conemu_xterm_emulation",
-        Some(11) => "conemu_comment",
-        Some(12) => "semantic_prompt",
-        _ => "show_desktop_notification",
-    }
-}
-
 /// Parse a field of pure ASCII digits into a u16 (None on empty/overflow).
 pub(crate) fn digits(field: &[u8]) -> Option<u16> {
     if field.is_empty() || !field.iter().all(|b| b.is_ascii_digit()) {
@@ -418,6 +394,7 @@ fn csi_command(seq_bytes: &[u8]) -> &'static str {
         b'M' => "delete_lines",
         b'P' => "delete_chars",
         b'@' => "insert_chars",
+        b'r' => "scroll_region", // DECSTBM
         b'h' | b'l' => mode_command(params),
         b's' => "save_cursor",
         b'u' => "restore_cursor",
@@ -430,11 +407,19 @@ fn sgr_conceals(params: &[u8]) -> bool {
     params.split(|&b| b == b';').any(|p| p == b"8")
 }
 
-/// `h`/`l` private-mode ops worth naming: `?25` cursor visibility,
-/// `?47`/`?1047`/`?1049` alternate screen. Everything else stays
-/// `set_mode`/`reset_mode`.
+/// `h`/`l` mode ops worth naming. Modeled: `4` insert mode, `?7`
+/// DECAWM, `?25` visibility (no-op), alt screens. Display-state modes
+/// we do NOT replay get their own names so they are quarantined as
+/// unmodeled: `?6` origin, `?69` DECLRMM, `?3` 132-col, `20` LNM.
+/// Everything else (visual-only modes) stays `set_reset_mode`.
 fn mode_command(params: &[u8]) -> &'static str {
     match params {
+        b"4" => "insert_mode",
+        b"?7" => "decawm",
+        b"?6" => "origin_mode",
+        b"?69" => "declrmm",
+        b"?3" => "column_mode",
+        b"20" => "linefeed_mode",
         b"?25" => "cursor_visibility",
         b"?47" | b"?1047" | b"?1049" => "alt_screen",
         _ => "set_reset_mode",

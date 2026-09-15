@@ -174,7 +174,6 @@ fn csi_command_decoding() {
         (b"\x1b[5S", "scroll_up"),
         (b"\x1b[2P", "delete_chars"),
         (b"\x1b[s", "save_cursor"),
-        (b"\x1b[ZZ", "csi_unknown"),
         // C1-introduced CSI decodes identically
         (b"\x9b2K", "erase_line"),
     ];
@@ -188,6 +187,16 @@ fn csi_command_decoding() {
             other => panic!("expected Csi, got {other:?}"),
         }
     }
+    // Unknown CSI decodes `csi_unknown` AND quarantines as unmodeled.
+    let seqs = scan(b"\x1b[ZZ");
+    match &seqs[0].kind {
+        TerminalSequenceKind::Csi { command } => assert_eq!(command, "csi_unknown"),
+        other => panic!("expected Csi, got {other:?}"),
+    }
+    assert!(matches!(
+        &seqs[1].kind,
+        TerminalSequenceKind::Pattern { name } if name == "window_unmodeled"
+    ));
 }
 
 fn pattern(seqs: &[TerminalSequence]) -> &TerminalSequence {
@@ -290,6 +299,134 @@ fn repaint_pattern_negatives() {
     assert!(no_pattern(&scan(b"abc\x1b[3Dabc")));
     // erase + byte-identical rewrite — display restored exactly
     assert!(no_pattern(&scan(b"ab\x1b[2K\rab")));
+}
+
+fn named_pattern<'a>(seqs: &'a [TerminalSequence], want: &str) -> &'a TerminalSequence {
+    seqs.iter()
+        .find(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { name } if name == want))
+        .unwrap_or_else(|| panic!("pattern {want} in {seqs:?}"))
+}
+
+fn pattern_names(seqs: &[TerminalSequence]) -> Vec<&str> {
+    seqs.iter()
+        .filter_map(|s| match &s.kind {
+            TerminalSequenceKind::Pattern { name } => Some(name.as_str()),
+            _ => None,
+        })
+        .collect()
+}
+
+#[test]
+fn repaint_epoch_evasion_caught() {
+    // A → erase → B → erase → A: the transient B was displayed, but
+    // the final row equals the first snapshot — a first-snapshot-only
+    // model stays silent. Per-epoch eval catches both divergent
+    // transitions (A→B at the second erase, B→A at end-of-stream).
+    let seqs = scan(b"A\x1b[2K\rB\x1b[2K\rA");
+    assert_eq!(
+        pattern_names(&seqs),
+        ["repaint_overwrite", "repaint_overwrite"]
+    );
+}
+
+#[test]
+fn nonascii_row_rewrite_is_degraded() {
+    // 0xC3 0xBC = 'ü': two byte-cells where a terminal sees one glyph
+    // — positions desync, so the overwrite is quarantined, not
+    // reported as a precise repaint.
+    let seqs = scan(b"\xc3\xbcab\x1b[4DXY");
+    let names = pattern_names(&seqs);
+    assert_eq!(names, ["window_degraded"]);
+    assert_eq!(
+        named_pattern(&seqs, "window_degraded").detail,
+        "non-ASCII content overwritten — byte-cell tracking unreliable"
+    );
+}
+
+#[test]
+fn nonascii_flag_clears_when_row_blanked() {
+    // after the flagged row is erased blank, later ASCII-only
+    // divergence reports precisely again
+    let seqs = scan(b"\xc3\xbc\x1b[2K\rab\x1b[2DXY");
+    let names = pattern_names(&seqs);
+    assert!(names.contains(&"window_degraded"), "{names:?}");
+    assert!(names.contains(&"repaint_overwrite"), "{names:?}");
+}
+
+#[test]
+fn unmodeled_csi_ops_quarantined() {
+    // Display-state modes the window does not replay — each must
+    // surface as a finding rather than silently desync the model.
+    for input in [
+        &b"\x1b[?6h"[..],  // origin mode — shifts CUP coordinates
+        &b"\x1b[?69h"[..], // DECLRMM — left/right margins
+        &b"\x1b[20h"[..],  // LNM — LF starts implying CR
+        &b"\x1b[?3h"[..],  // 132-col mode
+        &b"\x1b[ZZ"[..],   // unrecognized final
+    ] {
+        assert_eq!(
+            pattern_names(&scan(input)),
+            ["window_unmodeled"],
+            "{input:?}"
+        );
+    }
+    // Modeled ops and visual-only modes stay quiet.
+    for input in [
+        &b"\x1b[4h"[..],   // insert mode — modeled
+        &b"\x1b[?7l"[..],  // DECAWM off — modeled
+        &b"\x1b[2;5r"[..], // DECSTBM — modeled
+        &b"\x1b[?25h"[..], // cursor visibility — no-op
+        &b"\x1b[?5h"[..],  // reverse video — visual only
+        &b"\x1b[31m"[..],  // SGR — no-op for positions
+    ] {
+        assert_eq!(pattern_names(&scan(input)), Vec::<&str>::new(), "{input:?}");
+    }
+}
+
+#[test]
+fn unmodeled_esc_ops_quarantined() {
+    // charset select: ESC ( 0 — the '0' is the selector, not text;
+    // it must not leak into the window as a printable byte
+    let seqs = scan(b"\x1b(0abc");
+    assert_eq!(pattern_names(&seqs), ["window_unmodeled"], "{seqs:?}");
+    // unmodeled single-ESC final (ESC F = cursor to lower-left)
+    assert_eq!(pattern_names(&scan(b"\x1bF")), ["window_unmodeled"]);
+    // modeled singles stay quiet
+    assert_eq!(pattern_names(&scan(b"\x1bc")), Vec::<&str>::new()); // RIS
+    assert_eq!(pattern_names(&scan(b"\x1bD")), Vec::<&str>::new()); // IND
+}
+
+#[test]
+fn ris_resets_display_but_keeps_prior_findings() {
+    // repaint before RIS still reports; content after RIS starts
+    // from a clean screen so nothing diverges
+    let seqs = scan(b"ab\x1b[2K\rXY\x1bczz");
+    assert_eq!(pattern_names(&seqs), ["repaint_overwrite"]);
+}
+
+#[test]
+fn insert_mode_shifts_instead_of_overwriting() {
+    // IRM on: X/Y push the row tail right — no cell is overwritten,
+    // so no repaint; the same bytes with IRM off diverge
+    assert_eq!(
+        pattern_names(&scan(b"abcd\x1b[4D\x1b[4hXY\x1b[4l")),
+        Vec::<&str>::new()
+    );
+    assert_eq!(
+        pattern_names(&scan(b"abcd\x1b[4DXY")),
+        ["repaint_overwrite"]
+    );
+}
+
+#[test]
+fn decawm_off_overstrikes_last_cell() {
+    // DECAWM off: no pending wrap — writes at the last column stack
+    // onto the same cell (each an overwrite)
+    let mut input = vec![b'x'; 200];
+    input.extend_from_slice(b"\x1b[?7lyz");
+    let seqs = scan(&input);
+    let p = pattern(&seqs);
+    assert_eq!(p.detail, "repaint: \"xy\" → \"yz\"");
 }
 
 #[test]
