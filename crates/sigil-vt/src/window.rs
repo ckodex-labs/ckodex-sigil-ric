@@ -6,14 +6,14 @@
 //! *semantic* divergence — cells overwritten by different bytes or
 //! rows erased and repainted differently (`repaint_overwrite`).
 //!
-//! Quarantine: anything the model cannot faithfully replay is itself
-//! a finding — `window_degraded` for non-ASCII rows (byte cells
-//! desync from glyph cells) on erase/overwrite, `window_unmodeled`
-//! (dispatcher-emitted) for ops outside the modeled set.
-//!
-//! Limits (documented, not hidden): byte-granular cells; no scrollback
-//! — rows evaluate at scroll eviction; raw-stream semantics
-//! (LF ≠ CR+LF); DECLRMM margins untracked.
+//! Known limitations — each is a warning inside the system, never a
+//! crash or silent state: ops the model cannot replay emit
+//! `window_unmodeled` (DECLRMM margins, DECOM-relative addressing,
+//! LNM, 132-col, charsets); rewritten non-ASCII rows emit
+//! `window_degraded` (byte cells desync from glyph cells); the
+//! 128-finding cap reports its first drop as `window_degraded`.
+//! Bounded by design: byte-granular cells, no scrollback (rows
+//! evaluate at eviction), raw-stream semantics (LF ≠ CR+LF).
 
 mod findings;
 mod ops;
