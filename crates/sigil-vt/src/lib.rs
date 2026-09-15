@@ -7,7 +7,11 @@
 //! `osc.zig` state trie (pinned commit `a887df4`, reviewed against source).
 //! Command names intentionally match ghostty's `Command` snake_case
 //! spellings so `sigil-core`'s severity map stays aligned with the
-//! upstream taxonomy.
+//! upstream taxonomy. Alongside framing, a bounded virtual window
+//! (`window.rs`) replays writes/moves/erases over a 200×48 cell grid so
+//! repaint detection is *semantic*: it fires when the displayed byte
+//! stream diverges from what a terminal would actually show, not when an
+//! erase op is merely present.
 //!
 //! Boundary discipline: this crate extracts and classifies — `sigil-core`
 //! owns severity mapping, evidence text, and verdicts. A `conformance`
@@ -17,6 +21,9 @@
 
 use sigil_core::terminal::{TerminalSequence, TerminalSequenceKind, TerminalSequenceScanner};
 use sigil_core::types::ByteRange;
+
+mod window;
+use window::VirtualWindow;
 
 const ESC: u8 = 0x1B;
 const BEL: u8 = 0x07;
@@ -40,142 +47,122 @@ impl VtScanner {
 
 impl TerminalSequenceScanner for VtScanner {
     fn name(&self) -> &str {
-        "sigil-vt osc-table"
+        "sigil-vt osc-table+window"
     }
 
     fn scan(&self, bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
         let mut out = Vec::new();
-        // Repaint-pattern state: set by an erase/rewind CSI, cleared on
-        // LF. If printable text arrives while set, emit one `Pattern`
-        // sequence spanning trigger-start .. rewritten-run-end.
-        let mut pending_repaint: Option<(usize, &'static str)> = None;
+        // Side-structure: the virtual window replays writes/moves/erases
+        // so divergence is *semantic* — a repaint finding fires when a
+        // cell's displayed byte is overwritten, not when an erase op is
+        // merely present.
+        let mut win = VirtualWindow::new();
         let mut i = 0;
         while i < bytes.len() {
-            let start = i;
-            match bytes[i] {
-                ESC if i + 1 < bytes.len() => match bytes[i + 1] {
-                    b'[' => {
-                        i = csi_end(bytes, i + 2, |e| {
-                            let command = csi_command(&bytes[start..e]);
-                            if is_repaint_trigger(command) {
-                                pending_repaint.get_or_insert((start, command));
-                            }
-                            out.push(seq(
-                                start,
-                                e,
-                                TerminalSequenceKind::Csi {
-                                    command: command.to_string(),
-                                },
-                                csi_detail(&bytes[start..e], command),
-                            ));
-                        })
-                    }
-                    b']' => i = osc_end(bytes, i + 2, start, &mut out),
-                    b'P' => i = st_end(bytes, i + 2, start, &mut out, TerminalSequenceKind::Dcs),
-                    b'X' | b'^' | b'_' => {
-                        i = st_end(bytes, i + 2, start, &mut out, TerminalSequenceKind::Escape)
-                    }
-                    _ => {
-                        out.push(seq(
-                            start,
-                            start + 2,
-                            TerminalSequenceKind::Escape,
-                            format!("ESC {}", printable(bytes[i + 1])),
-                        ));
-                        i += 2;
-                    }
-                },
+            i = match bytes[i] {
+                ESC if i + 1 < bytes.len() => esc_dispatch(bytes, i, &mut win, &mut out),
                 ESC => {
                     out.push(seq(
-                        start,
-                        start + 1,
+                        i,
+                        i + 1,
                         TerminalSequenceKind::Escape,
                         "lone ESC".into(),
                     ));
-                    i += 1;
+                    i + 1
                 }
-                C1_CSI => {
-                    i = csi_end(bytes, i + 1, |e| {
-                        let command = csi_command(&bytes[start..e]);
-                        if is_repaint_trigger(command) {
-                            pending_repaint.get_or_insert((start, command));
-                        }
-                        out.push(seq(
-                            start,
-                            e,
-                            TerminalSequenceKind::Csi {
-                                command: command.to_string(),
-                            },
-                            csi_detail(&bytes[start..e], command),
-                        ));
-                    })
-                }
-                C1_OSC => i = osc_end(bytes, i + 1, start, &mut out),
+                C1_CSI => csi_span(bytes, i + 1, i, &mut win, &mut out),
+                C1_OSC => osc_end(bytes, i + 1, i, &mut out),
                 C1_DCS | C1_SOS | C1_PM | C1_APC => {
-                    i = st_end(bytes, i + 1, start, &mut out, TerminalSequenceKind::Dcs)
+                    st_end(bytes, i + 1, i, &mut out, TerminalSequenceKind::Dcs)
                 }
-                // Vertical advances (LF/VT/FF/NEL) close the repaint
-                // window — a fresh line is a fresh render context. CR
-                // deliberately does not clear: `erase + CR + text` is
-                // the canonical same-line overwrite idiom.
-                0x0A | 0x0B | 0x0C | 0x85 => {
-                    pending_repaint = None;
-                    i += 1;
+                b => {
+                    feed_plain(b, i, &mut win);
+                    i + 1
                 }
-                b if is_printable(b) => {
-                    if let Some((trigger_at, trigger_cmd)) = pending_repaint.take() {
-                        let run_end = repaint_run_end(bytes, i);
-                        out.push(seq(
-                            trigger_at,
-                            run_end,
-                            TerminalSequenceKind::Pattern {
-                                name: "repaint_overwrite".into(),
-                            },
-                            format!("repaint after {trigger_cmd}"),
-                        ));
-                    }
-                    i += 1;
-                }
-                _ => i += 1,
-            }
+            };
+        }
+        for (range, detail) in win.finish() {
+            out.push(seq(
+                range.start,
+                range.end,
+                TerminalSequenceKind::Pattern {
+                    name: "repaint_overwrite".into(),
+                },
+                detail,
+            ));
         }
         Ok(out)
     }
+}
+
+/// Dispatch on the byte after `ESC` (position `i`); returns the index
+/// after the handled span.
+fn esc_dispatch(
+    bytes: &[u8],
+    i: usize,
+    win: &mut VirtualWindow,
+    out: &mut Vec<TerminalSequence>,
+) -> usize {
+    match bytes[i + 1] {
+        b'[' => csi_span(bytes, i + 2, i, win, out),
+        b']' => osc_end(bytes, i + 2, i, out),
+        b'P' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Dcs),
+        b'X' | b'^' | b'_' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Escape),
+        b => {
+            out.push(seq(
+                i,
+                i + 2,
+                TerminalSequenceKind::Escape,
+                format!("ESC {}", printable(b)),
+            ));
+            i + 2
+        }
+    }
+}
+
+/// Feed a non-sequence byte to the window: C0 controls drive cursor
+/// state, printable bytes write cells, everything else is ignored.
+fn feed_plain(b: u8, pos: usize, win: &mut VirtualWindow) {
+    match b {
+        0x0A..=0x0C => win.line_feed(),
+        0x85 => win.next_line(),
+        0x0D => win.carriage_return(),
+        0x09 => win.tab(),
+        0x08 => win.backspace(),
+        _ if is_printable(b) => win.write(b, pos),
+        _ => {}
+    }
+}
+
+/// Frame a CSI sequence, decode its op, apply it to the window, and
+/// emit the classified sequence. `params_at` is where the body starts
+/// (after `ESC [` or the single C1 byte); `start` is the span start.
+fn csi_span(
+    bytes: &[u8],
+    params_at: usize,
+    start: usize,
+    win: &mut VirtualWindow,
+    out: &mut Vec<TerminalSequence>,
+) -> usize {
+    csi_end(bytes, params_at, |e| {
+        let span = &bytes[start..e];
+        let command = csi_command(span);
+        win.apply_csi(command, csi_params(span), span.last() == Some(&b'l'));
+        out.push(seq(
+            start,
+            e,
+            TerminalSequenceKind::Csi {
+                command: command.to_string(),
+            },
+            csi_detail(span, command),
+        ));
+    })
 }
 
 /// Bytes that render as glyphs. Excludes C0/C1 controls (0x00–0x1F,
 /// 0x7F, 0x80–0x9F); UTF-8 continuation/lead bytes (0xA0+) count.
 fn is_printable(b: u8) -> bool {
     (0x20..0x7F).contains(&b) || b >= 0xA0
-}
-
-/// Exclusive end of the printable run starting at `i` (stops at any
-/// control byte or sequence introducer).
-fn repaint_run_end(bytes: &[u8], mut i: usize) -> usize {
-    while i < bytes.len() && is_printable(bytes[i]) {
-        i += 1;
-    }
-    i
-}
-
-/// CSI ops that open a repaint window: anything that erases cells or
-/// rewinds the cursor lets following bytes overwrite what was rendered.
-fn is_repaint_trigger(command: &str) -> bool {
-    matches!(
-        command,
-        "erase_line"
-            | "erase_display"
-            | "erase_scrollback"
-            | "erase_chars"
-            | "delete_chars"
-            | "delete_lines"
-            | "cursor_up"
-            | "cursor_back"
-            | "cursor_column"
-            | "cursor_position"
-            | "cursor_prev_line"
-            | "cursor_row"
-    )
 }
 
 fn seq(start: usize, end: usize, kind: TerminalSequenceKind, detail: String) -> TerminalSequence {
@@ -360,7 +347,7 @@ fn osc9_kind<'a>(fields: &mut impl Iterator<Item = &'a [u8]>) -> &'static str {
 }
 
 /// Parse a field of pure ASCII digits into a u16 (None on empty/overflow).
-fn digits(field: &[u8]) -> Option<u16> {
+pub(crate) fn digits(field: &[u8]) -> Option<u16> {
     if field.is_empty() || !field.iter().all(|b| b.is_ascii_digit()) {
         return None;
     }
@@ -369,12 +356,10 @@ fn digits(field: &[u8]) -> Option<u16> {
     })
 }
 
-/// Decode a CSI sequence's operation from params + final byte.
-///
-/// Table authored from ECMA-48/xterm semantics — *not* mirrored from
-/// ghostty (the upstream C API exposes no CSI command taxonomy;
-/// `osc::Parser` only covers OSC). `seq_bytes` is the full span
-/// including the `ESC [` / C1 introducer and the final byte.
+/// Decode a CSI sequence's operation from params + final byte. Table
+/// authored from ECMA-48/xterm — the upstream C API exposes no CSI
+/// taxonomy (`osc::Parser` covers OSC only). `seq_bytes` is the full
+/// span including introducer and final byte.
 fn csi_command(seq_bytes: &[u8]) -> &'static str {
     // Strip the introducer (ESC [ = 2 bytes, C1 CSI = 1) and split
     // params+intermediates from the final byte.
@@ -389,21 +374,11 @@ fn csi_command(seq_bytes: &[u8]) -> &'static str {
     };
     match final_b {
         b'K' => "erase_line",
-        b'J' => {
-            if params == b"3" {
-                "erase_scrollback"
-            } else {
-                "erase_display"
-            }
-        }
+        b'J' if params == b"3" => "erase_scrollback",
+        b'J' => "erase_display",
         b'X' => "erase_chars",
-        b'm' => {
-            if sgr_conceals(params) {
-                "sgr_conceal"
-            } else {
-                "sgr"
-            }
-        }
+        b'm' if sgr_conceals(params) => "sgr_conceal",
+        b'm' => "sgr",
         b'H' | b'f' => "cursor_position",
         b'A' => "cursor_up",
         b'B' => "cursor_down",
@@ -442,10 +417,16 @@ fn mode_command(params: &[u8]) -> &'static str {
     }
 }
 
-fn csi_detail(seq: &[u8], command: &str) -> String {
+/// Raw CSI parameter bytes (between introducer and final byte) —
+/// `?`-private markers and intermediates included.
+fn csi_params(seq: &[u8]) -> &[u8] {
     let skip = if seq.first() == Some(&ESC) { 2 } else { 1 };
     let body = seq.get(skip..).unwrap_or(&[]);
-    let params = &body[..body.len().saturating_sub(1)];
+    &body[..body.len().saturating_sub(1)]
+}
+
+fn csi_detail(seq: &[u8], command: &str) -> String {
+    let params = csi_params(seq);
     if params.is_empty() {
         command.to_string()
     } else {
