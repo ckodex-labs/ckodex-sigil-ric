@@ -9,9 +9,9 @@
 //!
 //! Boundary discipline mirrors `perplexity.rs`: an injected
 //! [`TerminalSequenceScanner`] extracts and classifies sequences (the
-//! engine — e.g. `sigil-vt`'s Ghostty-backed scanner); the kernel owns
-//! severity mapping, evidence text, and the verdict path. Scanner
-//! failures are recorded as `Failed` evidence — visible, never silent.
+//! engine — `sigil-vt`'s `VtScanner`); the kernel owns severity mapping,
+//! evidence text, and the verdict path. Scanner failures are recorded
+//! as `Failed` evidence — visible, never silent.
 
 use crate::types::{ByteRange, DetectorId, ScanFinding, Severity};
 use serde::{Deserialize, Serialize};
@@ -40,13 +40,19 @@ pub enum TerminalSequenceKind {
     /// OSC sequence; `command` is the classified command name
     /// (e.g. `clipboard_contents`, `hyperlink_start`).
     Osc { command: String },
-    /// CSI sequence (cursor/mode/erase manipulation).
-    Csi,
+    /// CSI sequence; `command` is the decoded operation name
+    /// (e.g. `erase_line`, `sgr_conceal`, `cursor_up`).
+    Csi { command: String },
     /// DCS passthrough (device control string — highest-risk channel:
     /// sixel/regis/kbd payloads reach the terminal driver verbatim).
     Dcs,
     /// Bare ESC/C1 introducer or unclassified escape.
     Escape,
+    /// Cross-sequence pattern synthesized by the scanner — not a single
+    /// sequence. `repaint_overwrite`: an erase/rewind op followed by
+    /// printable text (the byte stream says one thing; the display is
+    /// rewritten to another).
+    Pattern { name: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -159,7 +165,28 @@ fn classify(seq: &TerminalSequence) -> Option<(Severity, &'static str)> {
             _ => (Severity::Low, "OSC sequence"),
         },
         TerminalSequenceKind::Dcs => (Severity::High, "device-control string"),
-        TerminalSequenceKind::Csi => (Severity::Low, "CSI sequence (output manipulation)"),
+        TerminalSequenceKind::Csi { command } => match command.as_str() {
+            // SGR 8 conceal: bytes are in the stream but render
+            // invisible — the display/consumption divergence itself.
+            "sgr_conceal" => (Severity::Medium, "concealed-text SGR (renders invisible)"),
+            // 3J wipes scrollback: prior content a reviewer could
+            // scroll back to is destroyed — evidence evasion.
+            "erase_scrollback" => (
+                Severity::Medium,
+                "scrollback-erase CSI (review-evidence destruction)",
+            ),
+            // Alternate screen: content shown there never enters
+            // scrollback — transient display, no replay trace.
+            "alt_screen" => (
+                Severity::Medium,
+                "alternate-screen CSI (content leaves no scrollback)",
+            ),
+            _ => (Severity::Low, "CSI sequence (output manipulation)"),
+        },
+        TerminalSequenceKind::Pattern { name } => match name.as_str() {
+            "repaint_overwrite" => (Severity::Medium, "screen-repaint pattern (output forgery)"),
+            _ => (Severity::Low, "sequence pattern"),
+        },
         TerminalSequenceKind::Escape => (Severity::Low, "escape sequence"),
     };
     Some(risk)

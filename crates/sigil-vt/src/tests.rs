@@ -139,10 +139,98 @@ fn unknown_and_malformed_osc_are_unclassified() {
 fn csi_and_esc_and_dcs_spans() {
     let seqs = scan(b"a\x1b[31mRED\x1b[0m \x1bPq\x1b\\");
     assert_eq!(seqs.len(), 3);
-    assert_eq!(seqs[0].kind, TerminalSequenceKind::Csi);
-    assert_eq!(seqs[1].kind, TerminalSequenceKind::Csi);
+    assert_eq!(
+        seqs[0].kind,
+        TerminalSequenceKind::Csi {
+            command: "sgr".into()
+        }
+    );
+    assert_eq!(
+        seqs[1].kind,
+        TerminalSequenceKind::Csi {
+            command: "sgr".into()
+        }
+    );
     assert_eq!(seqs[2].kind, TerminalSequenceKind::Dcs);
     assert_eq!(seqs[0].byte_range.start, 1);
+}
+
+#[test]
+fn csi_command_decoding() {
+    let cases: &[(&[u8], &str)] = &[
+        (b"\x1b[2K", "erase_line"),
+        (b"\x1b[K", "erase_line"),
+        (b"\x1b[J", "erase_display"),
+        (b"\x1b[3J", "erase_scrollback"),
+        (b"\x1b[2X", "erase_chars"),
+        (b"\x1b[8m", "sgr_conceal"),
+        (b"\x1b[1;8;31m", "sgr_conceal"),
+        (b"\x1b[31m", "sgr"),
+        (b"\x1b[?1049h", "alt_screen"),
+        (b"\x1b[?25l", "cursor_visibility"),
+        (b"\x1b[5h", "set_reset_mode"),
+        (b"\x1b[1A", "cursor_up"),
+        (b"\x1b[3;4H", "cursor_position"),
+        (b"\x1b[5S", "scroll_up"),
+        (b"\x1b[2P", "delete_chars"),
+        (b"\x1b[s", "save_cursor"),
+        (b"\x1b[ZZ", "csi_unknown"),
+        // C1-introduced CSI decodes identically
+        (b"\x9b2K", "erase_line"),
+    ];
+    for (input, want) in cases {
+        let seqs = scan(input);
+        assert_eq!(seqs.len(), 1, "{input:?}");
+        match &seqs[0].kind {
+            TerminalSequenceKind::Csi { command } => {
+                assert_eq!(command, want, "{input:?}");
+            }
+            other => panic!("expected Csi, got {other:?}"),
+        }
+    }
+}
+
+#[test]
+fn repaint_overwrite_pattern_detected() {
+    // erase-line + carriage-return + rewrite — canonical repaint idiom
+    let seqs = scan(b"ran: apt install\x1b[2K\x1b[Gran: apt update");
+    let pattern = seqs
+        .iter()
+        .find(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. }))
+        .expect("repaint pattern");
+    assert_eq!(
+        pattern.kind,
+        TerminalSequenceKind::Pattern {
+            name: "repaint_overwrite".into()
+        }
+    );
+    // span covers erase seq through the rewritten run
+    assert_eq!(pattern.byte_range.start, 16);
+    assert_eq!(pattern.detail, "repaint after erase_line");
+    // cursor-up + erase + rewrite (previous-line overwrite)
+    let seqs = scan(b"line1\nline2\x1b[1A\x1b[2KFORGED");
+    assert!(seqs.iter().any(
+        |s| matches!(&s.kind, TerminalSequenceKind::Pattern { name } if name == "repaint_overwrite")
+    ));
+}
+
+#[test]
+fn repaint_pattern_negatives() {
+    // erase with no following text — capability only, no pattern
+    let seqs = scan(b"text\x1b[2K");
+    assert!(!seqs
+        .iter()
+        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
+    // erase then newline then text — LF closes the window
+    let seqs = scan(b"x\x1b[2K\ny");
+    assert!(!seqs
+        .iter()
+        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
+    // SGR color then text — not a repaint trigger
+    let seqs = scan(b"a\x1b[31mred");
+    assert!(!seqs
+        .iter()
+        .any(|s| matches!(&s.kind, TerminalSequenceKind::Pattern { .. })));
 }
 
 #[test]
