@@ -354,49 +354,6 @@ fn nonascii_flag_clears_when_row_blanked() {
 }
 
 #[test]
-fn unmodeled_csi_ops_quarantined() {
-    // Display-state modes the window does not replay — each must
-    // surface as a finding rather than silently desync the model.
-    for input in [
-        &b"\x1b[?6h"[..],  // origin mode — shifts CUP coordinates
-        &b"\x1b[?69h"[..], // DECLRMM — left/right margins
-        &b"\x1b[20h"[..],  // LNM — LF starts implying CR
-        &b"\x1b[?3h"[..],  // 132-col mode
-        &b"\x1b[ZZ"[..],   // unrecognized final
-    ] {
-        assert_eq!(
-            pattern_names(&scan(input)),
-            ["window_unmodeled"],
-            "{input:?}"
-        );
-    }
-    // Modeled ops and visual-only modes stay quiet.
-    for input in [
-        &b"\x1b[4h"[..],   // insert mode — modeled
-        &b"\x1b[?7l"[..],  // DECAWM off — modeled
-        &b"\x1b[2;5r"[..], // DECSTBM — modeled
-        &b"\x1b[?25h"[..], // cursor visibility — no-op
-        &b"\x1b[?5h"[..],  // reverse video — visual only
-        &b"\x1b[31m"[..],  // SGR — no-op for positions
-    ] {
-        assert_eq!(pattern_names(&scan(input)), Vec::<&str>::new(), "{input:?}");
-    }
-}
-
-#[test]
-fn unmodeled_esc_ops_quarantined() {
-    // charset select: ESC ( 0 — the '0' is the selector, not text;
-    // it must not leak into the window as a printable byte
-    let seqs = scan(b"\x1b(0abc");
-    assert_eq!(pattern_names(&seqs), ["window_unmodeled"], "{seqs:?}");
-    // unmodeled single-ESC final (ESC F = cursor to lower-left)
-    assert_eq!(pattern_names(&scan(b"\x1bF")), ["window_unmodeled"]);
-    // modeled singles stay quiet
-    assert_eq!(pattern_names(&scan(b"\x1bc")), Vec::<&str>::new()); // RIS
-    assert_eq!(pattern_names(&scan(b"\x1bD")), Vec::<&str>::new()); // IND
-}
-
-#[test]
 fn ris_resets_display_but_keeps_prior_findings() {
     // repaint before RIS still reports; content after RIS starts
     // from a clean screen so nothing diverges
@@ -442,6 +399,9 @@ fn lone_esc_reported() {
     assert_eq!(seqs.len(), 1);
     assert_eq!(seqs[0].kind, TerminalSequenceKind::Escape);
 }
+
+/// Quarantine + mode-gate tests — `tests/quarantine.rs`.
+mod quarantine;
 
 /// Cross-checks against `libghostty-vt`'s fuzzed parser and real
 /// `Terminal` — see `tests/ghostty_conformance.rs`. Gated behind

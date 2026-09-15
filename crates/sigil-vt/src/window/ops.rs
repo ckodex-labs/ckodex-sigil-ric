@@ -44,9 +44,36 @@ impl VirtualWindow {
             "scroll_region" => self.set_margins(p(0, 1), p(1, 0)),
             "insert_mode" => self.insert_mode = !reset,
             "decawm" => self.autowrap = !reset,
+            // DECOM set/reset homes the cursor to the *new* origin
+            // (xterm charproc.c, ghostty setOriginMode): the flag is
+            // quarantined, but the home itself is modeled state.
+            "origin_mode" => {
+                self.decom = !reset;
+                self.home();
+            }
+            "declrmm" => self.declrmm = !reset,
             "save_cursor" | "restore_cursor" => self.save_restore(command == "save_cursor"),
             "alt_screen" => self.toggle_alt(reset, alt_mode(params)),
             _ => {}
+        }
+    }
+
+    /// The op this sequence *effectively is* in the current mode
+    /// state. The flag modes are tracked (not modeled) precisely so
+    /// ops whose meaning shifts under them stay quarantined instead of
+    /// being misapplied:
+    /// - under DECLRMM (`?69h`), `CSI s` is DECSLRM (left/right
+    ///   margins), not SCOSC — xterm ctlseqs: "Save cursor, available
+    ///   only when DECLRMM is disabled";
+    /// - under DECOM (`?6h`), CUP/HVP and VPA address the scroll
+    ///   region, not the screen.
+    ///   Renamed ops fall out of the modeled set — quarantined, not run.
+    pub(crate) fn effective_op<'a>(&self, command: &'a str) -> &'a str {
+        match command {
+            "save_cursor" if self.declrmm => "declrmm_margins",
+            "cursor_position" if self.decom => "origin_cup",
+            "cursor_row" if self.decom => "origin_vpa",
+            _ => command,
         }
     }
 
@@ -90,8 +117,9 @@ impl VirtualWindow {
     }
 
     /// DECSTBM (`CSI top ; bottom r`): 1-indexed, empty bottom = last
-    /// row, invalid pairs ignored; the cursor homes (ghostty
-    /// `setTopAndBottomMargin` → `setCursorPos(1,1)`).
+    /// row, invalid pairs ignored; the cursor homes — to the region's
+    /// top-left under DECOM, else the screen's (ghostty
+    /// `setTopAndBottomMargin` → `setCursorPos(1,1)`, origin-relative).
     fn set_margins(&mut self, top: usize, bottom: usize) {
         let t = top.max(1).saturating_sub(1);
         let b = (if bottom == 0 { ROWS } else { bottom })
@@ -102,7 +130,14 @@ impl VirtualWindow {
         }
         self.scroll_top = t;
         self.scroll_bottom = b;
-        self.row = 0;
+        self.home();
+    }
+
+    /// Cursor home: the scroll region's top-left under DECOM, the
+    /// screen's otherwise (left margin unmodeled — DECLRMM is
+    /// quarantined).
+    fn home(&mut self) {
+        self.row = if self.decom { self.scroll_top } else { 0 };
         self.col = 0;
         self.pending_wrap = false;
     }

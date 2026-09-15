@@ -218,7 +218,10 @@ fn csi_span(
 ) -> usize {
     csi_end(bytes, params_at, |e| {
         let span = &bytes[start..e];
-        let command = csi_command(span);
+        // The same bytes are a different op under private modes —
+        // `CSI s` is DECSLRM under `?69h`, CUP is region-relative
+        // under `?6h` — so dispatch through the mode-aware gate.
+        let command = win.effective_op(csi_command(span));
         win.apply_csi(command, csi_params(span), span.last() == Some(&b'l'));
         out.push(seq(
             start,
