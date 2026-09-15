@@ -45,6 +45,10 @@ impl TerminalSequenceScanner for VtScanner {
 
     fn scan(&self, bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
         let mut out = Vec::new();
+        // Repaint-pattern state: set by an erase/rewind CSI, cleared on
+        // LF. If printable text arrives while set, emit one `Pattern`
+        // sequence spanning trigger-start .. rewritten-run-end.
+        let mut pending_repaint: Option<(usize, &'static str)> = None;
         let mut i = 0;
         while i < bytes.len() {
             let start = i;
@@ -52,11 +56,17 @@ impl TerminalSequenceScanner for VtScanner {
                 ESC if i + 1 < bytes.len() => match bytes[i + 1] {
                     b'[' => {
                         i = csi_end(bytes, i + 2, |e| {
+                            let command = csi_command(&bytes[start..e]);
+                            if is_repaint_trigger(command) {
+                                pending_repaint.get_or_insert((start, command));
+                            }
                             out.push(seq(
                                 start,
                                 e,
-                                TerminalSequenceKind::Csi,
-                                csi_detail(&bytes[start..e]),
+                                TerminalSequenceKind::Csi {
+                                    command: command.to_string(),
+                                },
+                                csi_detail(&bytes[start..e], command),
                             ));
                         })
                     }
@@ -86,11 +96,17 @@ impl TerminalSequenceScanner for VtScanner {
                 }
                 C1_CSI => {
                     i = csi_end(bytes, i + 1, |e| {
+                        let command = csi_command(&bytes[start..e]);
+                        if is_repaint_trigger(command) {
+                            pending_repaint.get_or_insert((start, command));
+                        }
                         out.push(seq(
                             start,
                             e,
-                            TerminalSequenceKind::Csi,
-                            csi_detail(&bytes[start..e]),
+                            TerminalSequenceKind::Csi {
+                                command: command.to_string(),
+                            },
+                            csi_detail(&bytes[start..e], command),
                         ));
                     })
                 }
@@ -98,11 +114,68 @@ impl TerminalSequenceScanner for VtScanner {
                 C1_DCS | C1_SOS | C1_PM | C1_APC => {
                     i = st_end(bytes, i + 1, start, &mut out, TerminalSequenceKind::Dcs)
                 }
+                // Vertical advances (LF/VT/FF/NEL) close the repaint
+                // window — a fresh line is a fresh render context. CR
+                // deliberately does not clear: `erase + CR + text` is
+                // the canonical same-line overwrite idiom.
+                0x0A | 0x0B | 0x0C | 0x85 => {
+                    pending_repaint = None;
+                    i += 1;
+                }
+                b if is_printable(b) => {
+                    if let Some((trigger_at, trigger_cmd)) = pending_repaint.take() {
+                        let run_end = repaint_run_end(bytes, i);
+                        out.push(seq(
+                            trigger_at,
+                            run_end,
+                            TerminalSequenceKind::Pattern {
+                                name: "repaint_overwrite".into(),
+                            },
+                            format!("repaint after {trigger_cmd}"),
+                        ));
+                    }
+                    i += 1;
+                }
                 _ => i += 1,
             }
         }
         Ok(out)
     }
+}
+
+/// Bytes that render as glyphs. Excludes C0/C1 controls (0x00–0x1F,
+/// 0x7F, 0x80–0x9F); UTF-8 continuation/lead bytes (0xA0+) count.
+fn is_printable(b: u8) -> bool {
+    (0x20..0x7F).contains(&b) || b >= 0xA0
+}
+
+/// Exclusive end of the printable run starting at `i` (stops at any
+/// control byte or sequence introducer).
+fn repaint_run_end(bytes: &[u8], mut i: usize) -> usize {
+    while i < bytes.len() && is_printable(bytes[i]) {
+        i += 1;
+    }
+    i
+}
+
+/// CSI ops that open a repaint window: anything that erases cells or
+/// rewinds the cursor lets following bytes overwrite what was rendered.
+fn is_repaint_trigger(command: &str) -> bool {
+    matches!(
+        command,
+        "erase_line"
+            | "erase_display"
+            | "erase_scrollback"
+            | "erase_chars"
+            | "delete_chars"
+            | "delete_lines"
+            | "cursor_up"
+            | "cursor_back"
+            | "cursor_column"
+            | "cursor_position"
+            | "cursor_prev_line"
+            | "cursor_row"
+    )
 }
 
 fn seq(start: usize, end: usize, kind: TerminalSequenceKind, detail: String) -> TerminalSequence {
@@ -296,10 +369,88 @@ fn digits(field: &[u8]) -> Option<u16> {
     })
 }
 
-fn csi_detail(seq: &[u8]) -> String {
-    seq.last()
-        .map(|&f| format!("final {}", printable(f)))
-        .unwrap_or_default()
+/// Decode a CSI sequence's operation from params + final byte.
+///
+/// Table authored from ECMA-48/xterm semantics — *not* mirrored from
+/// ghostty (the upstream C API exposes no CSI command taxonomy;
+/// `osc::Parser` only covers OSC). `seq_bytes` is the full span
+/// including the `ESC [` / C1 introducer and the final byte.
+fn csi_command(seq_bytes: &[u8]) -> &'static str {
+    // Strip the introducer (ESC [ = 2 bytes, C1 CSI = 1) and split
+    // params+intermediates from the final byte.
+    let skip = if seq_bytes.first() == Some(&ESC) {
+        2
+    } else {
+        1
+    };
+    let body = seq_bytes.get(skip..).unwrap_or(&[]);
+    let Some((&final_b, params)) = body.split_last() else {
+        return "csi_unknown";
+    };
+    match final_b {
+        b'K' => "erase_line",
+        b'J' => {
+            if params == b"3" {
+                "erase_scrollback"
+            } else {
+                "erase_display"
+            }
+        }
+        b'X' => "erase_chars",
+        b'm' => {
+            if sgr_conceals(params) {
+                "sgr_conceal"
+            } else {
+                "sgr"
+            }
+        }
+        b'H' | b'f' => "cursor_position",
+        b'A' => "cursor_up",
+        b'B' => "cursor_down",
+        b'C' => "cursor_forward",
+        b'D' => "cursor_back",
+        b'E' => "cursor_next_line",
+        b'F' => "cursor_prev_line",
+        b'G' | b'`' => "cursor_column",
+        b'd' => "cursor_row",
+        b'S' => "scroll_up",
+        b'T' => "scroll_down",
+        b'L' => "insert_lines",
+        b'M' => "delete_lines",
+        b'P' => "delete_chars",
+        b'@' => "insert_chars",
+        b'h' | b'l' => mode_command(params),
+        b's' => "save_cursor",
+        b'u' => "restore_cursor",
+        _ => "csi_unknown",
+    }
+}
+
+/// SGR param 8 = conceal (renders following text invisible).
+fn sgr_conceals(params: &[u8]) -> bool {
+    params.split(|&b| b == b';').any(|p| p == b"8")
+}
+
+/// `h`/`l` private-mode ops worth naming: `?25` cursor visibility,
+/// `?47`/`?1047`/`?1049` alternate screen. Everything else stays
+/// `set_mode`/`reset_mode`.
+fn mode_command(params: &[u8]) -> &'static str {
+    match params {
+        b"?25" => "cursor_visibility",
+        b"?47" | b"?1047" | b"?1049" => "alt_screen",
+        _ => "set_reset_mode",
+    }
+}
+
+fn csi_detail(seq: &[u8], command: &str) -> String {
+    let skip = if seq.first() == Some(&ESC) { 2 } else { 1 };
+    let body = seq.get(skip..).unwrap_or(&[]);
+    let params = &body[..body.len().saturating_sub(1)];
+    if params.is_empty() {
+        command.to_string()
+    } else {
+        format!("{command} params \"{}\"", String::from_utf8_lossy(params))
+    }
 }
 
 fn printable(b: u8) -> String {

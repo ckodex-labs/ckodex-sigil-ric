@@ -66,16 +66,58 @@ fn title_and_notification_spoofing() {
     }
 }
 
+fn csi(command: &str) -> TerminalSequenceKind {
+    TerminalSequenceKind::Csi {
+        command: command.to_string(),
+    }
+}
+
 #[test]
 fn dcs_is_high_csi_is_low() {
     let (findings, _) = detect(vec![
         seq(TerminalSequenceKind::Dcs, 0, 5, ""),
-        seq(TerminalSequenceKind::Csi, 5, 10, ""),
+        seq(csi("cursor_up"), 5, 10, ""),
         seq(TerminalSequenceKind::Escape, 10, 12, ""),
     ]);
     assert_eq!(findings[0].severity, Severity::High);
     assert_eq!(findings[1].severity, Severity::Low);
     assert_eq!(findings[2].severity, Severity::Low);
+}
+
+#[test]
+fn conceal_scrollback_and_altscreen_are_medium() {
+    for command in ["sgr_conceal", "erase_scrollback", "alt_screen"] {
+        let (findings, _) = detect(vec![seq(csi(command), 0, 10, "")]);
+        assert_eq!(
+            findings[0].severity,
+            Severity::Medium,
+            "CSI {command} should be Medium"
+        );
+    }
+}
+
+#[test]
+fn repaint_pattern_is_medium_unknown_pattern_low() {
+    let (findings, _) = detect(vec![seq(
+        TerminalSequenceKind::Pattern {
+            name: "repaint_overwrite".to_string(),
+        },
+        10,
+        30,
+        "repaint after erase_line",
+    )]);
+    assert_eq!(findings[0].severity, Severity::Medium);
+    assert!(findings[0].evidence.contains("repaint"));
+
+    let (findings, _) = detect(vec![seq(
+        TerminalSequenceKind::Pattern {
+            name: "future_pattern".to_string(),
+        },
+        0,
+        5,
+        "",
+    )]);
+    assert_eq!(findings[0].severity, Severity::Low);
 }
 
 #[test]
@@ -141,7 +183,7 @@ fn unclassified_osc_is_low() {
 
 #[test]
 fn max_sequences_caps_findings() {
-    let seqs = vec![seq(TerminalSequenceKind::Csi, 0, 4, ""); 10];
+    let seqs = vec![seq(csi("sgr"), 0, 4, ""); 10];
     let (findings, report) = detect_terminal_escapes(&seqs, "fake", 3);
     assert_eq!(findings.len(), 3);
     assert_eq!(report.sequence_count, 10);
