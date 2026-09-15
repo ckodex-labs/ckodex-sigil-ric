@@ -281,11 +281,13 @@ jobs:
           go run ./cmd/sigil-bench --json --rounds 1 --corpus ../../bench/corpora/small.json
 
   vt-conformance:
-    # Cross-checks sigil-vt's owned OSC table against libghostty-vt's
-    # fuzzed parser (the `conformance` feature). libghostty-vt needs rust
+    # Cross-checks sigil-vt against libghostty-vt (the `conformance`
+    # feature): the owned OSC table vs its fuzzed parser, and every
+    # modeled window op vs its real `Terminal` — cell-for-cell grid
+    # parity plus a seeded differential fuzz. libghostty-vt needs rust
     # >= 1.90 and zig 0.15.2 for its pinned ghostty source — confined to
     # this lane; the runtime path never touches the FFI dep.
-    name: OSC table conformance vs ghostty
+    name: OSC + window-model conformance vs ghostty
     needs: verify
     runs-on: ubuntu-latest
     steps:
