@@ -51,48 +51,61 @@ impl TerminalSequenceScanner for VtScanner {
     }
 
     fn scan(&self, bytes: &[u8]) -> Result<Vec<TerminalSequence>, String> {
-        let mut out = Vec::new();
-        // Side-structure: the virtual window replays writes/moves/erases
-        // so divergence is *semantic* — a repaint finding fires when a
-        // cell's displayed byte is overwritten, not when an erase op is
-        // merely present.
-        let mut win = VirtualWindow::new();
-        let mut i = 0;
-        while i < bytes.len() {
-            i = match bytes[i] {
-                ESC if i + 1 < bytes.len() => esc_dispatch(bytes, i, &mut win, &mut out),
-                ESC => {
-                    out.push(seq(
-                        i,
-                        i + 1,
-                        TerminalSequenceKind::Escape,
-                        "lone ESC".into(),
-                    ));
-                    i + 1
-                }
-                C1_CSI => csi_span(bytes, i + 1, i, &mut win, &mut out),
-                C1_OSC => osc_end(bytes, i + 1, i, &mut out),
-                C1_DCS | C1_SOS | C1_PM | C1_APC => {
-                    st_end(bytes, i + 1, i, &mut out, TerminalSequenceKind::Dcs)
-                }
-                b => {
-                    feed_plain(b, i, &mut win);
-                    i + 1
-                }
-            };
-        }
-        for (range, detail) in win.finish() {
-            out.push(seq(
-                range.start,
-                range.end,
-                TerminalSequenceKind::Pattern {
-                    name: "repaint_overwrite".into(),
-                },
-                detail,
-            ));
-        }
-        Ok(out)
+        Ok(run(bytes).0)
     }
+}
+
+/// The shared byte walk: frame sequences, feed the virtual window,
+/// emit classified sequences + window findings. The window is
+/// returned so the conformance lane can inspect final grid state.
+fn run(bytes: &[u8]) -> (Vec<TerminalSequence>, VirtualWindow) {
+    let mut out = Vec::new();
+    // Side-structure: the virtual window replays writes/moves/erases
+    // so divergence is *semantic* — a repaint finding fires when a
+    // cell's displayed byte is overwritten, not when an erase op is
+    // merely present.
+    let mut win = VirtualWindow::new();
+    let mut i = 0;
+    while i < bytes.len() {
+        i = match bytes[i] {
+            ESC if i + 1 < bytes.len() => esc_dispatch(bytes, i, &mut win, &mut out),
+            ESC => {
+                out.push(seq(
+                    i,
+                    i + 1,
+                    TerminalSequenceKind::Escape,
+                    "lone ESC".into(),
+                ));
+                i + 1
+            }
+            C1_CSI => csi_span(bytes, i + 1, i, &mut win, &mut out),
+            C1_OSC => osc_end(bytes, i + 1, i, &mut out),
+            C1_DCS | C1_SOS | C1_PM | C1_APC => {
+                st_end(bytes, i + 1, i, &mut out, TerminalSequenceKind::Dcs)
+            }
+            b => {
+                feed_plain(b, i, &mut win);
+                i + 1
+            }
+        };
+    }
+    for (range, detail) in win.finish() {
+        out.push(seq(
+            range.start,
+            range.end,
+            TerminalSequenceKind::Pattern {
+                name: "repaint_overwrite".into(),
+            },
+            detail,
+        ));
+    }
+    (out, win)
+}
+
+/// Conformance-lane access to the window's post-scan grid state.
+#[cfg(all(test, feature = "conformance"))]
+pub(crate) fn scan_window(bytes: &[u8]) -> VirtualWindow {
+    run(bytes).1
 }
 
 /// Dispatch on the byte after `ESC` (position `i`); returns the index
@@ -109,6 +122,15 @@ fn esc_dispatch(
         b'P' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Dcs),
         b'X' | b'^' | b'_' => st_end(bytes, i + 2, i, out, TerminalSequenceKind::Escape),
         b => {
+            // Single-ESC display ops still drive the window.
+            match b {
+                b'D' => win.line_feed(),         // IND
+                b'E' => win.next_line(),         // NEL
+                b'M' => win.reverse_index(),     // RI
+                b'7' => win.save_restore(true),  // DECSC
+                b'8' => win.save_restore(false), // DECRC
+                _ => {}
+            }
             out.push(seq(
                 i,
                 i + 2,
@@ -124,8 +146,10 @@ fn esc_dispatch(
 /// state, printable bytes write cells, everything else is ignored.
 fn feed_plain(b: u8, pos: usize, win: &mut VirtualWindow) {
     match b {
-        0x0A..=0x0C => win.line_feed(),
-        0x85 => win.next_line(),
+        // Raw C1 bytes are NOT display ops: ghostty's stream parser
+        // passes them to text handling (verified in the conformance
+        // lane) — the ESC D/E/M forms are the interpreted ones.
+        0x0A..=0x0C => win.line_feed(), // LF VT FF
         0x0D => win.carriage_return(),
         0x09 => win.tab(),
         0x08 => win.backspace(),

@@ -19,34 +19,18 @@
 //! DECAWM autowrap; raw-stream semantics (LF ≠ CR+LF); snapshots keep
 //! the first pre-erase state per row.
 
+mod findings;
+
+use findings::{Overwrite, RowSnap};
 use sigil_core::types::ByteRange;
 
 /// Window geometry: a sliding 200×48 grid. Anything older has already
 /// scrolled off — replaying beyond that is emulator territory, which
 /// the runtime path deliberately does not enter.
-const COLS: usize = 200;
-const ROWS: usize = 48;
+pub(crate) const COLS: usize = 200;
+pub(crate) const ROWS: usize = 48;
 
 const NO_SRC: usize = usize::MAX;
-
-/// A cell-overwrite event: window position + stream offsets of what
-/// was displayed and what replaced it.
-#[derive(Clone, Copy, Debug)]
-struct Overwrite {
-    row: usize,
-    col: usize,
-    alt: bool,
-    old: u8,
-    old_src: usize,
-    new: u8,
-    new_pos: usize,
-}
-
-/// A row's content at first erase — compared against its final state.
-struct RowSnap {
-    text: Vec<u8>,
-    srcs: Vec<usize>,
-}
 
 #[derive(Clone, Copy, Default)]
 struct Cell {
@@ -60,6 +44,11 @@ pub(crate) struct VirtualWindow {
     on_alt: bool,
     row: usize,
     col: usize,
+    /// DECAWM deferred wrap: after a write at the last column the
+    /// cursor stays put and the next printable wraps — matching
+    /// ghostty's `pending_wrap` (cursor moves and LF clear it without
+    /// wrapping; erases leave it untouched).
+    pending_wrap: bool,
     saved: (usize, usize),
     saved_alt: (usize, usize),
     snaps: Vec<Option<RowSnap>>,
@@ -76,6 +65,7 @@ impl VirtualWindow {
             on_alt: false,
             row: 0,
             col: 0,
+            pending_wrap: false,
             saved: (0, 0),
             saved_alt: (0, 0),
             snaps: std::iter::repeat_with(|| None).take(ROWS).collect(),
@@ -120,7 +110,8 @@ impl VirtualWindow {
     /// Write a printable byte at the cursor (DECAWM wrap); fires an
     /// overwrite event when the cell showed a different byte.
     pub(crate) fn write(&mut self, b: u8, pos: usize) {
-        if self.col >= COLS {
+        if self.pending_wrap {
+            self.pending_wrap = false;
             self.col = 0;
             self.advance_row(1);
         }
@@ -133,41 +124,54 @@ impl VirtualWindow {
             o
         };
         if old != 0 && old != b && old_src != NO_SRC {
-            self.overwrites.push(Overwrite {
-                row: self.row,
-                col: self.col,
-                alt: self.on_alt,
-                old,
-                old_src,
-                new: b,
-                new_pos: pos,
-            });
+            self.record_overwrite(self.row, self.col, old, old_src, b, pos);
         }
         self.col += 1;
+        if self.col == COLS {
+            self.col = COLS - 1;
+            self.pending_wrap = true;
+        }
     }
 
     /// LF/VT/FF move down only — CR is the column reset.
     pub(crate) fn line_feed(&mut self) {
+        self.pending_wrap = false;
         self.advance_row(1);
     }
 
     /// NEL (C1 0x85): down one row and column zero.
     pub(crate) fn next_line(&mut self) {
+        self.pending_wrap = false;
         self.col = 0;
         self.advance_row(1);
     }
 
     pub(crate) fn carriage_return(&mut self) {
+        self.pending_wrap = false;
         self.col = 0;
     }
 
+    /// HT advances to the next tabstop, capped at the right margin.
     pub(crate) fn tab(&mut self) {
-        self.col = (self.col + 8) & !7;
+        self.pending_wrap = false;
+        self.col = ((self.col + 8) & !7).min(COLS - 1);
     }
 
     /// BS (0x08) moves back one — the classic overstrike enabler.
     pub(crate) fn backspace(&mut self) {
+        self.pending_wrap = false;
         self.col = self.col.saturating_sub(1);
+    }
+
+    /// RI (C1 0x8D / `ESC M`): up one, scroll down at the top margin
+    /// (scroll preserves pending-wrap; the cursor-up path clears it).
+    pub(crate) fn reverse_index(&mut self) {
+        if self.row == 0 {
+            self.slide(1, true);
+        } else {
+            self.pending_wrap = false;
+            self.row -= 1;
+        }
     }
 
     fn advance_row(&mut self, n: usize) {
@@ -205,8 +209,10 @@ impl VirtualWindow {
         }
     }
 
-    /// Clear cells in [start, end) into their row snapshots.
+    /// Clear cells in [start, end) into their row snapshots. All
+    /// erase ops clear pending-wrap (ghostty `cursorResetWrap`).
     fn erase_range(&mut self, start: usize, end: usize) {
+        self.pending_wrap = false;
         let len = self.grid().len();
         let end = end.min(len);
         for idx in start.min(end)..end {
@@ -261,12 +267,13 @@ impl VirtualWindow {
             "scroll_up" => self.slide(p(0, 1), false),
             "scroll_down" => self.slide(p(0, 1), true),
             "save_cursor" | "restore_cursor" => self.save_restore(command == "save_cursor"),
-            "alt_screen" => self.toggle_alt(reset),
+            "alt_screen" => self.toggle_alt(reset, alt_mode(params)),
             _ => {}
         }
     }
 
     fn move_cursor(&mut self, command: &str, a: usize, b: usize) {
+        self.pending_wrap = false;
         match command {
             "cursor_up" => self.row = self.row.saturating_sub(a),
             "cursor_down" => self.row = (self.row + a).min(ROWS - 1),
@@ -274,7 +281,7 @@ impl VirtualWindow {
             "cursor_back" => self.col = self.col.saturating_sub(a),
             "cursor_next_line" => {
                 self.col = 0;
-                self.advance_row(a);
+                self.row = (self.row + a).min(ROWS - 1); // CNL clamps — only LF scrolls
             }
             "cursor_prev_line" => {
                 self.col = 0;
@@ -300,7 +307,9 @@ impl VirtualWindow {
     }
 
     /// DCH pulls the row's tail left; ICH (`right`) pushes blanks in.
+    /// Both clear pending-wrap via `cursorResetWrap`.
     fn shift_cells(&mut self, count: usize, right: bool) {
+        self.pending_wrap = false;
         let (row, col) = (self.row, self.col);
         let g = self.grid();
         let (at, re) = (row * COLS + col, row * COLS + COLS);
@@ -320,7 +329,10 @@ impl VirtualWindow {
 
     /// DL/IL shift rows; evicted rows are evaluated first. Snapshots
     /// stay row-indexed — shifted-in content compares against prior.
+    /// The cursor lands on the left margin of its row (xterm/DEC).
     fn shift_lines(&mut self, count: usize, insert: bool) {
+        self.col = 0;
+        self.pending_wrap = false;
         let (row, alt) = (self.row, self.on_alt);
         let n = count.min(ROWS - row);
         if insert {
@@ -333,6 +345,7 @@ impl VirtualWindow {
             }
         }
         self.flush_events(alt);
+        // Snapshots stay row-aligned with the content they describe.
         let g = self.grid();
         if insert {
             g.copy_within(row * COLS..(ROWS - n) * COLS, (row + n) * COLS);
@@ -345,10 +358,19 @@ impl VirtualWindow {
                 *c = Cell::default();
             }
         }
+        let s = self.snaps_mut();
+        if insert {
+            s.splice(row..row, std::iter::repeat_with(|| None).take(n));
+            s.truncate(ROWS);
+        } else {
+            s.drain(row..row + n);
+            s.extend(std::iter::repeat_with(|| None).take(n));
+        }
     }
 
-    /// `CSI s`/`CSI u` — cursor save/restore, tracked per grid.
-    fn save_restore(&mut self, save: bool) {
+    /// `CSI s`/`CSI u` and `ESC 7`/`ESC 8` — cursor save/restore,
+    /// tracked per grid.
+    pub(crate) fn save_restore(&mut self, save: bool) {
         let slot = if self.on_alt {
             &mut self.saved_alt
         } else {
@@ -358,137 +380,67 @@ impl VirtualWindow {
             *slot = (self.row, self.col);
         } else {
             (self.row, self.col) = *slot;
+            self.pending_wrap = false; // slot is (row,col) only
         }
     }
 
-    /// `?1049h`/`…l` — swap the modeled grid and snapshot set.
-    fn toggle_alt(&mut self, exit: bool) {
+    /// `?47`/`?1047`/`?1049` alt-screen ops — xterm `charproc.c`
+    /// semantics (ghostty `switchScreenMode`): entering copies the
+    /// cursor onto the alt screen (all modes); 1049 also saves the
+    /// cursor and erases the alt grid; exiting 1047 erases the alt
+    /// grid; exiting 1049 restores the saved cursor.
+    fn toggle_alt(&mut self, exit: bool, mode: u16) {
         if exit != self.on_alt {
             return;
         }
-        if exit {
-            self.on_alt = false;
-            let (r, c) = self.saved;
-            self.row = r;
-            self.col = c;
-        } else {
-            self.saved = (self.row, self.col);
+        if !exit {
+            if mode == 1049 {
+                self.saved = (self.row, self.col);
+            }
             self.on_alt = true;
-            self.row = 0;
-            self.col = 0;
-        }
-    }
-
-    /// Record a finding if a row's snapshot diverges from its content.
-    fn eval_row(&mut self, alt: bool, row: usize) {
-        if let Some(f) = self.row_finding(alt, row) {
-            self.findings.push(f);
-        }
-    }
-
-    fn row_finding(&self, alt: bool, row: usize) -> Option<(ByteRange, String)> {
-        let snap = self.snaps_ref(alt)[row].as_ref()?;
-        let cells = &self.grid_ref(alt)[row * COLS..row * COLS + COLS];
-        let new: Vec<u8> = cells.iter().map(|c| c.ch).collect();
-        if new.iter().all(|&b| b == 0) {
-            return None; // erased and left blank — plain erase
-        }
-        let (os, oe) = trim(&snap.text);
-        let (ns, ne) = trim(&new);
-        if os == oe || snap.text[os..oe] == new[ns..ne] {
-            return None; // identical rewrite — no divergence
-        }
-        // Evidence span: earliest shown byte through the latest
-        // rewritten byte, whichever representation came first.
-        let srcs = snap.srcs[os..oe]
-            .iter()
-            .copied()
-            .filter(|&s| s != NO_SRC)
-            .chain(cells.iter().filter(|c| c.ch != 0).map(|c| c.src));
-        let start = srcs.clone().min().unwrap_or(0);
-        let end = srcs.max().map(|s| s + 1).unwrap_or(0);
-        Some((
-            ByteRange::new(start.min(end), end),
-            format!(
-                "repaint: \"{}\" → \"{}\"",
-                clip(&snap.text[os..oe]),
-                clip(&new[ns..ne])
-            ),
-        ))
-    }
-
-    /// Group pending overwrite events into contiguous same-row runs,
-    /// one finding per run; called before any grid shift and at end.
-    fn flush_events(&mut self, alt: bool) {
-        let (mut mine, rest): (Vec<Overwrite>, Vec<Overwrite>) =
-            self.overwrites.drain(..).partition(|e| e.alt == alt);
-        self.overwrites = rest;
-        mine.sort_by_key(|e| (e.row, e.col));
-        let mut run: Vec<Overwrite> = Vec::new();
-        for e in mine {
-            let contiguous = run
-                .last()
-                .is_some_and(|p| p.row == e.row && e.col <= p.col + 1);
-            if !contiguous && !run.is_empty() {
-                self.findings.push(run_detail(&run));
-                run.clear();
+            if mode == 1049 {
+                self.clear_alt();
             }
-            run.push(e);
-        }
-        if !run.is_empty() {
-            self.findings.push(run_detail(&run));
-        }
-    }
-
-    /// Evaluate both grids, flush events, return all findings.
-    pub(crate) fn finish(&mut self) -> Vec<(ByteRange, String)> {
-        for alt in [false, true] {
-            for r in 0..ROWS {
-                self.eval_row(alt, r);
+        } else {
+            if mode == 1047 {
+                self.clear_alt(); // erase the screen being left
             }
-            self.flush_events(alt);
+            self.on_alt = false;
+            if mode == 1049 {
+                (self.row, self.col) = self.saved;
+            }
         }
-        std::mem::take(&mut self.findings)
+        self.pending_wrap = false;
     }
-}
 
-/// First/last non-blank extent of a row buffer.
-fn trim(v: &[u8]) -> (usize, usize) {
-    let s = v.iter().position(|&b| b != 0).unwrap_or(0);
-    let e = v.iter().rposition(|&b| b != 0).map(|i| i + 1).unwrap_or(s);
-    (s, e)
-}
-
-fn run_detail(run: &[Overwrite]) -> (ByteRange, String) {
-    let old: Vec<u8> = run.iter().map(|e| e.old).collect();
-    let new: Vec<u8> = run.iter().map(|e| e.new).collect();
-    let start = run
-        .iter()
-        .map(|e| e.old_src.min(e.new_pos))
-        .min()
-        .unwrap_or(0);
-    let end = run
-        .iter()
-        .map(|e| e.old_src.max(e.new_pos) + 1)
-        .max()
-        .unwrap_or(0);
-    (
-        ByteRange::new(start, end),
-        format!("repaint: \"{}\" → \"{}\"", clip(&old), clip(&new)),
-    )
-}
-
-/// Escape non-printable bytes for evidence text; cap at 48 bytes.
-fn clip(bs: &[u8]) -> String {
-    let mut s = String::new();
-    for &b in bs.iter().take(48) {
-        match b {
-            0x20..=0x7E => s.push(b as char),
-            _ => s.push_str(&format!("\\x{b:02x}")),
+    /// Wipe the alt grid; rows are evaluated first so repaints on a
+    /// previous alt session still report.
+    fn clear_alt(&mut self) {
+        for r in 0..ROWS {
+            self.eval_row(true, r);
+        }
+        self.flush_events(true);
+        for c in &mut self.alt {
+            *c = Cell::default();
+        }
+        for s in &mut self.alt_snaps {
+            *s = None;
         }
     }
-    if bs.len() > 48 {
-        s.push('…');
+
+    /// Active-grid cell byte — conformance lane only (grid parity vs
+    /// ghostty `Terminal`/`Screen`).
+    #[cfg(all(test, feature = "conformance"))]
+    pub(crate) fn cell_byte(&self, row: usize, col: usize) -> u8 {
+        self.grid_ref(self.on_alt)[row * COLS + col].ch
     }
-    s
+}
+
+/// Alt-screen mode number from CSI private params (`?1049` etc.).
+fn alt_mode(params: &[u8]) -> u16 {
+    match params {
+        b"?47" => 47,
+        b"?1047" => 1047,
+        _ => 1049,
+    }
 }
