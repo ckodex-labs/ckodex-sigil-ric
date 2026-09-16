@@ -207,6 +207,7 @@ then measurement, then detection depth, then packaging. Each item is a
 | `crates/sigil-sigstore` | Sigstore keyless adapter (Fulcio exchange, Rekor upload) |
 | `docs/RIC-CONTRACT.md` | RIC rules RIC-R-1..8 mapped to implementations + deviation ledger |
 | `docs/RIC-DELTA-ANALYSIS.md` | Critique of the source design conversation + defect ledger D-1..D-9 + gap table G-1..G-16 |
+| `docs/POC-CASES.md` | The three hypothesis cases with exact commands + observed outputs |
 | `docs/TRAJECTORY.md` | This document — maintained trajectory and work queue |
 | `formal/*.tla` | TLA+ invariants (INV-001..007, MCP, taint algebra, liveness) |
 | `crates/sigil-core/tests/conformance_vectors.rs` | Executable conformance vectors CV-RIC-001..008 |
