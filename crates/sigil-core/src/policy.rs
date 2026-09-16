@@ -346,6 +346,8 @@ pub struct ScanPolicy {
     pub rare_pattern_detection: bool,
     #[serde(default = "ScanPolicy::default_true")]
     pub slow_rate_detection: bool,
+    #[serde(default = "ScanPolicy::default_true")]
+    pub encoded_payloads: bool,
     #[serde(default = "ScanPolicy::default_injection_threshold")]
     pub injection_threshold: f32,
     #[serde(default = "ScanPolicy::default_entropy_window")]
@@ -388,6 +390,7 @@ impl Default for ScanPolicy {
             smuggling_detection: true,
             rare_pattern_detection: true,
             slow_rate_detection: true,
+            encoded_payloads: true,
             injection_threshold: Self::default_injection_threshold(),
             entropy_window: Self::default_entropy_window(),
             entropy_deviation: Self::default_entropy_deviation(),

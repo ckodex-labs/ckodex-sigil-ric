@@ -1,3 +1,4 @@
+mod decode;
 mod detectors;
 mod dlp;
 mod helpers;

@@ -208,6 +208,7 @@ pub enum DetectorId {
     SlowRateInjection,
     PerplexityAnomaly,
     TerminalEscape,
+    EncodedPayload,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]

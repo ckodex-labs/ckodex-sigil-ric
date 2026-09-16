@@ -122,6 +122,20 @@ impl TextMap {
         Self { text, units }
     }
 
+    /// A text map for *derived* content (decoded payloads, comment
+    /// interiors): every position in `text` attributes back to the single
+    /// `source_range` in the original input.
+    pub(crate) fn derived(text: String, source_range: ByteRange) -> Self {
+        let len = text.len();
+        Self {
+            text,
+            units: vec![TextUnit {
+                source_range,
+                text_range: ByteRange::new(0, len),
+            }],
+        }
+    }
+
     pub(crate) fn source_range_for(&self, start: usize, end: usize) -> ByteRange {
         let mut range = ByteRange::default();
         let mut initialized = false;

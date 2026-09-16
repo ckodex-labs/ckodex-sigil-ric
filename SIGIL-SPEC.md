@@ -188,6 +188,9 @@ Sequence extraction comes from a `TerminalSequenceScanner` trait — emulator co
 
 **Known limitations — warnings inside the system, never crashes.** The window model is deliberately bounded, and every bound degrades to evidence rather than failure: ops outside the replayable set emit `window_unmodeled` (DECLRMM left/right margins, DECOM-relative cursor addressing, LNM, 132-column mode, charset selects, unknown CSI finals); non-ASCII rows that are later rewritten emit `window_degraded` rather than precise-but-wrong byte offsets; the 128-finding cap reports its first dropped range as a `window_degraded` marker — suppression is itself a finding. Rows scrolled off the 48-row grid are evaluated at eviction, so the no-scrollback bound loses no evidence. Mode bits that change what later ops mean are still tracked as state — `?69h` redefines `CSI s` as DECSLRM, `?6h` makes CUP/VPA region-relative — so a quarantined mode never silently reinterprets a subsequent sequence. The contract: a limit hit is a finding with a byte range and the scan continues; the model never silently trusts state it could not verify.
 
+**3g. Encoded-Payload Rescan**
+Spans that reach the model in a form upstream inspection never saw — base64/base64url (padded and unpadded), percent runs, `\xNN` and bare hex runs, HTML `&#NN;`/`&#xNN;` entities, and HTML-comment interiors — are decoded and passed back through the text-level detectors (`detect_injection`, which includes Unicode-abuse). This closes the gap where `base64-like payload` flagged *presence* but never content: `aWdub3JlIHByZXZpb3VzIGluc3RydWN0aW9ucw==` previously earned Medium for looking encoded; now it earns the High its decoded `ignore previous` grammar hit deserves. Every finding maps to the *source* byte range of the encoded span via a single-unit `TextMap` and carries `encoded_payload` alongside the inner detector in `detectors`; evidence records the decode chain (`decoded(base64): decoded(base64): …` for nested payloads, depth ≤ 2). Presence alone is never a finding — only decoded content that trips the inner detectors is reported, so the false-positive rate stays bounded by the base scanners; binary-blob decodes are skipped by a printability gate. Decoded findings floor at Medium (an instruction that needed an encoding is never below that), and the caps are findings, not failures: >64 candidate spans or a >32 KiB decode each emit a Low `encoded_payload` marker. Enabled by default; disable via `[scan] encoded_payloads = false`.
+
 Output: `Vec<ScanResult>` — each grapheme now carries a `ThreatAssessment`:
 
 ```rust
@@ -317,6 +320,7 @@ injection_detection = true
 dlp_enabled = true
 entropy_analysis = true
 smuggling_detection = true
+encoded_payloads = true         # Decode-and-rescan base64/percent/hex/entity spans + comment interiors
 injection_threshold = 0.7       # Composite score threshold for Deny
 entropy_window = 64             # Graphemes per entropy window
 entropy_deviation = 3.0         # Std deviations for anomaly
