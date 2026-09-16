@@ -45,7 +45,7 @@ fn stream_extract_pipes_audio_and_frames() {
     let ffmpeg = temp_binary(
         "ffmpeg-ok",
         &format!(
-            "#!/bin/sh\ncat >/dev/null\ncase \"$*\" in\n  *wav*) echo '{WAV_B64}' | base64 -d ;;\n  *image2pipe*) echo '{PNG_B64}' | base64 -d ;;\nesac\n"
+            "#!/bin/sh\ncat >/dev/null\ncase \"$*\" in\n  *wav*) echo '{WAV_B64}' | base64 -d ;;\n  *image2pipe*) echo '{PNG_B64}' | base64 -d ;;\n  *srt*) echo '1\n00:00:00,000 --> 00:00:00,800\nsubtitle text\n' ;;\nesac\n"
         ),
     );
     let ocr = temp_binary("ocr-ok", "#!/bin/sh\ncat >/dev/null\necho 'frame text'\n");
@@ -69,6 +69,14 @@ fn stream_extract_pipes_audio_and_frames() {
         .channels
         .iter()
         .any(|c| c.extractor.name.contains("sigil-perception/audio")));
+    let captions: Vec<_> = report
+        .channels
+        .iter()
+        .filter(|c| c.channel_kind == ChannelKind::Caption)
+        .collect();
+    assert_eq!(captions.len(), 1);
+    assert!(captions[0].content.contains("subtitle text"));
+    assert!(captions[0].extractor.name.ends_with("/subtitles"));
     assert!(report
         .properties
         .iter()
@@ -101,6 +109,10 @@ fn stream_extract_failures_degrade_to_properties() {
         .properties
         .iter()
         .any(|(k, v)| k.ends_with("stream.frames") && v.starts_with("failed:")));
+    assert!(report
+        .properties
+        .iter()
+        .any(|(k, v)| k.ends_with("stream.subtitles") && v.starts_with("failed:")));
     // Extraction failure never loses the container report itself.
     assert!(report
         .channels

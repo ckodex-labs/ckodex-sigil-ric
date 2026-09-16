@@ -181,6 +181,27 @@ pub fn load_receipt(path: &PathBuf) -> Result<sigil_core::RepresentationReceipt>
     Ok(serde_json::from_value(receipt_value.clone())?)
 }
 
+/// Sniff container magic to a modality name. `None` means "no opinion" —
+/// unknown or text-ish bytes leave the declared hint alone.
+fn sniff_modality(bytes: &[u8]) -> Option<&'static str> {
+    if bytes.starts_with(b"\x89PNG\r\n\x1a\n")
+        || bytes.starts_with(b"\xFF\xD8\xFF")
+        || bytes.starts_with(b"GIF8")
+    {
+        Some("image")
+    } else if bytes.starts_with(b"RIFF") && bytes.len() >= 12 && &bytes[8..12] == b"WAVE"
+        || bytes.starts_with(b"fLaC")
+    {
+        Some("audio")
+    } else if bytes.len() >= 8 && &bytes[4..8] == b"ftyp" {
+        Some("video")
+    } else if bytes.starts_with(b"%PDF") {
+        Some("document")
+    } else {
+        None
+    }
+}
+
 /// Outcome of `sigil-cli perceive`: the adapter's channel report plus, when
 /// `--analyze` is set, the kernel's fusion audit over those channels.
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -205,7 +226,15 @@ pub fn perceive_command(
         media_type: None,
     };
 
-    let (adapter_id, report, modality) = match command.modality.as_str() {
+    // Declared-vs-actual routing: a --modality hint that contradicts the
+    // magic bytes should not silently decode-fail — route to the sniffed
+    // adapter and record the override as evidence. Adapters produce
+    // channels either way; the kernel's judgment is untouched.
+    let sniffed = sniff_modality(&bytes);
+    let routed = sniffed.filter(|s| *s != command.modality.as_str());
+    let effective_modality = sniffed.unwrap_or(command.modality.as_str());
+
+    let (adapter_id, mut report, modality) = match effective_modality {
         "audio" => {
             let transcript = match &command.transcript_binary {
                 Some(binary) => Some(
@@ -346,6 +375,16 @@ pub fn perceive_command(
             )
         }
     };
+
+    if let Some(sniffed) = routed {
+        report.properties.push((
+            "sigil.modality_routed".to_string(),
+            format!(
+                "declared {} but magic says {sniffed} — routed to {sniffed}",
+                command.modality
+            ),
+        ));
+    }
 
     let analysis = if command.analyze {
         let inputs = channels_to_modal_inputs(&report, modality);
