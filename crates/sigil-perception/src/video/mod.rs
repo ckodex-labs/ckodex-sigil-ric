@@ -14,6 +14,8 @@ use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
 use std::io::Cursor;
 
+mod streams;
+
 /// Frame extraction: a pinned ffmpeg pipe emits a concatenated PNG
 /// stream (`image2pipe`), split per-frame and passed to pinned OCR.
 pub struct FrameOcr {
@@ -34,6 +36,10 @@ pub struct StreamExtract {
     pub audio: Option<crate::ExternalPipe>,
     /// Frame pipe + OCR pair; both or neither.
     pub frames: Option<FrameOcr>,
+    /// Subtitle/caption pipe (`mov_text`/SRT → text channel). Pinned
+    /// whenever ffmpeg is — the track-presence metadata signal should not
+    /// stay unreadable while a demuxer is available.
+    pub subtitles: Option<crate::ExternalPipe>,
     /// Pinned ASR for the extracted audio track.
     pub transcript: Option<crate::audio::ExternalTranscript>,
 }
@@ -61,6 +67,9 @@ const FRAME_ARGS: &[&str] = &[
     "png",
     "pipe:1",
 ];
+/// `ffmpeg` args: first subtitle stream → SRT text on stdout. `0:s:0?`
+/// makes an absent stream exit cleanly with empty output.
+const SUBTITLE_ARGS: &[&str] = &["-i", "pipe:0", "-map", "0:s:0?", "-f", "srt", "pipe:1"];
 /// Frames beyond this cap are reported as a property, never silently dropped.
 const MAX_FRAMES: usize = 12;
 
@@ -89,11 +98,16 @@ impl StreamExtract {
             .transpose()?;
         Ok(Self {
             audio: Some(crate::ExternalPipe::pin(
-                ffmpeg,
+                ffmpeg.clone(),
                 to_strings(AUDIO_ARGS),
                 "ffmpeg/audio".to_string(),
             )?),
             frames,
+            subtitles: Some(crate::ExternalPipe::pin(
+                ffmpeg,
+                to_strings(SUBTITLE_ARGS),
+                "ffmpeg/subtitles".to_string(),
+            )?),
             transcript: transcript
                 .map(|(bin, args)| {
                     crate::audio::ExternalTranscript::pin(bin, args, "external".to_string())
@@ -196,20 +210,23 @@ impl PerceptionAdapter for VideoAdapter {
         });
 
         if let Some(extract) = &self.stream_extract {
-            self.extract_streams(artifact, extract, &mut properties, &mut channels);
+            self.extract_streams(
+                artifact,
+                extract,
+                subtitle_tracks,
+                &mut properties,
+                &mut channels,
+            );
         }
 
         // NOTE: mp4parse is a metadata-only parser (confirmed by docs and
         // source — see mozilla/mp4parse-rust). It does not expose subtitle
         // sample data; only track inventory and sample-table metadata are
-        // available. Subtitle/caption text extraction would require either:
-        //   (a) a separate ISOBMFF sample parser (e.g. `symphonia` with
-        //       codec features), or
-        //   (b) an external pinned binary (like the audio ASR pattern).
-        // This is a documented permanent limitation of the current adapter,
-        // not a TODO. The kernel can still detect subtitle *track presence*
-        // from the metadata channel, which is the security-relevant signal
-        // (a hidden subtitle track is itself a finding).
+        // available. Subtitle/caption *text* is extracted separately by the
+        // pinned `subtitles` pipe (`-map 0:s:0? -f srt`) when stream
+        // extraction is enabled; without it, track presence in the
+        // metadata channel remains the signal (a hidden track is itself
+        // a finding).
 
         Ok(PerceptionReport {
             source_id: artifact.source_id.clone(),
@@ -222,153 +239,6 @@ impl PerceptionAdapter for VideoAdapter {
             channels,
         })
     }
-}
-
-impl VideoAdapter {
-    /// Demux the container through the pinned pipes; each stream becomes
-    /// channels via the owning modality adapter. Pipe failures degrade to
-    /// a named property — never a panic, never a silent skip.
-    fn extract_streams(
-        &self,
-        artifact: &sigil_multimodal::ArtifactRef<'_>,
-        extract: &StreamExtract,
-        properties: &mut Vec<(String, String)>,
-        channels: &mut Vec<ExtractedChannel>,
-    ) {
-        let id = self.adapter_id();
-        if let Some(pipe) = &extract.audio {
-            self.extract_audio(artifact, pipe, extract, id, properties, channels);
-        }
-        if let Some(frame_ocr) = &extract.frames {
-            self.extract_frames(artifact, frame_ocr, id, properties, channels);
-        }
-    }
-
-    fn extract_audio(
-        &self,
-        artifact: &sigil_multimodal::ArtifactRef<'_>,
-        pipe: &crate::ExternalPipe,
-        extract: &StreamExtract,
-        id: &str,
-        properties: &mut Vec<(String, String)>,
-        channels: &mut Vec<ExtractedChannel>,
-    ) {
-        let wav = match pipe.run(artifact.bytes) {
-            Ok(bytes) if !bytes.is_empty() => wav_patch_streamed_sizes(bytes),
-            Ok(_) => {
-                properties.push((format!("{id}.stream.audio"), "absent".to_string()));
-                return;
-            }
-            Err(err) => {
-                properties.push((format!("{id}.stream.audio"), format!("failed: {err}")));
-                return;
-            }
-        };
-        let adapter = crate::audio::AudioAdapter {
-            transcript: extract.transcript.clone(),
-        };
-        let sub = sigil_multimodal::ArtifactRef {
-            source_id: format!("{}:audio", artifact.source_id),
-            bytes: &wav,
-            media_type: Some("audio/wav".to_string()),
-        };
-        match adapter.perceive(&sub) {
-            Ok(report) => {
-                properties.push((
-                    format!("{id}.stream.audio.channels"),
-                    report.channels.len().to_string(),
-                ));
-                channels.extend(report.channels);
-            }
-            Err(err) => {
-                properties.push((format!("{id}.stream.audio"), format!("decode: {err}")));
-            }
-        }
-    }
-
-    fn extract_frames(
-        &self,
-        artifact: &sigil_multimodal::ArtifactRef<'_>,
-        frame_ocr: &FrameOcr,
-        id: &str,
-        properties: &mut Vec<(String, String)>,
-        channels: &mut Vec<ExtractedChannel>,
-    ) {
-        let bytes = match frame_ocr.frames.run(artifact.bytes) {
-            Ok(bytes) => bytes,
-            Err(err) => {
-                properties.push((format!("{id}.stream.frames"), format!("failed: {err}")));
-                return;
-            }
-        };
-        let frames = split_png_stream(&bytes);
-        properties.push((format!("{id}.stream.frames"), frames.len().to_string()));
-        if frames.len() > MAX_FRAMES {
-            properties.push((format!("{id}.stream.frames_capped"), MAX_FRAMES.to_string()));
-        }
-        for (i, png) in frames.iter().take(MAX_FRAMES).enumerate() {
-            if let Ok(text) = frame_ocr.ocr.extract(png) {
-                if !text.trim().is_empty() {
-                    channels.push(ExtractedChannel {
-                        channel_kind: ChannelKind::OcrText,
-                        content: text,
-                        extractor: ExtractorIdentity {
-                            name: format!("{id}/frame-ocr[{i}]"),
-                            version: frame_ocr.ocr.version.clone(),
-                            config_digest: frame_ocr.ocr.binary_digest.clone(),
-                        },
-                        confidence: None,
-                        truncated: false,
-                    });
-                }
-            }
-        }
-    }
-}
-
-/// ffmpeg's streamed WAV leaves the RIFF and `data` chunk sizes at
-/// `0xFFFFFFFF` (unknown until close), which hound rejects. Walk the
-/// chunk table and patch both to the real byte counts.
-fn wav_patch_streamed_sizes(mut wav: Vec<u8>) -> Vec<u8> {
-    if wav.len() < 12 || &wav[0..4] != b"RIFF" {
-        return wav;
-    }
-    if wav[4..8] == [0xff; 4] {
-        let size = (wav.len() - 8) as u32;
-        wav[4..8].copy_from_slice(&size.to_le_bytes());
-    }
-    let mut pos = 12;
-    while pos + 8 <= wav.len() {
-        let tag = &wav[pos..pos + 4];
-        let size = u32::from_le_bytes(wav[pos + 4..pos + 8].try_into().unwrap_or_default());
-        if tag == b"data" && size == u32::MAX {
-            let real = (wav.len() - pos - 8) as u32;
-            wav[pos + 4..pos + 8].copy_from_slice(&real.to_le_bytes());
-            break;
-        }
-        // Chunks are word-aligned; a streamed size means "to EOF".
-        let advance = if size == u32::MAX {
-            break;
-        } else {
-            8 + size as usize + (size as usize & 1)
-        };
-        pos += advance;
-    }
-    wav
-}
-
-/// Split a concatenated PNG stream (ffmpeg `image2pipe`) into frames.
-/// Each PNG ends with a zero-length IEND chunk: `IEND` + fixed CRC.
-fn split_png_stream(bytes: &[u8]) -> Vec<&[u8]> {
-    const IEND: [u8; 8] = [0x49, 0x45, 0x4E, 0x44, 0xAE, 0x42, 0x60, 0x82];
-    let mut frames = Vec::new();
-    let mut start = 0;
-    while let Some(pos) = bytes[start..].windows(8).position(|w| w == IEND) {
-        let end = start + pos + 8;
-        frames.push(&bytes[start..end]);
-        start = end;
-    }
-    frames
 }
 
 /// Adapter-level result envelope for CLI consumption.
@@ -384,6 +254,7 @@ fn hex_digest(bytes: &[u8]) -> String {
 
 #[cfg(test)]
 mod tests {
+    use super::streams::split_png_stream;
     use super::*;
     use sigil_multimodal::ArtifactRef;
 

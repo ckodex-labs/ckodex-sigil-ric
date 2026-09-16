@@ -164,9 +164,13 @@ surfaces extra evidence, not silence.
 `ffmpeg` pipes so embedded streams reach the modality adapters they
 belong to — the audio track becomes a mono 16 kHz WAV fed to
 `AudioAdapter` (wav-header, spectral analysis, optional pinned ASR
-transcript), and the video track becomes a 1 fps `image2pipe` PNG stream
+transcript), the video track becomes a 1 fps `image2pipe` PNG stream
 split on IEND markers and OCR'd per frame (`frame-ocr[i]` channels,
-each carrying the pinned OCR's SHA-384 identity). ffmpeg's streamed WAV
+each carrying the pinned OCR's SHA-384 identity), and the first subtitle
+stream becomes a `caption` channel (`-map 0:s:0? -f srt` — the
+`subtitle_tracks` inventory count only covers `TrackType::Metadata`, so a
+`mov_text` track the demuxer reads but mp4parse did not count is surfaced
+as `stream.subtitle_beyond_inventory`). ffmpeg's streamed WAV
 header leaves RIFF/`data` sizes at `0xFFFFFFFF`; `wav_patch_streamed_sizes`
 repairs them before hound sees the bytes. Pipe failures degrade to named
 properties (`stream.audio = failed: …`, `stream.frames`), never panics or
@@ -180,6 +184,13 @@ yields a `frame-ocr[0]` channel with the instruction and
 `Flag{SentinelDisagreement}` under `--analyze`. Limits: fixed arg sets
 (1 fps frames, mono 16 kHz audio); OCR channel count bounded by the
 frame cap; spoken-word injection requires the optional ASR half.
+
+**Declared-vs-magic modality routing: implemented** (G6, 2026-09-15).
+`sigil-cli perceive --modality` is a hint, not a command: container magic
+(PNG/JPEG/GIF, RIFF-WAVE/fLaC, `ftyp`, `%PDF`) that contradicts the hint
+routes to the sniffed adapter and records `sigil.modality_routed` in the
+report — a declared-vs-actual mismatch is evidence, not a decode failure.
+Unknown magic leaves the hint alone.
 
 **Low-frequency deception detection: implemented** (2026-09-11).
 - `sigil-perception::spectral`: subliminal audio detection (sub-audible frequency
