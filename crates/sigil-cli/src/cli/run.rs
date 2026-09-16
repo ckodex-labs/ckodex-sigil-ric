@@ -24,6 +24,20 @@ use std::fs;
 
 pub fn run() -> Result<()> {
     let cli = Cli::parse();
+    let format = cli.format;
+    dispatch(cli).map_err(|err| {
+        // Errors print here so --format json callers get a machine-readable
+        // envelope; main only maps Err to exit 1.
+        if matches!(format, OutputFormat::Json) {
+            eprintln!("{}", serde_json::json!({ "error": format!("{err:#}") }));
+        } else {
+            eprintln!("{err:?}");
+        }
+        err
+    })
+}
+
+fn dispatch(cli: Cli) -> Result<()> {
     let printer = Printer::detect(cli.format, cli.color);
     let policy = load_policy(cli.policy.as_ref())?;
     let vocab_name = cli.vocab.clone();
@@ -180,6 +194,7 @@ pub fn run() -> Result<()> {
                 schema.as_ref(),
             )?;
             printer.emit(&inspection, |i| human_reports::render_mcp(i, printer.color))?;
+            exit_on_verdict(&inspection.verdict, command.fail_on);
         }
         Commands::Probe(command) => {
             let samples: Vec<ProbeSample> = load_json_array(command.samples.as_ref())?;

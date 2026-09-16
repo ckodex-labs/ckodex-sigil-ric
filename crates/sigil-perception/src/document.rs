@@ -75,7 +75,7 @@ impl PerceptionAdapter for DocumentAdapter {
         if media_type == "application/pdf" {
             if let Some(compare) = &self.render_compare {
                 let (props, extra) =
-                    self.render_compare_channels(compare, artifact.bytes, &channels);
+                    self.render_compare_channels(compare, artifact.bytes, &channels, &properties);
                 properties.extend(props);
                 channels.extend(extra);
             }
@@ -91,8 +91,14 @@ impl PerceptionAdapter for DocumentAdapter {
     }
 }
 
+/// One render+OCR run per page — pdftoppm cannot stream multiple pages to
+/// one stdout, so the renderer is invoked once per page with `-f N -l N`
+/// appended to its pinned args. Pages beyond the cap are recorded, not
+/// rendered — a page the render never covered is evidence, not silence.
+const MAX_RENDER_PAGES: usize = 12;
+
 impl DocumentAdapter {
-    /// Render the artifact, OCR the pixels, and diff the text layer against
+    /// Render each page, OCR the pixels, and diff the text layer against
     /// what actually painted. Emits an `OcrText` channel for the rendered
     /// side and, when lines diverge, a `Divergence` channel carrying exactly
     /// the lines a human viewing the render would not see.
@@ -101,6 +107,7 @@ impl DocumentAdapter {
         compare: &RenderCompare,
         bytes: &[u8],
         channels: &[ExtractedChannel],
+        existing_properties: &[(String, String)],
     ) -> (Vec<(String, String)>, Vec<ExtractedChannel>) {
         let mut properties = Vec::new();
         let mut out = Vec::new();
@@ -110,17 +117,47 @@ impl DocumentAdapter {
         hasher.update(compare.ocr.binary_digest.as_bytes());
         let chain_digest = hex_digest(&hasher.finalize());
 
-        let rendered = compare
-            .renderer
-            .run(bytes)
-            .and_then(|png| compare.ocr.extract(&png));
-        let rendered = match rendered {
-            Ok(text) => text,
-            Err(err) => {
-                properties.push((key("status"), format!("failed: {err}")));
-                return (properties, out);
+        let pages_key = format!("{}.pages", self.adapter_id());
+        let total_pages = existing_properties
+            .iter()
+            .find(|(k, _)| *k == pages_key)
+            .and_then(|(_, v)| v.parse::<usize>().ok())
+            .unwrap_or(1)
+            .max(1);
+        let render_pages = total_pages.min(MAX_RENDER_PAGES);
+        if total_pages > render_pages {
+            properties.push((key("pages_capped"), total_pages.to_string()));
+        }
+
+        let mut rendered = String::new();
+        let mut rendered_count = 0usize;
+        for page in 1..=render_pages {
+            let page_args = [
+                "-f".to_string(),
+                page.to_string(),
+                "-l".to_string(),
+                page.to_string(),
+            ];
+            match compare
+                .renderer
+                .run_with(bytes, &page_args)
+                .and_then(|png| compare.ocr.extract(&png))
+            {
+                Ok(text) => {
+                    rendered.push_str(&text);
+                    rendered.push('\n');
+                    rendered_count += 1;
+                }
+                Err(err) => {
+                    properties.push((key(&format!("page{page}")), format!("failed: {err}")));
+                }
             }
-        };
+        }
+        properties.push((key("pages_rendered"), rendered_count.to_string()));
+        if rendered_count == 0 {
+            properties.push((key("status"), "failed: no page rendered".to_string()));
+            return (properties, out);
+        }
         properties.push((key("status"), "ran".to_string()));
 
         out.push(ExtractedChannel {
@@ -132,7 +169,7 @@ impl DocumentAdapter {
                 config_digest: chain_digest.clone(),
             },
             confidence: Some(0.7),
-            truncated: false,
+            truncated: total_pages > render_pages,
         });
 
         let extracted = channels

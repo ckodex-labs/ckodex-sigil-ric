@@ -124,9 +124,11 @@ human sees), and `divergence` carries exactly `ignore previous
 instructions` — the content that never painted. `--analyze` flags the
 assessment `Flag{SentinelDisagreement}` and the divergence channel is
 rescanned like any derived channel, so its instruction hits the injection
-grammar. Known limits: single page (`-singlefile`), word-coverage diff
-(80%) tolerates OCR re-wrap; a badly mis-OCR'd render over-reports
-divergence — surfacing extra evidence, never silence.
+grammar. Multi-page is covered — one render+OCR run per page via
+`-f N -l N -singlefile`, capped at 12 pages (`pages_capped` evidence when
+exceeded). Known limits: word-coverage diff (80%) tolerates OCR re-wrap; a
+badly mis-OCR'd render over-reports divergence — surfacing extra evidence,
+never silence.
 
 ## Case 5 — instruction painted inside a video frame
 

@@ -130,8 +130,20 @@ impl ExternalPipe {
     }
 
     pub fn run(&self, bytes: &[u8]) -> Result<Vec<u8>, PerceptionError> {
+        self.run_with(bytes, &[])
+    }
+
+    /// Like `run`, but appends per-invocation args after the pinned set
+    /// (e.g. `-f N -l N` to select one page per render). The pinned digest
+    /// covers the base args; callers record appended args as evidence.
+    pub fn run_with(
+        &self,
+        bytes: &[u8],
+        extra_args: &[String],
+    ) -> Result<Vec<u8>, PerceptionError> {
         let mut child = Command::new(&self.binary)
             .args(&self.args)
+            .args(extra_args)
             .stdin(std::process::Stdio::piped())
             .stdout(std::process::Stdio::piped())
             .stderr(std::process::Stdio::null())
