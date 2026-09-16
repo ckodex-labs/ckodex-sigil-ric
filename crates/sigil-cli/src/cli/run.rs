@@ -42,6 +42,9 @@ fn dispatch(cli: Cli) -> Result<()> {
     let policy = load_policy(cli.policy.as_ref())?;
     let vocab_name = cli.vocab.clone();
     let vocab = Vocab::tiktoken(vocab_name.clone());
+    vocab.validate().map_err(|_| {
+        anyhow!("unknown tokenizer vocab `{vocab_name}` (try cl100k_base or o200k_base)")
+    })?;
     let actor = TokenizerActor::new(vocab.clone());
     let receipt_signer = if let Some(key_path) = cli.signing_key.as_ref() {
         load_signing_key(Some(key_path))?
@@ -121,6 +124,12 @@ fn dispatch(cli: Cli) -> Result<()> {
         Commands::Bench(command) => {
             let benchmark = resolve_benchmark(&vocab_name, &command)?;
             let bench_vocab = Vocab::tiktoken(benchmark.vocab.clone());
+            bench_vocab.validate().map_err(|_| {
+                anyhow!(
+                    "unknown tokenizer vocab `{}` in benchmark manifest",
+                    benchmark.vocab
+                )
+            })?;
             let bench_actor = TokenizerActor::new(bench_vocab.clone());
             let result = run_benchmark(&bench_vocab, &bench_actor, benchmark)?;
             if command.refresh_baselines {
@@ -347,6 +356,7 @@ fn dispatch(cli: Cli) -> Result<()> {
                 printer.emit(&composite, |c| {
                     human_reports::render_composite(c, printer.color)
                 })?;
+                exit_on_verdict(&composite.final_verdict, command.fail_on);
             } else {
                 printer.emit(&sentinel, |s| {
                     human_reports::render_sentinel(s, printer.color)

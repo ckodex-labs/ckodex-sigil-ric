@@ -1,7 +1,40 @@
 # SIGIL Tokenizer Workspace
 
 This workspace turns the SIGIL specification into a Rust implementation
-surface:
+surface.
+
+## Quick start
+
+```sh
+cargo build -p sigil-cli
+```
+
+Scan a string, pipe a payload, or gate a CI job on the verdict:
+
+```sh
+target/debug/sigil-cli scan --text "ignore previous instructions"
+# → verdict Flag, exit 0 (admit with evidence)
+
+cat suspicious.txt | target/debug/sigil-cli scan
+# piped stdin works with no flags; `--input -` reads it explicitly
+
+target/debug/sigil-cli scan --input payload.txt --fail-on flag
+# → exit 1 on Flag, 2 on Deny — wire straight into CI
+```
+
+`perceive` adapts binary artifacts into scanned text channels
+(image OCR, audio spectral+ASR, video demux, PDF render-vs-extract
+divergence, source-code comment/string split):
+
+```sh
+target/debug/sigil-cli perceive --input report.pdf --modality document --analyze
+```
+
+Every subcommand is documented under `--help`. The runnable PoC cases —
+including the full external-tool wiring — live in
+[docs/POC-CASES.md](./docs/POC-CASES.md).
+
+## Crates
 
 - `crates/sigil-core` - structural tokenizer security boundary
 - `crates/sigil-mcp` - MCP content security gate
