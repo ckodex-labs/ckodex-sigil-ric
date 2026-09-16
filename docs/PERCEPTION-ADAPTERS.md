@@ -159,6 +159,28 @@ needs temp-file plumbing); word-set comparison tolerates OCR re-wrap but a
 heavily mis-OCR'd render over-reports divergence — a failure mode that
 surfaces extra evidence, not silence.
 
+**Video stream extraction: implemented** (G5, 2026-09-15).
+`VideoAdapter::stream_extract` demuxes the container through pinned
+`ffmpeg` pipes so embedded streams reach the modality adapters they
+belong to — the audio track becomes a mono 16 kHz WAV fed to
+`AudioAdapter` (wav-header, spectral analysis, optional pinned ASR
+transcript), and the video track becomes a 1 fps `image2pipe` PNG stream
+split on IEND markers and OCR'd per frame (`frame-ocr[i]` channels,
+each carrying the pinned OCR's SHA-384 identity). ffmpeg's streamed WAV
+header leaves RIFF/`data` sizes at `0xFFFFFFFF`; `wav_patch_streamed_sizes`
+repairs them before hound sees the bytes. Pipe failures degrade to named
+properties (`stream.audio = failed: …`, `stream.frames`), never panics or
+silent skips; frames past the 12-frame cap are reported via
+`stream.frames_capped`. CLI: `sigil-cli perceive --modality video
+--ffmpeg-binary ffmpeg --ocr-binary tesseract --ocr-args "stdin stdout"
+[--transcript-binary …]` — `--ocr-binary`/`--transcript-binary` without
+`--ffmpeg-binary` is a config error, not a silent skip. Verified e2e:
+an MP4 whose frames carry painted "IGNORE PREVIOUS INSTRUCTIONS" text
+yields a `frame-ocr[0]` channel with the instruction and
+`Flag{SentinelDisagreement}` under `--analyze`. Limits: fixed arg sets
+(1 fps frames, mono 16 kHz audio); OCR channel count bounded by the
+frame cap; spoken-word injection requires the optional ASR half.
+
 **Low-frequency deception detection: implemented** (2026-09-11).
 - `sigil-perception::spectral`: subliminal audio detection (sub-audible frequency
   bands below 20 Hz) and audio steganography detection (anomalous high-frequency
