@@ -16,9 +16,22 @@ use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
 
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
 
+/// Optional rendered-vs-extracted comparison: a pinned renderer (e.g.
+/// `pdftoppm`) rasterizes the artifact, a pinned OCR reads the pixels back,
+/// and text-layer lines that never reach the rendered output surface as a
+/// `Divergence` channel — the "white text on white page" class.
+#[derive(Clone, Debug)]
+pub struct RenderCompare {
+    pub renderer: crate::ExternalPipe,
+    pub ocr: crate::ExternalOcr,
+}
+
 /// Document adapter: extracts text from plain text, markdown, and PDF
 /// artifacts.
-pub struct DocumentAdapter;
+#[derive(Default)]
+pub struct DocumentAdapter {
+    pub render_compare: Option<RenderCompare>,
+}
 
 impl PerceptionAdapter for DocumentAdapter {
     fn modality(&self) -> sigil_multimodal::Modality {
@@ -42,7 +55,7 @@ impl PerceptionAdapter for DocumentAdapter {
             .clone()
             .unwrap_or_else(|| detect_media_type(artifact.bytes));
 
-        let (properties, channels) = match media_type.as_str() {
+        let (mut properties, mut channels) = match media_type.as_str() {
             "text/plain" | "text/markdown" | "text/x-markdown" => {
                 extract_plain_text(artifact.bytes, &artifact_digest, self.adapter_id())
             }
@@ -59,6 +72,15 @@ impl PerceptionAdapter for DocumentAdapter {
             }
         };
 
+        if media_type == "application/pdf" {
+            if let Some(compare) = &self.render_compare {
+                let (props, extra) =
+                    self.render_compare_channels(compare, artifact.bytes, &channels);
+                properties.extend(props);
+                channels.extend(extra);
+            }
+        }
+
         Ok(PerceptionReport {
             source_id: artifact.source_id.clone(),
             artifact_digest,
@@ -67,6 +89,102 @@ impl PerceptionAdapter for DocumentAdapter {
             channels,
         })
     }
+}
+
+impl DocumentAdapter {
+    /// Render the artifact, OCR the pixels, and diff the text layer against
+    /// what actually painted. Emits an `OcrText` channel for the rendered
+    /// side and, when lines diverge, a `Divergence` channel carrying exactly
+    /// the lines a human viewing the render would not see.
+    fn render_compare_channels(
+        &self,
+        compare: &RenderCompare,
+        bytes: &[u8],
+        channels: &[ExtractedChannel],
+    ) -> (Vec<(String, String)>, Vec<ExtractedChannel>) {
+        let mut properties = Vec::new();
+        let mut out = Vec::new();
+        let key = |name: &str| format!("{}.render_compare.{name}", self.adapter_id());
+        let mut hasher = Sha384::new();
+        hasher.update(compare.renderer.binary_digest.as_bytes());
+        hasher.update(compare.ocr.binary_digest.as_bytes());
+        let chain_digest = hex_digest(&hasher.finalize());
+
+        let rendered = compare
+            .renderer
+            .run(bytes)
+            .and_then(|png| compare.ocr.extract(&png));
+        let rendered = match rendered {
+            Ok(text) => text,
+            Err(err) => {
+                properties.push((key("status"), format!("failed: {err}")));
+                return (properties, out);
+            }
+        };
+        properties.push((key("status"), "ran".to_string()));
+
+        out.push(ExtractedChannel {
+            channel_kind: ChannelKind::OcrText,
+            content: rendered.clone(),
+            extractor: ExtractorIdentity {
+                name: format!("{}/render-ocr", self.adapter_id()),
+                version: format!("{}+{}", compare.renderer.version, compare.ocr.version),
+                config_digest: chain_digest.clone(),
+            },
+            confidence: Some(0.7),
+            truncated: false,
+        });
+
+        let extracted = channels
+            .iter()
+            .find(|c| c.channel_kind == ChannelKind::TextLayer)
+            .map(|c| c.content.as_str())
+            .unwrap_or_default();
+        let divergent = divergent_lines(extracted, &rendered);
+        properties.push((key("divergent_lines"), divergent.len().to_string()));
+        if !divergent.is_empty() {
+            out.push(ExtractedChannel {
+                channel_kind: ChannelKind::Divergence,
+                content: divergent.join("\n"),
+                extractor: ExtractorIdentity {
+                    name: format!("{}/divergence", self.adapter_id()),
+                    version: "word-coverage/1.0".to_string(),
+                    config_digest: chain_digest,
+                },
+                confidence: Some(0.8),
+                truncated: false,
+            });
+        }
+        (properties, out)
+    }
+}
+
+fn normalized_words(text: &str) -> std::collections::HashSet<String> {
+    text.split_whitespace()
+        .map(|w| {
+            w.to_lowercase()
+                .trim_matches(|c: char| !c.is_alphanumeric())
+                .to_string()
+        })
+        .filter(|w| !w.is_empty())
+        .collect()
+}
+
+/// Lines of `extracted` whose normalized words are <80% covered by the
+/// rendered text's word set — content the machine receives that a human
+/// viewing the render does not. Word-set (not line) comparison because OCR
+/// re-wraps and reorders lines freely.
+fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
+    let rendered_words = normalized_words(rendered);
+    extracted
+        .lines()
+        .filter(|line| {
+            let words: Vec<String> = normalized_words(line).into_iter().collect();
+            let covered = words.iter().filter(|w| rendered_words.contains(*w)).count() as f32;
+            !words.is_empty() && covered / (words.len() as f32) < 0.8
+        })
+        .map(str::to_string)
+        .collect()
 }
 
 fn detect_media_type(bytes: &[u8]) -> String {

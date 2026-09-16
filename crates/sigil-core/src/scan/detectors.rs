@@ -18,6 +18,63 @@ pub(crate) fn detect_injection(map: &TextMap, policy: &Policy) -> Vec<ScanFindin
             DetectorId::InjectionGrammar,
         ),
         (
+            "ignore all prior",
+            Severity::High,
+            DetectorId::InjectionGrammar,
+        ),
+        ("ignore prior", Severity::High, DetectorId::InjectionGrammar),
+        (
+            "ignore the above",
+            Severity::High,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "disregard all",
+            Severity::High,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "forget all previous",
+            Severity::High,
+            DetectorId::InjectionGrammar,
+        ),
+        ("forget prior", Severity::High, DetectorId::InjectionGrammar),
+        (
+            "previous instructions",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "prior instructions",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "from now on",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "do anything now",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "new persona",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "pretend to be",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
+            "pretend you are",
+            Severity::Medium,
+            DetectorId::InjectionGrammar,
+        ),
+        (
             "new instructions",
             Severity::Medium,
             DetectorId::InjectionGrammar,

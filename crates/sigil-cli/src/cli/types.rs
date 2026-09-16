@@ -298,6 +298,14 @@ pub struct PerceiveCommand {
     /// Arguments for the ASR binary (artifact bytes travel on stdin).
     #[arg(long, default_value = "")]
     pub transcript_args: String,
+    /// External renderer binary to pin for render-vs-extract comparison
+    /// (document/PDF, optional — e.g. `pdftoppm`).
+    #[arg(long)]
+    pub render_binary: Option<PathBuf>,
+    /// Arguments for the renderer binary (artifact bytes travel on stdin;
+    /// e.g. `-png -singlefile -r 150 -`).
+    #[arg(long, default_value = "")]
+    pub render_args: String,
     /// Also run the fusion audit over the extracted channels.
     #[arg(long)]
     pub analyze: bool,

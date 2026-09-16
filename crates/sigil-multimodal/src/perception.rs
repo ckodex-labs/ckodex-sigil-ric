@@ -37,6 +37,9 @@ pub enum ChannelKind {
     Transcript,
     /// Structural facts that are not language content.
     Structure,
+    /// Content present in one representation of an artifact but absent
+    /// from another (e.g. text-layer lines that never paint to the render).
+    Divergence,
 }
 
 /// Identity of the extractor that produced a channel. Recorded so "which OCR
@@ -109,6 +112,7 @@ pub fn channel_provenance(kind: ChannelKind) -> Provenance {
         | ChannelKind::Caption
         | ChannelKind::TextLayer
         | ChannelKind::Transcript
+        | ChannelKind::Divergence
         | ChannelKind::Structure => Provenance::McpTool,
     }
 }
@@ -142,6 +146,7 @@ fn channel_provenance_for(kind: ChannelKind) -> Provenance {
         | ChannelKind::Caption
         | ChannelKind::TextLayer
         | ChannelKind::Transcript
+        | ChannelKind::Divergence
         | ChannelKind::Structure => Provenance::McpTool,
     }
 }

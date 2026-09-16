@@ -28,28 +28,55 @@ struct EncodedSpan {
     scheme: &'static str,
 }
 
-fn span_regexes() -> &'static [(&'static str, Regex)] {
-    static SPANS: Lazy<Vec<(&'static str, Regex)>> = Lazy::new(|| {
+/// Span table: (scheme, regex, capture-group). Group 0 = the whole match;
+/// markup schemes capture the *hidden interior* so the rescan targets the
+/// content a renderer would conceal, not the markup itself.
+fn span_regexes() -> &'static [(&'static str, Regex, usize)] {
+    static SPANS: Lazy<Vec<(&'static str, Regex, usize)>> = Lazy::new(|| {
         vec![
             (
                 "comment",
                 Regex::new(r"<!--[\s\S]*?-->").expect("comment regex"),
+                0,
+            ),
+            (
+                "link-target",
+                Regex::new(r"\]\(\s*([^)\s]{4,})\s*\)").expect("link-target regex"),
+                1,
+            ),
+            (
+                "css-hidden",
+                Regex::new(
+                    r#"<[a-zA-Z][a-zA-Z0-9]*[^>]*style\s*=\s*"[^"]*(?:display\s*:\s*none|visibility\s*:\s*hidden|opacity\s*:\s*0|font-size\s*:\s*0)[^"]*"[^>]*>\s*([^<]{4,})"#,
+                )
+                .expect("css-hidden regex"),
+                1,
+            ),
+            (
+                "html-hidden",
+                Regex::new(r#"<[a-zA-Z][a-zA-Z0-9]*[^>]*\shidden(?:\s[^>]*)?>\s*([^<]{4,})"#)
+                    .expect("html-hidden regex"),
+                1,
             ),
             (
                 "percent",
                 Regex::new(r"(?:%[0-9A-Fa-f]{2}){4,}").expect("percent regex"),
+                0,
             ),
             (
                 "hex-esc",
                 Regex::new(r"(?:\\x[0-9A-Fa-f]{2}){4,}").expect("hex-esc regex"),
+                0,
             ),
             (
                 "entity",
                 Regex::new(r"(?:&#x?[0-9A-Fa-f]{1,6};){3,}").expect("entity regex"),
+                0,
             ),
             (
                 "base64",
                 Regex::new(r"[A-Za-z0-9+/=_-]{20,}").expect("base64 regex"),
+                0,
             ),
         ]
     });
@@ -62,11 +89,13 @@ fn span_regexes() -> &'static [(&'static str, Regex)] {
 fn find_spans(text: &str) -> Vec<EncodedSpan> {
     let mut spans: Vec<EncodedSpan> = span_regexes()
         .iter()
-        .flat_map(|(scheme, re)| {
-            re.find_iter(text).map(|m| EncodedSpan {
-                start: m.start(),
-                end: m.end(),
-                scheme,
+        .flat_map(|(scheme, re, group)| {
+            re.captures_iter(text).filter_map(|cap| {
+                cap.get(*group).map(|m| EncodedSpan {
+                    start: m.start(),
+                    end: m.end(),
+                    scheme,
+                })
             })
         })
         .collect();
@@ -118,6 +147,11 @@ fn decode_candidates(text: &str, scheme: &str) -> Vec<(&'static str, String)> {
             .map(|d| ("entity", d))
             .collect(),
         "comment" => vec![("comment", text[4..text.len() - 3].to_string())],
+        // Markup surfaces pass their interior through verbatim — the
+        // "decode" is the unwrap itself.
+        "link-target" => vec![("link-target", text.to_string())],
+        "css-hidden" => vec![("css-hidden", text.to_string())],
+        "html-hidden" => vec![("html-hidden", text.to_string())],
         _ => Vec::new(),
     }
 }
@@ -230,6 +264,17 @@ pub(crate) fn detect_encoded(map: &TextMap, policy: &Policy, depth: usize) -> Ve
         }
         let text = map.snippet_for(span.start, span.end);
         let source_range = map.source_range_for(span.start, span.end);
+        // Concealment markup is anomalous in model input regardless of
+        // what the interior contains — presence is itself a Low finding.
+        if matches!(span.scheme, "css-hidden" | "html-hidden") {
+            findings.push(ScanFinding {
+                byte_range: source_range,
+                severity: Severity::Low,
+                detectors: vec![DetectorId::EncodedPayload],
+                confidence: 0.7,
+                evidence: format!("{} markup conceals body text", span.scheme),
+            });
+        }
         for (label, decoded) in decode_candidates(&text, span.scheme) {
             if decoded.len() > MAX_DECODED {
                 findings.push(ScanFinding {
