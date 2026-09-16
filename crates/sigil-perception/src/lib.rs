@@ -5,6 +5,7 @@
 //! `sigil-multimodal::perception` (docs/PERCEPTION-ADAPTERS.md, Option B).
 
 pub mod audio;
+pub mod code;
 pub mod document;
 pub mod spectral;
 pub mod video;

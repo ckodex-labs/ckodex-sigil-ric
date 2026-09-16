@@ -185,6 +185,24 @@ yields a `frame-ocr[0]` channel with the instruction and
 (1 fps frames, mono 16 kHz audio); OCR channel count bounded by the
 frame cap; spoken-word injection requires the optional ASR half.
 
+**Code adapter: implemented** (G7, 2026-09-15).
+`sigil-perception::code::CodeAdapter` treats a source artifact as three
+representations in one stream: executable statements, comments and
+docstrings (read by humans and models, never executed), and string
+literals (embedded carriers for text the code never displays). A small
+lexer state machine — `//`, `/* */`, `#` (line-start/after-whitespace
+only), `"""`/`'''`, `"`/`'`/backtick with escape and Rust-lifetime
+handling — splits them into `text_layer` channels (`code/comments`,
+`code/strings`) plus a `structure` channel with line and literal counts.
+An instruction in a comment or string reaches the model but not the
+compiler, so each surface is rescanned independently; the kernel judges.
+Verified e2e: a `.py` with `# ignore all prior instructions` and a
+`PAYLOAD = "ignore previous instructions"` literal yields the instruction
+in both channels and `Flag{SentinelDisagreement}` under `--analyze`.
+Limits: lexical not grammatical (no per-language parse; `--`/`<!-- -->`
+styles are out of scope and covered by the markup surfaces); `'` literals
+are heuristic (prev-char + 8-char close window).
+
 **Declared-vs-magic modality routing: implemented** (G6, 2026-09-15).
 `sigil-cli perceive --modality` is a hint, not a command: container magic
 (PNG/JPEG/GIF, RIFF-WAVE/fLaC, `ftyp`, `%PDF`) that contradicts the hint

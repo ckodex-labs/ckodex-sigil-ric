@@ -345,6 +345,16 @@ pub fn perceive_command(
                 adapter.modality(),
             )
         }
+        "code" => {
+            let adapter = sigil_perception::code::CodeAdapter;
+            (
+                adapter.adapter_id().to_string(),
+                adapter
+                    .perceive(&artifact)
+                    .map_err(|err| anyhow!("{err}"))?,
+                adapter.modality(),
+            )
+        }
         _ => {
             let ocr = match &command.ocr_binary {
                 Some(binary) => Some(

@@ -283,9 +283,10 @@ pub struct PerceiveCommand {
     /// Artifact file to decompose (image or audio).
     #[arg(long)]
     pub input: PathBuf,
-    /// Modality hint: `image` (default), `audio`, `video`, or `document`.
-    /// Container magic overrides a contradicting hint — the override is
-    /// recorded as `sigil.modality_routed` evidence, never silent.
+    /// Modality hint: `image` (default), `audio`, `video`, `document`, or
+    /// `code`. Container magic overrides a contradicting hint — the
+    /// override is recorded as `sigil.modality_routed` evidence, never
+    /// silent.
     #[arg(long, default_value = "image")]
     pub modality: String,
     /// External OCR binary to pin for the text channel (image, optional).
