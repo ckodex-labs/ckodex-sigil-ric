@@ -208,7 +208,12 @@ are heuristic (prev-char + 8-char close window).
 (PNG/JPEG/GIF, RIFF-WAVE/fLaC, `ftyp`, `%PDF`) that contradicts the hint
 routes to the sniffed adapter and records `sigil.modality_routed` in the
 report — a declared-vs-actual mismatch is evidence, not a decode failure.
-Unknown magic leaves the hint alone.
+Unknown magic leaves the hint alone. Adapter flags are validated against
+the *routed* modality: `--ffmpeg-binary`/`--transcript-*` need video (or
+audio for transcript), `--render-*` needs document, `--ocr-*` accepts
+image/video/document; anything else is a config error naming the flag
+and the effective modality, never a silent no-op. Decode failures name
+the routed adapter and suggest a fix without echoing input bytes.
 
 **Low-frequency deception detection: implemented** (2026-09-11).
 - `sigil-perception::spectral`: subliminal audio detection (sub-audible frequency

@@ -194,6 +194,30 @@ the split is lexical, not grammatical — `'` literals are heuristic
 (lifetimes guarded), and `--`/`<!-- -->` comment styles are out of
 scope (markup surfaces cover the HTML case).
 
+## Using the verdicts in CI
+
+`scan`, `tokenize`, `multimodal` and `perceive --analyze` map the kernel
+verdict onto the process exit code via `--fail-on` (default `deny`):
+
+| Verdict | default | `--fail-on flag` | `--fail-on never` |
+|---------|---------|------------------|-------------------|
+| Allow   | 0       | 0                | 0                 |
+| Flag    | 0       | 1                | 0                 |
+| Deny    | 2       | 2                | 0                 |
+
+JSON output still goes to stdout and is complete before the non-zero
+exit, so a pipeline can gate *and* collect evidence:
+
+```bash
+cat payload.txt | sigil-cli scan --fail-on flag --format json > out.json
+# $? == 1 on Flag, 2 on Deny; out.json carries the full assessment
+```
+
+Text commands read `--input FILE`, `--input -` (explicit stdin), or piped
+stdin with no flags. An interactive terminal with no flags errors instead
+of blocking; empty piped stdin errors rather than emitting a vacuous
+Allow.
+
 ## Where it can fail
 
 - **Injection grammar is phrase-patterned** — "ignore previous", "ignore

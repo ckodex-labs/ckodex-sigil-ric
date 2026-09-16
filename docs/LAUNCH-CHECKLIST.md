@@ -36,6 +36,7 @@ python3 scripts/render_burn_in_report.py --benchmark /path/to/stress.json --tele
 - [ ] `crates/sigil-multimodal/tests/attack_proofs.rs` passes
 - [ ] `crates/sigil-probe/tests/attack_proofs.rs` passes
 - [ ] `crates/sigil-s/tests/composition.rs` passes
+- [ ] `crates/sigil-cli/tests/cli_integration.rs` passes (verdict exit codes, stdin, flag validation)
 - [ ] Sentinel composition never weakens a core `Deny`
 - [ ] MCP and multimodal layers remain fail-closed under schema drift and taint accumulation
 
