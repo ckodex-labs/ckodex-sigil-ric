@@ -353,6 +353,16 @@ pub fn perceive_command(
             // not a silent skip.
             let render_compare = match (&command.render_binary, &command.ocr_binary) {
                 (Some(renderer), Some(ocr_bin)) => {
+                    if !command
+                        .render_args
+                        .split_whitespace()
+                        .any(|a| a == "-singlefile")
+                    {
+                        return Err(anyhow!(
+                            "render-compare renders one page per run — \
+                             --render-args must include -singlefile"
+                        ));
+                    }
                     Some(sigil_perception::document::RenderCompare {
                         renderer: sigil_perception::ExternalPipe::pin(
                             renderer.clone(),

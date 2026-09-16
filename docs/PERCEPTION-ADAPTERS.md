@@ -154,10 +154,14 @@ instructions` yields `text_layer` = both lines, `ocr_text` = the visible
 line only, `divergence` = the hidden line. CLI: `sigil-cli perceive
 --modality document --render-binary pdftoppm "--render-args=-png
 -singlefile -r 150 -" --ocr-binary tesseract --ocr-args "stdin stdout"
---analyze`. Known limits: single-page via `-singlefile` (multi-page render
-needs temp-file plumbing); word-set comparison tolerates OCR re-wrap but a
-heavily mis-OCR'd render over-reports divergence — a failure mode that
-surfaces extra evidence, not silence.
+--analyze`. Multi-page is handled by one renderer invocation per page —
+`pdftoppm -f N -l N -singlefile` appended to the pinned args (pdftoppm
+cannot stream multiple pages to one stdout), capped at 12 pages with a
+`pages_capped` evidence property when exceeded. `-singlefile` is required
+in `--render-args`; the CLI rejects the wiring without it. Known limits:
+word-set comparison tolerates OCR re-wrap but a heavily mis-OCR'd render
+over-reports divergence — a failure mode that surfaces extra evidence,
+not silence.
 
 **Video stream extraction: implemented** (G5, 2026-09-15).
 `VideoAdapter::stream_extract` demuxes the container through pinned

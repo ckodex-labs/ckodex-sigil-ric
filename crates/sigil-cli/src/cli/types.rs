@@ -10,8 +10,10 @@ use std::path::PathBuf;
     about = "SIGIL security-native tokenizer toolkit"
 )]
 pub struct Cli {
+    /// Policy TOML file (allow-lists, detector toggles, thresholds).
     #[arg(long)]
     pub policy: Option<PathBuf>,
+    /// Tokenizer vocab to run under.
     #[arg(long, default_value = "cl100k_base")]
     pub vocab: String,
     /// Unencrypted PKCS#8 PEM private key. When present, every emitted
@@ -122,12 +124,14 @@ pub struct BatchTextCommand {
     /// Literal texts to process. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Vec<String>,
+    /// Allow special tokens (e.g. `<|endoftext|>`) in the input.
     #[arg(long)]
     pub allow_specials: bool,
 }
 
 #[derive(clap::Args, Debug)]
 pub struct TokenIdsCommand {
+    /// Token IDs to decode (repeat the flag or pass several values).
     #[arg(long)]
     pub ids: Vec<u32>,
 }
@@ -174,30 +178,41 @@ impl BenchmarkSpecialTokenMode {
 
 #[derive(clap::Args, Debug)]
 pub struct BenchCommand {
+    /// JSON array file of inputs ("-" reads stdin).
     #[arg(long)]
     pub input: Option<PathBuf>,
+    /// Literal texts to benchmark. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Vec<String>,
+    /// Benchmark manifest TOML (name, corpus, rounds, batch size).
     #[arg(long)]
     pub manifest: Option<PathBuf>,
+    /// Corpus name recorded in the report.
     #[arg(long)]
     pub corpus: Option<String>,
+    /// Named benchmark preset.
     #[arg(long, value_enum, default_value_t = BenchmarkPreset::Small)]
     pub preset: BenchmarkPreset,
     /// Benchmark report serialization (distinct from the global
     /// `--format` presentation mode).
     #[arg(long = "report-format", value_enum, default_value_t = BenchmarkOutputFormat::Human)]
     pub report_format: BenchmarkOutputFormat,
+    /// Write the rendered report to this file instead of stdout.
     #[arg(long)]
     pub output: Option<PathBuf>,
+    /// Baseline directory for regression comparison.
     #[arg(long)]
     pub baseline_dir: Option<PathBuf>,
+    /// Overwrite the stored baselines with this run's numbers.
     #[arg(long)]
     pub refresh_baselines: bool,
+    /// Override the manifest's repetition count.
     #[arg(long)]
     pub rounds: Option<usize>,
+    /// Override the manifest's batch size.
     #[arg(long)]
     pub batch_size: Option<usize>,
+    /// Override the manifest's special-token handling.
     #[arg(long)]
     pub special_token_mode: Option<BenchmarkSpecialTokenMode>,
 }
@@ -224,28 +239,40 @@ impl BurnInDeploymentMode {
 
 #[derive(clap::Args, Debug)]
 pub struct BurnInTelemetryCommand {
+    /// Benchmark report JSON files to summarise (repeatable).
     #[arg(long)]
     pub benchmark: Vec<PathBuf>,
+    /// Deployment posture this telemetry run reports against.
     #[arg(long, value_enum, default_value_t = BurnInDeploymentMode::Monitor)]
     pub deployment_mode: BurnInDeploymentMode,
+    /// Assert that monitor/shadow mode was enabled for the window.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub monitor_shadow_enabled: bool,
+    /// Observed false-positive rate for the window.
     #[arg(long)]
     pub false_positive_rate: Option<f64>,
+    /// Approved false-positive threshold the observation is checked against.
     #[arg(long)]
     pub false_positive_rate_threshold: Option<f64>,
+    /// Count of unresolved high-severity findings at capture time.
     #[arg(long, default_value_t = 0)]
     pub unresolved_high_severity_findings: u32,
+    /// Assert that rollback can be executed without data loss.
     #[arg(long, action = clap::ArgAction::SetTrue)]
     pub rollback_ready: bool,
+    /// Free-text source tag for the telemetry record.
     #[arg(long)]
     pub source: Option<String>,
+    /// Capture timestamp override (milliseconds since Unix epoch).
     #[arg(long)]
     pub captured_at_unix_ms: Option<u64>,
+    /// Free-text note attached to the record.
     #[arg(long)]
     pub note: Option<String>,
+    /// Evidence references attached to the record (repeatable).
     #[arg(long)]
     pub evidence_ref: Vec<String>,
+    /// Write the telemetry JSON to this file instead of stdout.
     #[arg(long)]
     pub output: Option<PathBuf>,
 }
@@ -263,8 +290,10 @@ pub struct BenchmarkManifest {
 
 #[derive(clap::Args, Debug)]
 pub struct McpCommand {
+    /// Identifier of the MCP server whose response is being gated.
     #[arg(long)]
     pub server_id: String,
+    /// Hash of the request the response claims to answer.
     #[arg(long)]
     pub request_hash: String,
     /// Response file to gate ("-" reads stdin; piped stdin is used when
@@ -274,18 +303,26 @@ pub struct McpCommand {
     /// Literal response text. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Option<String>,
+    /// JSON schema the response is expected to satisfy.
     #[arg(long)]
     pub schema: Option<PathBuf>,
+    /// Exit non-zero when the gate verdict reaches this level.
+    #[arg(long, value_enum, default_value = "deny")]
+    pub fail_on: FailOn,
 }
 
 #[derive(clap::Args, Debug)]
 pub struct ProbeCommand {
+    /// JSON file of probe samples to classify.
     #[arg(long)]
     pub samples: Option<PathBuf>,
+    /// JSON file of canary strings for known-answer checks.
     #[arg(long)]
     pub canaries: Option<PathBuf>,
+    /// JSON file of expected fingerprints to compare against.
     #[arg(long)]
     pub fingerprints: Option<PathBuf>,
+    /// JSON file of boundary cases for drift checks.
     #[arg(long)]
     pub boundaries: Option<PathBuf>,
 }
@@ -380,16 +417,22 @@ pub struct MultimodalCommand {
     /// Authority-bearing system prompt included in the fusion audit.
     #[arg(long)]
     pub system: Option<String>,
+    /// User-provided text channel.
     #[arg(long)]
     pub text: Option<String>,
+    /// Text derived from a vision channel (untrusted provenance).
     #[arg(long)]
     pub vision: Option<String>,
+    /// Text derived from an audio channel (untrusted provenance).
     #[arg(long)]
     pub audio: Option<String>,
+    /// Text derived from a video channel (untrusted provenance).
     #[arg(long)]
     pub video: Option<String>,
+    /// Source-code text channel.
     #[arg(long)]
     pub code: Option<String>,
+    /// Text derived from a document channel (retrieval provenance).
     #[arg(long)]
     pub document: Option<String>,
     /// Exit non-zero when the fusion verdict reaches this level.
@@ -406,6 +449,8 @@ pub struct SentinelCommand {
     /// Literal text to classify. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Option<String>,
+    /// Emit the composite Sigil⊕Sentinel assessment instead of the
+    /// sentinel score alone.
     #[arg(long)]
     pub compose: bool,
 }

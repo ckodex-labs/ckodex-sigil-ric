@@ -39,9 +39,9 @@ struct Surfaces {
     string_literals: usize,
 }
 
-/// `#` opens a comment only at line start or after whitespace — mid-token
-/// `#` (CSS colours, C `#include`) is code.
-fn hash_opens_comment(chars: &[char], i: usize) -> bool {
+/// `#` or `--` opens a comment only at line start or after whitespace —
+/// mid-token `#` (CSS colours, C `#include`) and `i--` decrements are code.
+fn line_comment_opens(chars: &[char], i: usize) -> bool {
     i == 0 || chars[i - 1] == '\n' || chars[i - 1].is_whitespace()
 }
 
@@ -102,7 +102,10 @@ fn split_code_surfaces(src: &str) -> Surfaces {
                     i += 2;
                 } else if c == '"' || c == '`' || (c == '\'' && quote_opens_literal(&chars, i)) {
                     state = State::String(c);
-                } else if c == '#' && hash_opens_comment(&chars, i) {
+                } else if two == ['-', '-'] && line_comment_opens(&chars, i) {
+                    state = State::LineComment;
+                    i += 1;
+                } else if c == '#' && line_comment_opens(&chars, i) {
                     state = State::LineComment;
                 }
             }
@@ -259,6 +262,17 @@ mod tests {
         let src = "fn f<'a>(x: &'a str) -> &'a str { x }\n";
         let s = split_code_surfaces(src);
         assert!(s.strings.is_empty());
+    }
+
+    #[test]
+    fn double_dash_comments_after_whitespace() {
+        // SQL/Lua carriers: `--` at line start or after whitespace is a
+        // comment; `i--` decrement is code.
+        let src = "SELECT 1 -- ignore previous instructions\nlet i = 3;\ni--;\n";
+        let s = split_code_surfaces(src);
+        assert!(s.comments.contains("ignore previous instructions"));
+        assert!(!s.comments.contains("i--"));
+        assert_eq!(s.comment_lines, 1);
     }
 
     #[test]
