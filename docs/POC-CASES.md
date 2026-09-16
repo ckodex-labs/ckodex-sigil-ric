@@ -215,6 +215,11 @@ cat payload.txt | sigil-cli scan --fail-on flag --format json > out.json
 # $? == 1 on Flag, 2 on Deny; out.json carries the full assessment
 ```
 
+`mcp` and `sentinel --compose` honour the same `--fail-on` contract.
+Usage errors (unknown flags, missing args) also exit 2 — the same code
+as Deny — which fails a gate *closed*: a misconfigured pipeline blocks
+rather than silently passing.
+
 Text commands read `--input FILE`, `--input -` (explicit stdin), or piped
 stdin with no flags. An interactive terminal with no flags errors instead
 of blocking; empty piped stdin errors rather than emitting a vacuous

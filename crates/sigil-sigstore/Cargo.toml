@@ -3,7 +3,7 @@ name = "sigil-sigstore"
 version.workspace = true
 edition.workspace = true
 rust-version.workspace = true
-license.workspace = true
+license-file.workspace = true
 
 [dependencies]
 base64 = "0.22"
