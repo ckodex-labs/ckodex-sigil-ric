@@ -59,6 +59,10 @@ pub fn run_scan_with_engines(
         findings.extend(detect_smuggling(&map, policy));
     }
 
+    if policy.scan.encoded_payloads {
+        findings.extend(super::decode::detect_encoded(&map, policy, 0));
+    }
+
     if policy.scan.rare_pattern_detection {
         findings.extend(crate::lfdd::detect_rare_patterns(
             &map.text,
