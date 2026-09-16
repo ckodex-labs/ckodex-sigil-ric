@@ -139,8 +139,25 @@ to hex (the Rekor entry's `logID` format).
 `sigil-perception::video::VideoAdapter` parses MP4/ISOBMFF container metadata via
 `mp4parse` (Mozilla, pure Rust). Reports track inventory (video/audio/subtitle
 tracks), dimensions, duration. `sigil-perception::document::DocumentAdapter`
-extracts text from plain text, markdown, and PDF artifacts (basic PDF text
-extraction from content stream string literals).
+extracts text from plain text, markdown, and PDF artifacts (lopdf content-stream
+decoding with page-by-page salvage and a string-literal fallback).
+
+**Render-vs-extract divergence: implemented** (G3, 2026-09-15).
+`DocumentAdapter::render_compare` chains two pinned externals — a renderer
+(`pdftoppm`, PDF → PNG on stdin→stdout) and the existing `ExternalOcr` — then
+diffs the text layer against what actually painted. Lines whose normalized
+words are <80% covered by the rendered word set surface as a `Divergence`
+channel (`ChannelKind::Divergence`, provenance still `McpTool` — kernel
+judgment, RIC-R-7), carrying exactly the text a human viewing the render
+would not see. Verified e2e: a PDF with a white-on-white `ignore previous
+instructions` yields `text_layer` = both lines, `ocr_text` = the visible
+line only, `divergence` = the hidden line. CLI: `sigil-cli perceive
+--modality document --render-binary pdftoppm "--render-args=-png
+-singlefile -r 150 -" --ocr-binary tesseract --ocr-args "stdin stdout"
+--analyze`. Known limits: single-page via `-singlefile` (multi-page render
+needs temp-file plumbing); word-set comparison tolerates OCR re-wrap but a
+heavily mis-OCR'd render over-reports divergence — a failure mode that
+surfaces extra evidence, not silence.
 
 **Low-frequency deception detection: implemented** (2026-09-11).
 - `sigil-perception::spectral`: subliminal audio detection (sub-audible frequency

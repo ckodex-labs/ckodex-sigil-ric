@@ -70,7 +70,7 @@ impl ExternalOcr {
         }
     }
 
-    fn extract(&self, bytes: &[u8]) -> Result<String, PerceptionError> {
+    pub(crate) fn extract(&self, bytes: &[u8]) -> Result<String, PerceptionError> {
         let mut child = Command::new(&self.binary)
             .args(&self.args)
             .stdin(std::process::Stdio::piped())
@@ -95,6 +95,63 @@ impl ExternalOcr {
         }
         String::from_utf8(output.stdout)
             .map_err(|_| PerceptionError::ExtractorFailed("non-UTF-8 OCR output".to_string()))
+    }
+}
+
+/// A pinned external binary with the same contract as [`ExternalOcr`] but
+/// returning raw bytes — for renderers (e.g. `pdftoppm`) whose stdout is an
+/// image, not text. Artifact bytes stream on stdin, never in an argument.
+#[derive(Clone, Debug)]
+pub struct ExternalPipe {
+    pub binary: std::path::PathBuf,
+    pub args: Vec<String>,
+    pub version: String,
+    pub binary_digest: String,
+}
+
+impl ExternalPipe {
+    /// Pin a pipe binary: computes its SHA-384 digest for the evidence chain.
+    pub fn pin(
+        binary: std::path::PathBuf,
+        args: Vec<String>,
+        version: String,
+    ) -> std::io::Result<Self> {
+        let bytes = std::fs::read(&binary)?;
+        let mut hasher = Sha384::new();
+        hasher.update(&bytes);
+        let binary_digest = hex_digest(&hasher.finalize());
+        Ok(Self {
+            binary,
+            args,
+            version,
+            binary_digest,
+        })
+    }
+
+    pub fn run(&self, bytes: &[u8]) -> Result<Vec<u8>, PerceptionError> {
+        let mut child = Command::new(&self.binary)
+            .args(&self.args)
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::null())
+            .spawn()
+            .map_err(|err| PerceptionError::ExtractorFailed(format!("spawn: {err}")))?;
+        child
+            .stdin
+            .as_mut()
+            .expect("piped stdin")
+            .write_all(bytes)
+            .map_err(|err| PerceptionError::ExtractorFailed(format!("stdin: {err}")))?;
+        let output = child
+            .wait_with_output()
+            .map_err(|err| PerceptionError::ExtractorFailed(format!("wait: {err}")))?;
+        if !output.status.success() {
+            return Err(PerceptionError::ExtractorFailed(format!(
+                "pipe binary exited with {}",
+                output.status
+            )));
+        }
+        Ok(output.stdout)
     }
 }
 

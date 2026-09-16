@@ -246,7 +246,42 @@ pub fn perceive_command(
             )
         }
         "document" => {
-            let adapter = sigil_perception::document::DocumentAdapter;
+            // Render-compare needs both halves: a renderer (PDF → pixels)
+            // and an OCR (pixels → text). Wiring only one is a config error,
+            // not a silent skip.
+            let render_compare = match (&command.render_binary, &command.ocr_binary) {
+                (Some(renderer), Some(ocr_bin)) => {
+                    Some(sigil_perception::document::RenderCompare {
+                        renderer: sigil_perception::ExternalPipe::pin(
+                            renderer.clone(),
+                            command
+                                .render_args
+                                .split_whitespace()
+                                .map(str::to_string)
+                                .collect(),
+                            "external".to_string(),
+                        )
+                        .map_err(|err| anyhow!("pin render binary: {err}"))?,
+                        ocr: sigil_perception::ExternalOcr::pin(
+                            ocr_bin.clone(),
+                            command
+                                .ocr_args
+                                .split_whitespace()
+                                .map(str::to_string)
+                                .collect(),
+                            "external".to_string(),
+                        )
+                        .map_err(|err| anyhow!("pin ocr binary: {err}"))?,
+                    })
+                }
+                (None, None) => None,
+                _ => {
+                    return Err(anyhow!(
+                        "render-compare needs both --render-binary and --ocr-binary"
+                    ))
+                }
+            };
+            let adapter = sigil_perception::document::DocumentAdapter { render_compare };
             (
                 adapter.adapter_id().to_string(),
                 adapter
