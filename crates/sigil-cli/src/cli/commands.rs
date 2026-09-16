@@ -234,6 +234,53 @@ pub fn perceive_command(
     let routed = sniffed.filter(|s| *s != command.modality.as_str());
     let effective_modality = sniffed.unwrap_or(command.modality.as_str());
 
+    // Reject adapter flags that cannot apply to the routed modality —
+    // a silently-ignored flag reads as "configured" to the operator.
+    for (flag, present, allowed) in [
+        (
+            "--ocr-binary",
+            command.ocr_binary.is_some(),
+            ["image", "video", "document"].as_slice(),
+        ),
+        (
+            "--ocr-args",
+            !command.ocr_args.is_empty(),
+            ["image", "video", "document"].as_slice(),
+        ),
+        (
+            "--transcript-binary",
+            command.transcript_binary.is_some(),
+            ["audio", "video"].as_slice(),
+        ),
+        (
+            "--transcript-args",
+            !command.transcript_args.is_empty(),
+            ["audio", "video"].as_slice(),
+        ),
+        (
+            "--render-binary",
+            command.render_binary.is_some(),
+            ["document"].as_slice(),
+        ),
+        (
+            "--render-args",
+            !command.render_args.is_empty(),
+            ["document"].as_slice(),
+        ),
+        (
+            "--ffmpeg-binary",
+            command.ffmpeg_binary.is_some(),
+            ["video"].as_slice(),
+        ),
+    ] {
+        if present && !allowed.contains(&effective_modality) {
+            return Err(anyhow!(
+                "{flag} applies to --modality {}; effective modality is {effective_modality}",
+                allowed.join("|"),
+            ));
+        }
+    }
+
     let (adapter_id, mut report, modality) = match effective_modality {
         "audio" => {
             let transcript = match &command.transcript_binary {
@@ -260,7 +307,7 @@ pub fn perceive_command(
                 adapter.adapter_id().to_string(),
                 adapter
                     .perceive(&artifact)
-                    .map_err(|err| anyhow!("{err}"))?,
+                    .map_err(|err| perceive_err(err, &bytes, effective_modality))?,
                 adapter.modality(),
             )
         }
@@ -296,7 +343,7 @@ pub fn perceive_command(
                 adapter.adapter_id().to_string(),
                 adapter
                     .perceive(&artifact)
-                    .map_err(|err| anyhow!("{err}"))?,
+                    .map_err(|err| perceive_err(err, &bytes, effective_modality))?,
                 adapter.modality(),
             )
         }
@@ -341,7 +388,7 @@ pub fn perceive_command(
                 adapter.adapter_id().to_string(),
                 adapter
                     .perceive(&artifact)
-                    .map_err(|err| anyhow!("{err}"))?,
+                    .map_err(|err| perceive_err(err, &bytes, effective_modality))?,
                 adapter.modality(),
             )
         }
@@ -351,7 +398,7 @@ pub fn perceive_command(
                 adapter.adapter_id().to_string(),
                 adapter
                     .perceive(&artifact)
-                    .map_err(|err| anyhow!("{err}"))?,
+                    .map_err(|err| perceive_err(err, &bytes, effective_modality))?,
                 adapter.modality(),
             )
         }
@@ -380,7 +427,7 @@ pub fn perceive_command(
                 adapter.adapter_id().to_string(),
                 adapter
                     .perceive(&artifact)
-                    .map_err(|err| anyhow!("{err}"))?,
+                    .map_err(|err| perceive_err(err, &bytes, effective_modality))?,
                 adapter.modality(),
             )
         }
@@ -409,4 +456,27 @@ pub fn perceive_command(
         report,
         analysis,
     })
+}
+
+/// Decode failures name the routed modality and suggest a fix — bare
+/// "artifact decoding failed" is not actionable for a new user. Input
+/// bytes are never echoed into the error.
+fn perceive_err(
+    err: sigil_multimodal::perception::PerceptionError,
+    bytes: &[u8],
+    modality: &str,
+) -> anyhow::Error {
+    use sigil_multimodal::perception::PerceptionError;
+    match err {
+        PerceptionError::DecodeFailed => {
+            let hint = if std::str::from_utf8(bytes).is_ok() {
+                "the input is UTF-8 text; try --modality document or --modality code"
+            } else {
+                "the bytes do not match the routed adapter's format; \
+                 check the file or pick a different --modality"
+            };
+            anyhow!("cannot decode input as {modality}: {hint}")
+        }
+        other => anyhow!("{other}"),
+    }
 }

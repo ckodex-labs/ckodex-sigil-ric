@@ -78,16 +78,33 @@ pub enum Commands {
     Completions(CompletionsCommand),
 }
 
+/// Verdict level at which the process exits non-zero. `deny` (default)
+/// exits 2 on Deny; `flag` also exits 1 on Flag; `never` always exits 0
+/// regardless of the verdict.
+#[derive(clap::ValueEnum, Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum FailOn {
+    Never,
+    Flag,
+    #[default]
+    Deny,
+}
+
 #[derive(clap::Args, Debug)]
 pub struct TextCommand {
+    /// Input file to read ("-" reads stdin). When neither --input nor
+    /// --text is given, piped stdin is read automatically.
     #[arg(long)]
     pub input: Option<PathBuf>,
+    /// Literal text to process. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Option<String>,
     /// Render the full intake→scan→merge→emit pipeline instead of just
     /// the result (human format only).
     #[arg(long)]
     pub explain: bool,
+    /// Exit non-zero when the assessment verdict reaches this level.
+    #[arg(long, value_enum, default_value = "deny")]
+    pub fail_on: FailOn,
 }
 
 #[derive(clap::Args, Debug)]
@@ -99,8 +116,10 @@ pub struct CompletionsCommand {
 
 #[derive(clap::Args, Debug)]
 pub struct BatchTextCommand {
+    /// JSON array file to read ("-" reads stdin).
     #[arg(long)]
     pub input: Option<PathBuf>,
+    /// Literal texts to process. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Vec<String>,
     #[arg(long)]
@@ -115,6 +134,7 @@ pub struct TokenIdsCommand {
 
 #[derive(clap::Args, Debug)]
 pub struct TokenIdsBatchCommand {
+    /// JSON array-of-arrays file to read ("-" reads stdin).
     #[arg(long)]
     pub input: Option<PathBuf>,
 }
@@ -247,8 +267,11 @@ pub struct McpCommand {
     pub server_id: String,
     #[arg(long)]
     pub request_hash: String,
+    /// Response file to gate ("-" reads stdin; piped stdin is used when
+    /// neither --input nor --text is given).
     #[arg(long)]
     pub input: Option<PathBuf>,
+    /// Literal response text. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Option<String>,
     #[arg(long)]
@@ -317,6 +340,9 @@ pub struct PerceiveCommand {
     /// Also run the fusion audit over the extracted channels.
     #[arg(long)]
     pub analyze: bool,
+    /// Exit non-zero when the --analyze verdict reaches this level.
+    #[arg(long, value_enum, default_value = "deny")]
+    pub fail_on: FailOn,
 }
 
 #[derive(clap::Args, Debug)]
@@ -366,12 +392,18 @@ pub struct MultimodalCommand {
     pub code: Option<String>,
     #[arg(long)]
     pub document: Option<String>,
+    /// Exit non-zero when the fusion verdict reaches this level.
+    #[arg(long, value_enum, default_value = "deny")]
+    pub fail_on: FailOn,
 }
 
 #[derive(clap::Args, Debug)]
 pub struct SentinelCommand {
+    /// Input file to read ("-" reads stdin; piped stdin is used when
+    /// neither --input nor --text is given).
     #[arg(long)]
     pub input: Option<PathBuf>,
+    /// Literal text to classify. Mutually exclusive with --input.
     #[arg(long)]
     pub text: Option<String>,
     #[arg(long)]

@@ -14,6 +14,7 @@ items = [
   { id = "attack-proofs-multimodal", kind = "file", label = "crates/sigil-multimodal/tests/attack_proofs.rs passes", path = "crates/sigil-multimodal/tests/attack_proofs.rs" },
   { id = "attack-proofs-probe", kind = "file", label = "crates/sigil-probe/tests/attack_proofs.rs passes", path = "crates/sigil-probe/tests/attack_proofs.rs" },
   { id = "composition-sigil-s", kind = "file", label = "crates/sigil-s/tests/composition.rs passes", path = "crates/sigil-s/tests/composition.rs" },
+  { id = "cli-integration", kind = "file", label = "crates/sigil-cli/tests/cli_integration.rs passes (verdict exit codes, stdin, flag validation)", path = "crates/sigil-cli/tests/cli_integration.rs" },
 ]
 
 [stage.staged_rollout]

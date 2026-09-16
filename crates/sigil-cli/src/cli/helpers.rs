@@ -4,11 +4,12 @@ use sigil_core::engine::Sigil;
 use sigil_core::policy::Policy;
 use sigil_core::signing::ReceiptSigner;
 use sigil_core::sink::{EvidenceSink, JsonlEvidenceSink};
-use sigil_core::types::EvidenceBundle;
+use sigil_core::types::{EvidenceBundle, Verdict};
 use sigil_core::{EcdsaP384Signer, Vocab};
 use sigil_mcp::ResponseSchema;
 use sigil_multimodal::MultimodalEngine;
 use std::fs;
+use std::io::IsTerminal;
 use std::path::PathBuf;
 
 pub fn load_policy(path: Option<&PathBuf>) -> Result<Policy> {
@@ -90,6 +91,7 @@ pub fn read_text(command: &TextCommand) -> Result<String> {
 
 pub fn read_batch_text(command: &BatchTextCommand) -> Result<Vec<String>> {
     match (&command.input, command.text.is_empty()) {
+        (Some(path), true) if path.as_os_str() == "-" => Ok(serde_json::from_str(&read_stdin()?)?),
         (Some(path), true) => load_json_array(Some(path)),
         (None, false) => Ok(command.text.clone()),
         (Some(_), false) => Err(anyhow!("--input and --text are mutually exclusive")),
@@ -109,6 +111,7 @@ pub fn read_token_ids(command: &TokenIdsCommand) -> Result<Vec<u32>> {
 
 pub fn read_token_batches(command: &TokenIdsBatchCommand) -> Result<Vec<Vec<u32>>> {
     match command.input.as_ref() {
+        Some(path) if path.as_os_str() == "-" => Ok(serde_json::from_str(&read_stdin()?)?),
         Some(path) => load_json_array(Some(path)),
         None => Err(anyhow!(
             "provide --input with a JSON array of token-id arrays"
@@ -118,12 +121,53 @@ pub fn read_token_batches(command: &TokenIdsBatchCommand) -> Result<Vec<Vec<u32>
 
 pub fn read_command_text(input: &Option<PathBuf>, text: &Option<String>) -> Result<String> {
     match (input, text) {
+        (Some(path), None) if path.as_os_str() == "-" => read_stdin(),
         (Some(path), None) => {
             Ok(fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?)
         }
         (None, Some(text)) => Ok(text.clone()),
         (Some(_), Some(_)) => Err(anyhow!("--input and --text are mutually exclusive")),
-        (None, None) => Err(anyhow!("provide either --input or --text")),
+        // Piped stdin is an implicit source so `cat payload | sigil-cli scan`
+        // works; an interactive terminal errors instead of blocking. Empty
+        // piped stdin still errors — a vacuous Allow must never be silent.
+        (None, None) if !std::io::stdin().is_terminal() => {
+            let piped = read_stdin()?;
+            if piped.is_empty() {
+                Err(anyhow!(
+                    "stdin was empty — provide --input, --text, or piped input"
+                ))
+            } else {
+                Ok(piped)
+            }
+        }
+        (None, None) => Err(anyhow!("provide --input, --text, or piped stdin")),
+    }
+}
+
+fn read_stdin() -> Result<String> {
+    use std::io::Read;
+    let mut buf = String::new();
+    std::io::stdin()
+        .lock()
+        .read_to_string(&mut buf)
+        .context("read stdin")?;
+    Ok(buf)
+}
+
+/// Map an assessment verdict onto the process exit code selected by
+/// --fail-on: Deny exits 2 under `deny`/`flag`, Flag exits 1 only under
+/// `flag`, `never` always exits 0. Output is flushed first so emitted
+/// JSON is never truncated by the early exit.
+pub fn exit_on_verdict(verdict: &Verdict, fail_on: FailOn) {
+    let code = match verdict {
+        Verdict::Deny { .. } if fail_on != FailOn::Never => 2,
+        Verdict::Flag { .. } if fail_on == FailOn::Flag => 1,
+        _ => 0,
+    };
+    if code != 0 {
+        use std::io::Write;
+        let _ = std::io::stdout().flush();
+        std::process::exit(code);
     }
 }
 

@@ -68,6 +68,7 @@ pub fn run() -> Result<()> {
             )?;
             let text = read_text(&command)?;
             let explain = command.explain;
+            let fail_on = command.fail_on;
             let output = sigil.process_text_segments(&[TextSegment {
                 text: &text,
                 provenance: Provenance::User,
@@ -75,6 +76,7 @@ pub fn run() -> Result<()> {
             printer.emit(&output, |o| {
                 human::render_sigil(o, Some(&text), explain, printer.color)
             })?;
+            exit_on_verdict(&output.assessment.verdict, fail_on);
         }
         Commands::TokenizeBatch(command) => {
             let inputs = read_batch_text(&command)?;
@@ -145,6 +147,7 @@ pub fn run() -> Result<()> {
             )?;
             let text = read_text(&command)?;
             let explain = command.explain;
+            let fail_on = command.fail_on;
             let output = sigil.process_text_segments(&[TextSegment {
                 text: &text,
                 provenance: Provenance::User,
@@ -152,6 +155,7 @@ pub fn run() -> Result<()> {
             printer.emit(&output, |o| {
                 human::render_sigil(o, Some(&text), explain, printer.color)
             })?;
+            exit_on_verdict(&output.assessment.verdict, fail_on);
         }
         Commands::Mcp(command) => {
             let gate = McpGate::new(policy, McpScanConfig::default(), vocab)?;
@@ -262,6 +266,7 @@ pub fn run() -> Result<()> {
             printer.emit(&assessment, |a| {
                 human_reports::render_multimodal(a, printer.color)
             })?;
+            exit_on_verdict(&assessment.verdict, command.fail_on);
         }
         Commands::VerifyReceipt(command) => {
             let outcome = verify_receipt_command(&command)?;
@@ -285,10 +290,14 @@ pub fn run() -> Result<()> {
             })?;
         }
         Commands::Perceive(command) => {
+            let fail_on = command.fail_on;
             let outcome = perceive_command(command, policy, vocab, receipt_signer.as_ref())?;
             printer.emit(&outcome, |o| {
                 human_reports::render_perceive(o, printer.color)
             })?;
+            if let Some(analysis) = &outcome.analysis {
+                exit_on_verdict(&analysis.verdict, fail_on);
+            }
         }
         Commands::VerifyAttestation(command) => {
             let outcome = verify_attestation_command(&command)?;
