@@ -306,6 +306,11 @@ pub struct PerceiveCommand {
     /// e.g. `-png -singlefile -r 150 -`).
     #[arg(long, default_value = "")]
     pub render_args: String,
+    /// External ffmpeg binary to pin for video stream extraction (video,
+    /// optional). Demuxes the container twice: audio track → WAV →
+    /// spectral/transcript, video track → PNG frames → `--ocr-binary`.
+    #[arg(long)]
+    pub ffmpeg_binary: Option<PathBuf>,
     /// Also run the fusion audit over the extracted channels.
     #[arg(long)]
     pub analyze: bool,

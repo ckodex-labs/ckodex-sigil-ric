@@ -236,7 +236,33 @@ pub fn perceive_command(
             )
         }
         "video" => {
-            let adapter = sigil_perception::video::VideoAdapter;
+            // Stream extraction is opt-in via --ffmpeg-binary. OCR of the
+            // frame stream needs the pipe (frames never exist without
+            // ffmpeg), so --ocr-binary without it is a config error.
+            let split_args = |args: &str| args.split_whitespace().map(str::to_string).collect();
+            let stream_extract = match &command.ffmpeg_binary {
+                Some(ffmpeg) => Some(
+                    sigil_perception::video::StreamExtract::pin(
+                        ffmpeg.clone(),
+                        command
+                            .ocr_binary
+                            .clone()
+                            .map(|b| (b, split_args(&command.ocr_args))),
+                        command
+                            .transcript_binary
+                            .clone()
+                            .map(|b| (b, split_args(&command.transcript_args))),
+                    )
+                    .map_err(|err| anyhow!("pin video stream extractors: {err}"))?,
+                ),
+                None => {
+                    if command.ocr_binary.is_some() || command.transcript_binary.is_some() {
+                        return Err(anyhow!("video stream extraction needs --ffmpeg-binary"));
+                    }
+                    None
+                }
+            };
+            let adapter = sigil_perception::video::VideoAdapter { stream_extract };
             (
                 adapter.adapter_id().to_string(),
                 adapter
