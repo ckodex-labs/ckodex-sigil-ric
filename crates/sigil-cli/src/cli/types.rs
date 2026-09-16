@@ -11,25 +11,25 @@ use std::path::PathBuf;
 )]
 pub struct Cli {
     /// Policy TOML file (allow-lists, detector toggles, thresholds).
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub policy: Option<PathBuf>,
     /// Tokenizer vocab to run under.
-    #[arg(long, default_value = "cl100k_base")]
+    #[arg(long, default_value = "cl100k_base", global = true)]
     pub vocab: String,
     /// Unencrypted PKCS#8 PEM private key. When present, every emitted
     /// receipt is signed with the corresponding ECDSA P-384 key.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub signing_key: Option<PathBuf>,
     /// Sigstore keyless signing: exchange the ambient OIDC token
     /// (SIGSTORE_ID_TOKEN) at Fulcio for a short-lived certificate and sign
     /// every receipt with the ephemeral key. Mutually exclusive with
     /// --signing-key. Requires network access to the Fulcio endpoint.
-    #[arg(long, conflicts_with = "signing_key")]
+    #[arg(long, conflicts_with = "signing_key", global = true)]
     pub sigstore_keyless: bool,
     /// Append-only JSONL evidence log. When present, every emitted
     /// `EvidenceBundle` (scan path) and `McpEvidenceRecord` (mcp command)
     /// is written to this file before results are returned.
-    #[arg(long)]
+    #[arg(long, global = true)]
     pub evidence_log: Option<PathBuf>,
     /// Output format: `auto` renders human output on a terminal and JSON
     /// when piped; `json`/`human` force the mode.
@@ -59,22 +59,40 @@ pub enum ColorMode {
 
 #[derive(Subcommand, Debug)]
 pub enum Commands {
+    /// Tokenize text and emit tokens with taint + receipt.
     Tokenize(TextCommand),
+    /// Tokenize a JSON array of texts in one run.
     TokenizeBatch(BatchTextCommand),
+    /// Decode token IDs back to text.
     Decode(TokenIdsCommand),
+    /// Decode a JSON array of token-ID lists in one run.
     DecodeBatch(TokenIdsBatchCommand),
+    /// Run the throughput/latency benchmark harness.
     #[command(alias = "benchmark")]
     Bench(BenchCommand),
+    /// Emit a burn-in telemetry record for deployment attestation.
     Telemetry(BurnInTelemetryCommand),
+    /// Scan text through the full security pipeline and emit a verdict.
     Scan(TextCommand),
+    /// Inspect an MCP tool call as a content-security gate.
     Mcp(McpCommand),
+    /// Probe tokenizer health: samples, canaries, fingerprints, drift.
     Probe(ProbeCommand),
+    /// Fuse channels across modalities into a composite verdict.
     Multimodal(MultimodalCommand),
+    /// Run the Sentinel model companion score, optionally composed with
+    /// the SIGIL verdict.
     Sentinel(SentinelCommand),
+    /// Verify a signed evidence receipt against a public key.
     VerifyReceipt(VerifyReceiptCommand),
+    /// Attest a run: sign a bundle of receipts into an attestation.
     Attest(AttestCommand),
+    /// Adapt a binary artifact (image/audio/video/document/code) into
+    /// scanned text channels.
     Perceive(PerceiveCommand),
+    /// Verify an attestation bundle and its receipt chain.
     VerifyAttestation(VerifyAttestationCommand),
+    /// Generate an ECDSA P-384 keypair for receipt signing.
     Keygen(KeygenCommand),
     /// Print a shell completion script to stdout.
     Completions(CompletionsCommand),
@@ -453,4 +471,9 @@ pub struct SentinelCommand {
     /// sentinel score alone.
     #[arg(long)]
     pub compose: bool,
+    /// Verdict level that exits non-zero: `deny` (default) exits 2 on
+    /// Deny, `flag` also exits 1 on Flag, `never` always exits 0. Gates
+    /// the composite's final verdict, so it requires --compose.
+    #[arg(long, value_enum, default_value = "deny", requires = "compose")]
+    pub fail_on: FailOn,
 }

@@ -17,6 +17,12 @@ impl Vocab {
         }
     }
 
+    /// Resolve the encoding eagerly so a bad name errors instead of
+    /// panicking later at encode time.
+    pub fn validate(&self) -> Result<(), ZigTokenizerError> {
+        self.tokenizer().map(|_| ())
+    }
+
     pub fn try_token_id(&self, text: &str) -> Result<u32, ZigTokenizerError> {
         let tokenizer = self.tokenizer()?;
         tokenizer.encode_single_token(text)
