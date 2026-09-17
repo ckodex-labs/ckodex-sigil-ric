@@ -109,5 +109,5 @@ pub(crate) fn stable_hash(input: &str) -> String {
         hash ^= u64::from(*byte);
         hash = hash.wrapping_mul(0x100_0000_01b3);
     }
-    format!("mcp-{:016x}", hash)
+    format!("mcp-{hash:016x}")
 }

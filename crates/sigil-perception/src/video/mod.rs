@@ -194,8 +194,7 @@ impl PerceptionAdapter for VideoAdapter {
 
         // Metadata channel: track inventory rendered as text.
         let metadata_content = format!(
-            "video_tracks = {}\naudio_tracks = {}\nsubtitle_tracks = {}\n",
-            video_tracks, audio_tracks, subtitle_tracks,
+            "video_tracks = {video_tracks}\naudio_tracks = {audio_tracks}\nsubtitle_tracks = {subtitle_tracks}\n",
         );
         channels.push(ExtractedChannel {
             channel_kind: ChannelKind::Metadata,

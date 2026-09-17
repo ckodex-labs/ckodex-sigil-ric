@@ -183,7 +183,7 @@ fn decode_hex_esc(text: &str) -> Option<String> {
 }
 
 fn decode_hex_bare(text: &str) -> Option<String> {
-    (text.len() % 2 == 0 && text.bytes().all(|b| b.is_ascii_hexdigit()))
+    (text.len().is_multiple_of(2) && text.bytes().all(|b| b.is_ascii_hexdigit()))
         .then(|| {
             (0..text.len())
                 .step_by(2)

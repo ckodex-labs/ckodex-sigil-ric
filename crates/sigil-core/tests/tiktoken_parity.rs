@@ -35,15 +35,13 @@ fn matches_upstream_tiktoken_for_randomized_corpus() {
                 .collect::<Vec<_>>();
             assert_eq!(
                 actual, *expected_tokens,
-                "ordinary parity mismatch for {encoding} sample {:?}",
-                sample
+                "ordinary parity mismatch for {encoding} sample {sample:?}",
             );
 
             let decoded = vocab.decode(&actual);
             assert_eq!(
                 decoded, *sample,
-                "decode round-trip mismatch for {encoding} sample {:?}",
-                sample
+                "decode round-trip mismatch for {encoding} sample {sample:?}",
             );
         }
     }

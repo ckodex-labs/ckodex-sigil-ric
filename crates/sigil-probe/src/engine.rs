@@ -49,7 +49,7 @@ impl ProbeEngine {
             kind: SignalKind::RefusalRate,
             score: refusal_delta,
             severity: severity_from_score(refusal_delta),
-            detail: format!("refusal-rate delta {:.3}", refusal_delta),
+            detail: format!("refusal-rate delta {refusal_delta:.3}"),
         });
 
         let latency_skew = latency_skew(samples, self.baseline.average_latency_to_token_ratio);
@@ -79,7 +79,7 @@ impl ProbeEngine {
             kind: SignalKind::ModelIdentity,
             score: 1.0 - identity_confidence,
             severity: severity_from_score(1.0 - identity_confidence),
-            detail: format!("identity confidence {:.3}", identity_confidence),
+            detail: format!("identity confidence {identity_confidence:.3}"),
         });
 
         let boundary_violations = boundary_violations(samples, boundary_probes);
