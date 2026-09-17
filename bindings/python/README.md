@@ -6,7 +6,7 @@ The Python binding uses `ctypes` and the `sigil_core` Zig ABI.
 
 ```bash
 cd zig/tiktoken
-zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=zig-out/lib/libzig_tiktoken.dylib src/lib.zig
+zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=zig-out/lib/libzig_tiktoken.dylib src/lib.zig
 ```
 
 On Linux the file will usually be `libzig_tiktoken.so`; on Windows, `zig_tiktoken.dll`.
