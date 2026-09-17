@@ -8,6 +8,26 @@ pub struct JsonResult<T> {
     pub result: T,
 }
 
+/// JSON envelope for `SigilOutput` that adds the deduplicated MITRE
+/// technique references (ATLAS `AML.*`, ATT&CK `T*`) across every
+/// detector that fired — lets a SIEM consume the verdict directly.
+#[derive(Serialize)]
+pub struct SigilJson<'a> {
+    #[serde(flatten)]
+    pub output: &'a sigil_core::types::SigilOutput,
+    pub techniques: Vec<&'static str>,
+}
+
+pub fn collect_techniques(output: &sigil_core::types::SigilOutput) -> Vec<&'static str> {
+    let mut seen = std::collections::BTreeSet::new();
+    for annotation in &output.annotations {
+        for detector in &annotation.threat.detectors {
+            seen.extend(detector.techniques());
+        }
+    }
+    seen.into_iter().collect()
+}
+
 #[derive(Serialize)]
 pub struct BatchTokenizeResult {
     pub inputs: Vec<String>,
