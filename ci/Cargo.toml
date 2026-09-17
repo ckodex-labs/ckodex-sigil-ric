@@ -1,0 +1,12 @@
+[package]
+name = "sigil-ci"
+version = "0.3.0"
+edition = "2021"
+publish = false
+description = "Dagger CI driver — every GitHub Actions job is a thin `dagger run` wrapper around this crate."
+license-file = "../LICENSE"
+
+[dependencies]
+dagger-sdk = "1.0.0-beta.13"
+eyre = "0.6"
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }

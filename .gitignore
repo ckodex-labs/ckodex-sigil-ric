@@ -28,3 +28,5 @@ zig-out/
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 # .ignore re-admits the tree to ripgrep and stays tracked.
 /graft/
+ci/target/
+ci-out/
