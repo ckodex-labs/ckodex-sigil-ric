@@ -3,9 +3,14 @@
 //! Every lane runs in a `rust:<ver>-bookworm` container with the repo
 //! mounted at `/src` and persistent cache volumes for the cargo
 //! registry, git checkouts, and the target dir (keyed per toolchain so
-//! 1.78 and 1.90 artifacts never mix).
+//! MSRV and 1.90 artifacts never mix).
 
 use dagger_sdk::{Container, Directory, HostDirectoryOpts, Query};
+
+/// Product MSRV — mirrors `rust-version` in the workspace Cargo.toml.
+/// Floor is 1.88: image 0.25.10 / icu 2.3.x / idna_adapter declare it,
+/// and clap_lex 1.x needs edition-2024-capable Cargo to even parse.
+pub const MSRV: &str = "1.88";
 
 /// Repo checkout mounted read-only-ish (target/ is a cache overlay).
 pub fn source(client: &Query) -> Directory {
