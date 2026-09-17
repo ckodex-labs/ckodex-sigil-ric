@@ -41,6 +41,7 @@ fn main() {
         .arg("-O")
         .arg("ReleaseSafe")
         .arg("-fPIC")
+        .arg("-fcompiler-rt")
         .arg(format!("-femit-bin={}", out_lib.display()))
         .arg("src/lib.zig")
         .status()
