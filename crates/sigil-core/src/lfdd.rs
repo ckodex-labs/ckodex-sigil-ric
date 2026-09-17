@@ -90,10 +90,7 @@ pub fn detect_rare_patterns(text: &str, config: &RarePatternConfig) -> Vec<ScanF
                     severity: Severity::Low,
                     detectors: vec![DetectorId::RarePattern],
                     confidence: 1.0 - freq,
-                    evidence: format!(
-                        "rare n-gram {:?} (freq={:.6}, count={})",
-                        ngram, freq, count
-                    ),
+                    evidence: format!("rare n-gram {ngram:?} (freq={freq:.6}, count={count})"),
                 });
             }
         }

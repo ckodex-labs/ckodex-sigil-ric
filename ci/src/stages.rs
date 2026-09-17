@@ -1,7 +1,7 @@
 //! Pipeline stages — one function per CI lane, each returning a
 //! Container (or exporting artifacts) so failures propagate as errors.
 
-use crate::base::{rust, rust_zig_go, sh, LLVM_COV_INSTALL, MSRV};
+use crate::base::{rust, rust_go, sh, LLVM_COV_INSTALL, MSRV};
 use dagger_sdk::Query;
 use eyre::Result;
 
@@ -55,7 +55,7 @@ pub async fn coverage(client: &Query) -> Result<()> {
 
 /// Zig tokenizer static lib (ReleaseSafe) — smoke that lib.zig builds.
 pub async fn zig_build(client: &Query) -> Result<()> {
-    rust_zig_go(client, MSRV)
+    rust(client, MSRV)
         .with_exec(sh(
             "zig build-lib -O ReleaseSafe -fPIC \
              -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig",
@@ -69,7 +69,7 @@ pub async fn zig_build(client: &Query) -> Result<()> {
 /// result JSON to ./ci-out/bench-<preset>.json.
 pub async fn bench(client: &Query, preset: &str) -> Result<()> {
     let out = format!("/out/bench-{preset}.json");
-    let ctr = rust_zig_go(client, MSRV)
+    let ctr = rust(client, MSRV)
         .with_exec(sh("mkdir -p /out"))
         .with_exec(sh(&format!(
             "cargo run -p sigil-cli --release -- bench --preset {preset} \
@@ -82,7 +82,7 @@ pub async fn bench(client: &Query, preset: &str) -> Result<()> {
 /// Binding smoke tests — zig libs, Python py_compile + benchmark,
 /// libsigil cdylib + wasm artifact, Go test + bench binary.
 pub async fn bindings(client: &Query) -> Result<()> {
-    rust_zig_go(client, MSRV)
+    rust_go(client, MSRV)
         .with_exec(sh(
             "mkdir -p zig/tiktoken/zig-out/lib && \
              zig build-lib -dynamic -O ReleaseSafe -fPIC \
@@ -124,7 +124,7 @@ pub async fn bindings(client: &Query) -> Result<()> {
 /// staged-rollout renders. Unlike `reports` this lane collects signal —
 /// no `--fail-on-not-ready`. Exports everything to ./ci-out/nightly/.
 pub async fn bench_nightly(client: &Query) -> Result<()> {
-    let mut ctr = rust_zig_go(client, MSRV).with_exec(sh("mkdir -p /out"));
+    let mut ctr = rust(client, MSRV).with_exec(sh("mkdir -p /out"));
     for preset in ["small", "medium", "stress"] {
         ctr = ctr.with_exec(sh(&format!(
             "cargo run -p sigil-cli --release -- bench --preset {preset} \
@@ -163,7 +163,7 @@ pub async fn bench_nightly(client: &Query) -> Result<()> {
 /// vt-conformance lane: libghostty-vt cross-check needs Rust 1.90 +
 /// pinned Zig — confined to this lane, the runtime path never sees it.
 pub async fn conformance(client: &Query) -> Result<()> {
-    rust_zig_go(client, "1.90")
+    rust(client, "1.90")
         .with_exec(sh("cargo test -p sigil-vt --features conformance"))
         .with_exec(sh(
             "cargo clippy -p sigil-vt --features conformance \

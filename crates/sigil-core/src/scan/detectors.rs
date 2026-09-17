@@ -196,7 +196,7 @@ pub(crate) fn detect_entropy(map: &TextMap, policy: &Policy) -> (EntropyProfile,
                     },
                     detectors: vec![DetectorId::EntropySpike],
                     confidence: 0.72,
-                    evidence: format!("entropy spike {:.2} vs {:.2}", entropy, baseline),
+                    evidence: format!("entropy spike {entropy:.2} vs {baseline:.2}"),
                 });
             }
         }
