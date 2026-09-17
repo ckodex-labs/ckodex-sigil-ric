@@ -23,7 +23,7 @@ coverage:  ~35% of 103 .rs files read or traced; all 9 crates' public surfaces m
 
 ## module_graph
 
-Workspace `Cargo.toml` members = 9 crates, resolver 2, rust-version 1.78.
+Workspace `Cargo.toml` members = 9 crates, resolver 2, rust-version 1.88.
 
 ```
 sigil-core (kernel — zero sigil deps, zero network deps)
