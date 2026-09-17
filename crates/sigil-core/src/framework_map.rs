@@ -40,12 +40,15 @@ impl DetectorId {
             // Hidden audio instructions and spectral steganography.
             DetectorId::SubliminalAudio | DetectorId::AudioSteganography => &["AML.T0068", "T1027"],
             // A swapped tokenizer/model/component behaving differently
-            // is the supply-chain surface.
+            // is the supply-chain surface — T0010, not T0048 (which is
+            // External Harms; verified against atlas-data v5.6.0).
             DetectorId::FingerprintMismatch | DetectorId::ConsistencyShift => {
-                &["AML.T0048", "T1553"]
+                &["AML.T0010", "T1553"]
             }
-            // Low-and-slow injection spread across a session window.
-            DetectorId::SlowRateInjection => &["AML.T0051"],
+            // Low-and-slow injection spread across a session window —
+            // T0080 (context poisoning via conversation history) is the
+            // mechanism, T0051 the injection itself.
+            DetectorId::SlowRateInjection => &["AML.T0051", "AML.T0080"],
             // Perplexity-outlier text is the jailbreak-prompt signal.
             DetectorId::PerplexityAnomaly => &["AML.T0054"],
             // Terminal control sequences are command-level constructs
@@ -65,9 +68,12 @@ impl DetectorId {
             // Injection-class detectors both detect (M0015) and act as
             // the guardrail layer between input and model (M0020).
             DetectorId::InjectionGrammar
-            | DetectorId::CrossModal
             | DetectorId::PerplexityAnomaly
             | DetectorId::TerminalEscape => &["AML.M0015", "AML.M0020"],
+            // Cross-modal findings exist because multiple modality
+            // channels are integrated — M0009 (multi-modal sensors) is
+            // the mitigation shape, plus detection/guardrail.
+            DetectorId::CrossModal => &["AML.M0009", "AML.M0015", "AML.M0020"],
             // Sensitive-content findings gate what reaches or leaves
             // the model channel.
             DetectorId::DlpCreditCard

@@ -2,7 +2,7 @@
 
 Each SIGIL detector maps to the adversary techniques its findings
 represent. **Source of truth is code**: `DetectorId::techniques()` in
-`crates/sigil-core/src/types.rs`; this table is the human-readable copy —
+`crates/sigil-core/src/framework_map.rs`; this table is the human-readable copy —
 keep them in sync.
 
 `scan`/`tokenize` JSON output carries the deduplicated union of fired
@@ -25,10 +25,10 @@ re-deriving the mapping. The mitigations each detector realises are in
 | `merge_boundary` | AML.T0068 | T1027 | Token-merge seams hide split payloads. |
 | `cross_modal` | AML.T0051.001 | — | An instruction arriving via a second channel is *indirect* injection by definition. |
 | `schema_violation` | — | — | Malformed input shape; integrity finding, no clean technique fit. |
-| `fingerprint_mismatch`, `consistency_shift` | AML.T0048 | T1553 | A swapped tokenizer/model/component behaving differently is the supply-chain surface; receipts exist to defeat trust-control subversion. |
+| `fingerprint_mismatch`, `consistency_shift` | AML.T0010 | T1553 | A swapped tokenizer/model/component behaving differently is the supply-chain surface; receipts exist to defeat trust-control subversion. |
 | `subliminal_audio`, `audio_steganography` | AML.T0068 | T1027 | Instructions hidden in the signal itself — T0068 covers "in the pixels/data". |
 | `rare_pattern` | AML.T0068 | T1027 | Rare-token sequences as carrier signals. |
-| `slow_rate_injection` | AML.T0051 | — | Low-and-slow injection spread across a session. |
+| `slow_rate_injection` | AML.T0051, AML.T0080 | — | Low-and-slow injection spread across a session — T0080 (context poisoning via conversation history) is the mechanism. |
 | `perplexity_anomaly` | AML.T0054 | — | Perplexity-outlier text is the jailbreak-prompt signal. |
 | `terminal_escape` | AML.T0068 | T1059 | Control sequences are command-level constructs smuggled through a text channel. |
 | `encoded_payload` | AML.T0068 | T1027, T1140 | Base64/hex/entity-encoded payloads — T0068 names "encoding scheme such as base64" verbatim; T1140 covers the decode step the payload relies on. |
@@ -49,8 +49,12 @@ re-deriving the mapping. The mitigations each detector realises are in
 
 - ATLAS sub-techniques used: `AML.T0051.001` (Indirect) — `.000` Direct
   and `.002` Triggered are subsumed under the parent in the table above.
-- `AML.T0048` (ML supply chain compromise), not `AML.T0040` (inference
-  API access), is the correct supply-chain ID.
+- `AML.T0010` (AI supply chain compromise) is the correct supply-chain
+  ID — `AML.T0048` is *External Harms*, an easy mix-up from stale
+  third-party crosswalks. Verified against `mitre-atlas/atlas-data`
+  v5.6.0.
+- Mitigation refs verified the same way: `AML.M0009` (multi-modal
+  sensors) covers `cross_modal` alongside M0015/M0020.
 - A finding tagged with a technique means "the adversary's technique
   that would produce this artefact" — the mapping describes the attack,
   not the control.

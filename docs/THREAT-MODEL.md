@@ -67,7 +67,7 @@ receipts, or alter the binary at runtime.
 | T7 | Declared-vs-actual type masquerade | `sniff_modality` routing | T1036 | `sigil.modality_routed` evidence | Unknown magic falls to declared hint — **low** |
 | T8 | Terminal escape smuggling | `terminal_escape` | AML.T0068, T1059 | Owned OSC table; unmodelled ops → findings | Unmodelled-sequence findings rely on operator review — **medium** |
 | T9 | Split-across-channels composition | fusion `BehavioralCompromise` | AML.T0051.001 | Deny at composition time | Requires each fragment to look benign alone — by design the detector's job — **high** |
-| T10 | Swapped tokenizer/vocab/component | `fingerprint_mismatch`, `consistency_shift` | AML.T0048, T1553 | Receipts bind identity | Covers drift, not a malicious-but-consistent component — **medium** |
+| T10 | Swapped tokenizer/vocab/component | `fingerprint_mismatch`, `consistency_shift` | AML.T0010, T1553 | Receipts bind identity | Covers drift, not a malicious-but-consistent component — **medium** |
 | T11 | Receipt/evidence forgery | `verify-receipt`, attestation chain | T1553 | ECDSA P-384, Sigstore keyless, evidence JSONL | Unsigned mode has no integrity — by design, documented — **medium** |
 | T12 | PII/credential exfil through model channel | `dlp_*` | AML.T0024 | Kind-tagged findings, redact action | Coverage bounded by pattern table — **medium** |
 | T13 | Resource exhaustion (huge inputs, decode bombs) | quarantine caps, page/frame caps | — | Bounded decode, MAX_RENDER_PAGES=12, 12-frame cap | No overall input-size cap — a 10 GB file still reads fully; recommended: `--max-input-bytes` — **medium** |
@@ -80,10 +80,13 @@ receipts, or alter the binary at runtime.
 |---|---|
 | AML.M0015 Adversarial Input Detection | every detector — the kernel *is* this control |
 | AML.M0020 Generative AI Guardrails | verdict gate between input and consumer (`--fail-on`, `Deny`) |
+| AML.M0009 Use Multi-Modal Sensors | `cross_modal` findings + `sigil-multimodal` fusion — multiple modality channels integrated so no single channel is the failure point |
 | AML.M0014 Verify AI Artifacts | `fingerprint_mismatch`, `consistency_shift`; receipt-bound identity |
 | AML.M0013 Code Signing | ECDSA P-384 receipts, Sigstore keyless, attestation chain |
 | AML.M0024 AI Telemetry Logging | `--evidence-log` JSONL, `telemetry` command, `slow_rate_injection` correlation |
-| AML.M0029 Human-in-the-Loop | `Flag` = admit-with-evidence posture: flagged content gets human review rather than a silent block |
+| AML.M0029 Human In-the-Loop for AI Agent Actions | `Flag` = admit-with-evidence posture: flagged content gets human review rather than a silent block |
+| AML.M0030 Restrict AI Agent Tool Invocation on Untrusted Data | `sigil-mcp` gate — tool calls on untrusted input are inspected before invocation |
+| AML.M0033 Input/Output Validation for AI Agent Components | `sigil-mcp` argument validation + derived-channel rescanning |
 
 Emitted per-scan in JSON as `mitigations` (union over fired detectors)
 alongside `techniques`.
