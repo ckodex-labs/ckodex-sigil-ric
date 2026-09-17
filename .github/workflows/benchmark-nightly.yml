@@ -8,6 +8,12 @@ on:
 permissions:
   contents: read
 
+# Scheduled runs queue rather than overlap — a slow nightly must not
+# stack against the next cron tick.
+concurrency:
+  group: benchmark-nightly
+  cancel-in-progress: false
+
 # Thin runner — the trend pipeline lives in the Dagger driver
 # (ci/src/stages.rs::bench_nightly). Reproduce locally:
 #   dagger run cargo run --manifest-path ci/Cargo.toml -- bench-nightly
@@ -33,6 +39,7 @@ jobs:
         with:
           version: "0.21.8"
           verb: run
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           args: cargo run --release --manifest-path ci/Cargo.toml -- bench-nightly
 
       - name: Publish burn-in summary
