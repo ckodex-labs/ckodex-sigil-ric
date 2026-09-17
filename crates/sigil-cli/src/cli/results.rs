@@ -16,16 +16,29 @@ pub struct SigilJson<'a> {
     #[serde(flatten)]
     pub output: &'a sigil_core::types::SigilOutput,
     pub techniques: Vec<&'static str>,
+    /// ATLAS mitigations (`AML.M*`) realised by the fired detectors.
+    pub mitigations: Vec<&'static str>,
 }
 
-pub fn collect_techniques(output: &sigil_core::types::SigilOutput) -> Vec<&'static str> {
+fn collect_refs(
+    output: &sigil_core::types::SigilOutput,
+    f: impl Fn(&sigil_core::types::DetectorId) -> &'static [&'static str],
+) -> Vec<&'static str> {
     let mut seen = std::collections::BTreeSet::new();
     for annotation in &output.annotations {
         for detector in &annotation.threat.detectors {
-            seen.extend(detector.techniques());
+            seen.extend(f(detector));
         }
     }
     seen.into_iter().collect()
+}
+
+pub fn collect_techniques(output: &sigil_core::types::SigilOutput) -> Vec<&'static str> {
+    collect_refs(output, |d| d.techniques())
+}
+
+pub fn collect_mitigations(output: &sigil_core::types::SigilOutput) -> Vec<&'static str> {
+    collect_refs(output, |d| d.mitigations())
 }
 
 #[derive(Serialize)]
