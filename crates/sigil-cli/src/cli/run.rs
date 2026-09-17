@@ -90,8 +90,12 @@ fn dispatch(cli: Cli) -> Result<()> {
                 text: &text,
                 provenance: Provenance::User,
             }])?;
-            printer.emit(&output, |o| {
-                human::render_sigil(o, Some(&text), explain, printer.color)
+            let envelope = SigilJson {
+                output: &output,
+                techniques: collect_techniques(&output),
+            };
+            printer.emit(&envelope, |w| {
+                human::render_sigil(w.output, Some(&text), explain, printer.color)
             })?;
             exit_on_verdict(&output.assessment.verdict, fail_on);
         }
@@ -175,8 +179,12 @@ fn dispatch(cli: Cli) -> Result<()> {
                 text: &text,
                 provenance: Provenance::User,
             }])?;
-            printer.emit(&output, |o| {
-                human::render_sigil(o, Some(&text), explain, printer.color)
+            let envelope = SigilJson {
+                output: &output,
+                techniques: collect_techniques(&output),
+            };
+            printer.emit(&envelope, |w| {
+                human::render_sigil(w.output, Some(&text), explain, printer.color)
             })?;
             exit_on_verdict(&output.assessment.verdict, fail_on);
         }

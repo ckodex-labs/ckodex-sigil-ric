@@ -53,6 +53,7 @@ The source of truth for architecture and formal guarantees remains:
 - [docs/TRAJECTORY.md](./docs/TRAJECTORY.md) — maintained engineering trajectory and work queue
 - [SIGIL-PAPERS-7-8.md](./SIGIL-PAPERS-7-8.md)
 - [docs/CONTRACTS.md](./docs/CONTRACTS.md)
+- [docs/THREAT-MAPPING.md](./docs/THREAT-MAPPING.md) — detector → MITRE ATLAS/ATT&CK mapping
 - [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md)
 - [docs/LAUNCH-CHECKLIST.md](./docs/LAUNCH-CHECKLIST.md)
 - [docs/LAUNCH-CHECKLIST.toml](./docs/LAUNCH-CHECKLIST.toml)
