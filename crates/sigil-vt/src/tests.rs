@@ -265,7 +265,7 @@ fn repaint_survives_scroll_eviction() {
     // the divergent row scrolls out of the 48-row window — evaluated
     // at eviction, the finding is still reported
     let mut input = b"shown\x1b[2K\rforged".to_vec();
-    input.extend(std::iter::repeat(b'\n').take(60));
+    input.extend(std::iter::repeat_n(b'\n', 60));
     let seqs = scan(&input);
     let p = pattern(&seqs);
     assert_eq!(p.detail, "repaint: \"shown\" → \"forged\"");

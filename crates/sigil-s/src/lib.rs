@@ -163,8 +163,7 @@ impl SentinelModel {
         };
 
         let rationale = truncate_tokens(&format!(
-            "injection={:.2}; jailbreak={:.2}; dlp={:.2}; safety={:.2}; adversarial={:.2}",
-            injection_score, jailbreak_score, dlp_risk, safety_score, adversarial_score
+            "injection={injection_score:.2}; jailbreak={jailbreak_score:.2}; dlp={dlp_risk:.2}; safety={safety_score:.2}; adversarial={adversarial_score:.2}",
         ));
 
         SentinelVerdict {

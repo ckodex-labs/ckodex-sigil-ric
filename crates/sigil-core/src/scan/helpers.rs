@@ -78,7 +78,7 @@ pub(crate) fn luhn_valid(raw: &str) -> bool {
         sum += value;
         double = !double;
     }
-    sum % 10 == 0
+    sum.is_multiple_of(10)
 }
 
 pub(crate) fn redact_sample(sample: &str) -> String {
