@@ -36,7 +36,9 @@ pub fn rust(client: &Query, version: &str) -> Container {
         .from(image)
         .with_exec(sh(
             "rustup component add rustfmt clippy llvm-tools-preview && \
-             apt-get update -qq && apt-get install -y -qq python3 xz-utils curl ca-certificates",
+             apt-get update -qq && \
+             apt-get install -y -qq python3 python3-pip xz-utils curl ca-certificates && \
+             pip3 install --break-system-packages --quiet tiktoken==0.12.0",
         ))
         .with_exec(sh(ZIG_INSTALL))
         .with_mounted_directory("/src", source(client))
