@@ -8,7 +8,7 @@ Build the shared Zig library first:
 
 ```bash
 cd zig/tiktoken
-zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=zig-out/lib/libzig_tiktoken.so src/lib.zig
+zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=zig-out/lib/libzig_tiktoken.so src/lib.zig
 ```
 
 On macOS the output is typically `libzig_tiktoken.dylib`.

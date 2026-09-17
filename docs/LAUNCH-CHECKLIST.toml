@@ -3,7 +3,7 @@ title = "Internal QA"
 items = [
   { id = "cargo-test", kind = "command", label = "cargo test --workspace passes", command = "cargo test --workspace" },
   { id = "cargo-clippy", kind = "command", label = "cargo clippy --workspace --all-targets -- -D warnings passes", command = "cargo clippy --workspace --all-targets -- -D warnings" },
-  { id = "zig-static-shared", kind = "command", label = "Zig tokenizer builds in static and shared modes", command = "zig build-lib -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig && zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.so zig/tiktoken/src/lib.zig" },
+  { id = "zig-static-shared", kind = "command", label = "Zig tokenizer builds in static and shared modes", command = "zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig && zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=/tmp/libzig_tiktoken.so zig/tiktoken/src/lib.zig" },
   { id = "check-contracts", kind = "command", label = "scripts/check_contracts.py passes", command = "python3 scripts/check_contracts.py" },
   { id = "scorecard-render", kind = "file", label = "docs/QA-SCORECARD.md renders cleanly in CI", path = "scripts/render_qa_scorecard.py" },
   { id = "contracts-test", kind = "file", label = "crates/sigil-core/tests/contracts.rs passes", path = "crates/sigil-core/tests/contracts.rs" },

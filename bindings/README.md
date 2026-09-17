@@ -12,7 +12,7 @@ Build the Zig library as a shared object before using the runtime bindings:
 
 ```bash
 cd zig/tiktoken
-zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=zig-out/lib/libzig_tiktoken.so src/lib.zig
+zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=zig-out/lib/libzig_tiktoken.so src/lib.zig
 ```
 
 On macOS, Zig will typically emit a `.dylib`; on Windows, a `.dll`.
@@ -20,5 +20,5 @@ On macOS, Zig will typically emit a `.dylib`; on Windows, a `.dll`.
 The Go benchmark command also links a static archive:
 
 ```bash
-zig build-lib -O ReleaseSafe -fPIC -femit-bin=zig-out/lib/libzig_tiktoken.a src/lib.zig
+zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check -femit-bin=zig-out/lib/libzig_tiktoken.a src/lib.zig
 ```
