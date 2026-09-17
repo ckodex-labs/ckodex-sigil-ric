@@ -93,6 +93,7 @@ fn dispatch(cli: Cli) -> Result<()> {
             let envelope = SigilJson {
                 output: &output,
                 techniques: collect_techniques(&output),
+                mitigations: collect_mitigations(&output),
             };
             printer.emit(&envelope, |w| {
                 human::render_sigil(w.output, Some(&text), explain, printer.color)
@@ -182,6 +183,7 @@ fn dispatch(cli: Cli) -> Result<()> {
             let envelope = SigilJson {
                 output: &output,
                 techniques: collect_techniques(&output),
+                mitigations: collect_mitigations(&output),
             };
             printer.emit(&envelope, |w| {
                 human::render_sigil(w.output, Some(&text), explain, printer.color)

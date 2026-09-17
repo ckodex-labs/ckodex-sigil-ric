@@ -6,8 +6,11 @@ represent. **Source of truth is code**: `DetectorId::techniques()` in
 keep them in sync.
 
 `scan`/`tokenize` JSON output carries the deduplicated union of fired
-detectors' references in a top-level `techniques` array, so a SIEM or
-reviewer can consume the verdict without re-deriving the mapping.
+detectors' references in top-level `techniques` and `mitigations`
+arrays, so a SIEM or reviewer can consume the verdict without
+re-deriving the mapping. The mitigations each detector realises are in
+`DetectorId::mitigations()` and the control map in
+[THREAT-MODEL.md](./THREAT-MODEL.md).
 
 ## Detector → technique
 

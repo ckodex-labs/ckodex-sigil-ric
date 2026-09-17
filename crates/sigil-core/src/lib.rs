@@ -3,6 +3,7 @@ pub mod emit;
 pub mod engine;
 pub mod error;
 pub mod evidence;
+mod framework_map;
 pub mod intake;
 pub mod lfdd;
 pub mod merge;

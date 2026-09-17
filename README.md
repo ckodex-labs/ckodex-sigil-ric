@@ -54,6 +54,7 @@ The source of truth for architecture and formal guarantees remains:
 - [SIGIL-PAPERS-7-8.md](./SIGIL-PAPERS-7-8.md)
 - [docs/CONTRACTS.md](./docs/CONTRACTS.md)
 - [docs/THREAT-MAPPING.md](./docs/THREAT-MAPPING.md) — detector → MITRE ATLAS/ATT&CK mapping
+- [docs/THREAT-MODEL.md](./docs/THREAT-MODEL.md) — boundaries, abuse paths, control map
 - [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md)
 - [docs/LAUNCH-CHECKLIST.md](./docs/LAUNCH-CHECKLIST.md)
 - [docs/LAUNCH-CHECKLIST.toml](./docs/LAUNCH-CHECKLIST.toml)

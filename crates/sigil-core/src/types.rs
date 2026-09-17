@@ -211,59 +211,6 @@ pub enum DetectorId {
     EncodedPayload,
 }
 
-impl DetectorId {
-    /// MITRE framework references this detector's findings map to —
-    /// ATLAS (`AML.*`) for the AI-specific surface, ATT&CK Enterprise
-    /// (`T*`) for the classic technique. `docs/THREAT-MAPPING.md` is
-    /// the human-readable version of this table; keep them in sync.
-    pub fn techniques(&self) -> &'static [&'static str] {
-        match self {
-            // "ignore previous instructions" is verbatim instruction
-            // override — ATLAS splits jailbreak from injection, so the
-            // grammar table carries both.
-            DetectorId::InjectionGrammar => &["AML.T0051", "AML.T0054"],
-            // Invisible/bidi code points, confusables, high-entropy and
-            // rare-pattern payloads, subword-boundary smuggling and
-            // token-merge seams are all obfuscation surfaces — T0068's
-            // description names them explicitly (incl. base64).
-            DetectorId::UnicodeControl
-            | DetectorId::Confusable
-            | DetectorId::TokenSmuggling
-            | DetectorId::MergeBoundary
-            | DetectorId::RarePattern
-            | DetectorId::EntropySpike => &["AML.T0068", "T1027"],
-            // The payload relies on downstream deobfuscation — T1027
-            // to hide it, T1140 for the decode step it depends on.
-            DetectorId::EncodedPayload => &["AML.T0068", "T1027", "T1140"],
-            // PII/credentials flowing through the model channel.
-            DetectorId::DlpCreditCard
-            | DetectorId::DlpSsn
-            | DetectorId::DlpApiKey
-            | DetectorId::DlpEmail
-            | DetectorId::DlpCustom => &["AML.T0024"],
-            // An instruction arriving via a second data source is
-            // indirect injection by definition.
-            DetectorId::CrossModal => &["AML.T0051.001"],
-            // Hidden audio instructions and spectral steganography.
-            DetectorId::SubliminalAudio | DetectorId::AudioSteganography => &["AML.T0068", "T1027"],
-            // A swapped tokenizer/model/component behaving differently
-            // is the supply-chain surface.
-            DetectorId::FingerprintMismatch | DetectorId::ConsistencyShift => {
-                &["AML.T0048", "T1553"]
-            }
-            // Low-and-slow injection spread across a session window.
-            DetectorId::SlowRateInjection => &["AML.T0051"],
-            // Perplexity-outlier text is the jailbreak-prompt signal.
-            DetectorId::PerplexityAnomaly => &["AML.T0054"],
-            // Terminal control sequences are command-level constructs
-            // smuggled through a text channel.
-            DetectorId::TerminalEscape => &["AML.T0068", "T1059"],
-            // Malformed input shape — integrity, not a mapped technique.
-            DetectorId::SchemaViolation => &[],
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct DlpFinding {
     pub kind: DlpKind,
@@ -433,50 +380,5 @@ impl fmt::Display for Severity {
             Severity::High => "high",
             Severity::Critical => "critical",
         })
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn detector_techniques_reference_valid_frameworks() {
-        let all = [
-            DetectorId::InjectionGrammar,
-            DetectorId::UnicodeControl,
-            DetectorId::Confusable,
-            DetectorId::DlpCreditCard,
-            DetectorId::DlpSsn,
-            DetectorId::DlpApiKey,
-            DetectorId::DlpEmail,
-            DetectorId::DlpCustom,
-            DetectorId::EntropySpike,
-            DetectorId::TokenSmuggling,
-            DetectorId::MergeBoundary,
-            DetectorId::CrossModal,
-            DetectorId::SchemaViolation,
-            DetectorId::FingerprintMismatch,
-            DetectorId::ConsistencyShift,
-            DetectorId::SubliminalAudio,
-            DetectorId::AudioSteganography,
-            DetectorId::RarePattern,
-            DetectorId::SlowRateInjection,
-            DetectorId::PerplexityAnomaly,
-            DetectorId::TerminalEscape,
-            DetectorId::EncodedPayload,
-        ];
-        for detector in &all {
-            for technique in detector.techniques() {
-                assert!(
-                    technique.starts_with("AML.T") || technique.starts_with('T'),
-                    "{detector:?} -> {technique} is not an ATLAS/ATT&CK ref"
-                );
-            }
-        }
-        // Every detector maps to at least one technique except the
-        // integrity-only SchemaViolation.
-        let unmapped: Vec<_> = all.iter().filter(|d| d.techniques().is_empty()).collect();
-        assert_eq!(unmapped, vec![&DetectorId::SchemaViolation]);
     }
 }
