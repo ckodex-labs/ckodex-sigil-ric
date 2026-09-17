@@ -34,12 +34,48 @@ async fn main() -> Result<()> {
 
     connect(move |client| async move {
         match stage.as_str() {
+            // The full verify lane, concurrent within one engine session.
+            // contracts/fmt/zig-build never touch the cargo target lock, so
+            // they overlap the compile-bound lanes; clippy→test serialize on
+            // /src/target inside one chain; coverage builds instrumented into
+            // its own target dir; reports' cargo run waits on the lock when
+            // needed. join! (not try_join!) — a failing lane must not cancel
+            // siblings, so every lane's exports still land in ci-out.
             "all" => {
-                stages::contracts(&client).await?;
-                stages::fmt(&client).await?;
-                stages::clippy(&client).await?;
-                stages::test(&client).await?;
-                stages::zig_build(&client).await?;
+                // Pre-unpack the shared registry serially: concurrent cargo
+                // invocations racing to unpack the same crate corrupt the
+                // cache volume (flock does not hold across cache mounts).
+                // After this, parallel lanes only read it.
+                base::rust(&client, base::MSRV)
+                    .with_exec(base::sh("cargo fetch"))
+                    .sync()
+                    .await?;
+                let compile = async {
+                    stages::clippy(&client).await?;
+                    stages::test(&client).await
+                };
+                let (contracts_r, fmt_r, zig_r, compile_r, coverage_r, reports_r) = tokio::join!(
+                    stages::contracts(&client),
+                    stages::fmt(&client),
+                    stages::zig_build(&client),
+                    compile,
+                    stages::coverage(&client),
+                    stages::reports(&client),
+                );
+                let failed: Vec<String> = [
+                    ("contracts", contracts_r),
+                    ("fmt", fmt_r),
+                    ("zig-build", zig_r),
+                    ("clippy+test", compile_r),
+                    ("coverage", coverage_r),
+                    ("reports", reports_r),
+                ]
+                .into_iter()
+                .filter_map(|(lane, r)| r.err().map(|e| format!("{lane}: {e}")))
+                .collect();
+                if !failed.is_empty() {
+                    return Err(eyre!("verify lane failures:\n{}", failed.join("\n")));
+                }
             }
             "fmt" => stages::fmt(&client).await?,
             "contracts" => stages::contracts(&client).await?,

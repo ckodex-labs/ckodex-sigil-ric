@@ -9,6 +9,12 @@ permissions:
   issues: write
   pull-requests: write
 
+# New pushes supersede in-flight runs of the same ref; PR runs cancel
+# per-branch. Runs queue rather than stack.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 # Thin runners — every job delegates to the Dagger Rust driver in ci/.
 # Pipeline logic lives in ci/src/stages.rs; reproduce any lane locally
 # with: dagger run cargo run --manifest-path ci/Cargo.toml -- <stage>
@@ -32,53 +38,38 @@ jobs:
         with:
           workspaces: ci
 
-      - name: Verify lane (contracts, fmt, clippy, test, zig)
+      - name: Verify lane (contracts, fmt, clippy, test, zig, coverage, reports)
         uses: dagger/dagger-for-github@v7
         with:
           version: "0.21.8"
           verb: run
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           args: ${{ env.DAGGER_DRIVER }} all
 
-      - name: Coverage gate (≥80% lines)
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: "0.21.8"
-          verb: run
-          args: ${{ env.DAGGER_DRIVER }} coverage
-
-      - name: QA + launch-readiness reports
-        uses: dagger/dagger-for-github@v7
-        with:
-          version: "0.21.8"
-          verb: run
-          args: ${{ env.DAGGER_DRIVER }} reports
-
       - name: Publish summaries
+        if: always()
         run: |
-          {
-            echo "## SIGIL QA Scorecard"
-            echo
-            cat ci-out/qa-scorecard.generated.md
-            echo
-            echo "## SIGIL Launch Readiness"
-            echo
-            cat ci-out/launch-readiness.generated.md
-            echo
-            echo "## SIGIL Burn-In Smoke"
-            echo
-            cat ci-out/burn-in-smoke.generated.md
-            echo
-            echo "## SIGIL Staged Rollout Smoke"
-            echo
-            cat ci-out/staged-rollout-smoke.generated.md
-          } >> "$GITHUB_STEP_SUMMARY"
+          for report in qa-scorecard.generated launch-readiness.generated \
+                        burn-in-smoke.generated staged-rollout-smoke.generated; do
+            {
+              echo "## SIGIL ${report}"
+              echo
+              if [ -f "ci-out/${report}.md" ]; then
+                cat "ci-out/${report}.md"
+              else
+                echo "_not generated — lane failed before export_"
+              fi
+              echo
+            } >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload reports + coverage
+        if: always()
         uses: actions/upload-artifact@v4
         with:
           name: verify-reports
           path: ci-out/
-          if-no-files-found: error
+          if-no-files-found: warn
 
       - name: Publish QA scorecard comment
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
@@ -137,6 +128,7 @@ jobs:
         with:
           version: "0.21.8"
           verb: run
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           args: ${{ env.DAGGER_DRIVER }} bench ${{ matrix.preset }}
 
       - name: Upload benchmark artifact
@@ -167,6 +159,7 @@ jobs:
         with:
           version: "0.21.8"
           verb: run
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           args: ${{ env.DAGGER_DRIVER }} bindings
 
   vt-conformance:
@@ -196,4 +189,5 @@ jobs:
         with:
           version: "0.21.8"
           verb: run
+          cloud-token: ${{ secrets.DAGGER_CLOUD_TOKEN }}
           args: ${{ env.DAGGER_DRIVER }} conformance
