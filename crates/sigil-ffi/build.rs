@@ -38,29 +38,8 @@ fn main() {
         panic!("zig build-lib failed with status {status}");
     }
 
+    // The Zig archive is bundled into libsigil.a; scripts/build_ffi_shared.sh
+    // performs the final shared-object link with the ABI version script.
     println!("cargo:rustc-link-search=native={}", out_dir.display());
     println!("cargo:rustc-link-lib=static=zig_tiktoken");
-
-    // rustc's cdylib exports only `#[no_mangle]` Rust items — the linked
-    // Zig symbols arrive hidden. Re-export the documented ABI explicitly
-    // (bindings/c/sigil_tiktoken.h is the contract).
-    let os = env::var("CARGO_CFG_TARGET_OS").expect("target os");
-    for symbol in [
-        "zig_tiktoken_open",
-        "zig_tiktoken_close",
-        "zig_tiktoken_encode_ordinary",
-        "zig_tiktoken_encode_piece",
-        "zig_tiktoken_free_tokens",
-        "zig_tiktoken_encode_single_token",
-        "zig_tiktoken_decode_bytes",
-        "zig_tiktoken_free_bytes",
-        "zig_tiktoken_special_token_id",
-    ] {
-        match os.as_str() {
-            // ld64 wants the leading-underscore name.
-            "macos" => println!("cargo:rustc-link-arg-cdylib=-Wl,-exported_symbol,_{symbol}"),
-            "windows" => println!("cargo:rustc-link-arg-cdylib=/EXPORT:{symbol}"),
-            _ => println!("cargo:rustc-link-arg-cdylib=-Wl,--export-dynamic-symbol={symbol}"),
-        }
-    }
 }

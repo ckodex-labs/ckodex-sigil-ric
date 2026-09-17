@@ -101,7 +101,8 @@ pub async fn bindings(client: &Query) -> Result<()> {
                --corpus bench/corpora/small.json",
         ))
         .with_exec(sh(
-            "cargo build -p sigil-ffi --release && scripts/build_wasm.sh && \
+            "cargo build -p sigil-ffi --release && \
+             bash scripts/build_ffi_shared.sh && scripts/build_wasm.sh && \
              ls -l target/release/libsigil.* zig/tiktoken/zig-out/sigil.wasm",
         ))
         .with_exec(sh(

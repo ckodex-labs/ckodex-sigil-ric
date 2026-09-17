@@ -368,7 +368,7 @@ SIGIL ships as a standalone, embeddable package — same philosophy as Valance.
 | `ckx-sigil` | Rust crate — core library | `crates.io` |
 | `ckx-sigil-mcp` | Rust crate — MCP security gate | `crates.io` |
 | `ckx-sigil-probe` | Rust crate — model health query engine | `crates.io` |
-| `libsigil` | C ABI shared library — `crates/sigil-ffi` cdylib (`cargo build -p sigil-ffi --release`); ABI at `bindings/c/sigil_tiktoken.h` | FFI consumers |
+| `libsigil` | C ABI shared library — `crates/sigil-ffi` staticlib + `scripts/build_ffi_shared.sh` link step; ABI at `bindings/c/sigil_tiktoken.h` | FFI consumers |
 | `sigil.wasm` | WebAssembly module — `scripts/build_wasm.sh` (wasm32-freestanding reactor; `memory` + `zig_tiktoken_*` exports) | Browser / edge / serverless |
 | `sigil` | CLI tool (tokenize, scan, mcp, probe) | Operators / CI pipelines |
 | `sigil_tiktoken` | Python bindings (ctypes over the Zig shared library) | ML ecosystem integration |

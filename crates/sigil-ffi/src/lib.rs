@@ -6,8 +6,8 @@
 //! Go `cgo` bindings already load. This crate compiles the Zig tokenizer
 //! static library and re-exports its symbols from a Rust-produced cdylib,
 //! so consumers get one artifact (`libsigil.{so,dylib,dll}`) built by
-//! `cargo build -p sigil-ffi --release` without a separate Zig toolchain
-//! invocation.
+//! `cargo build -p sigil-ffi --release` plus `scripts/build_ffi_shared.sh`,
+//! without a separate Zig toolchain invocation.
 //!
 //! `sigil_ffi_pin` exists only to keep the static-lib members reachable:
 //! Rust emits no calls into the ABI surface, so without a reference the

@@ -11,6 +11,10 @@ build = "build.rs"
 # `zig_tiktoken_*` ABI documented in `bindings/c/sigil_tiktoken.h` so FFI
 # consumers can link a Rust-produced artifact instead of the raw Zig build.
 name = "sigil"
-crate-type = ["cdylib", "rlib"]
+# staticlib + scripts/build_ffi_shared.sh produce libsigil.{so,dylib,dll}.
+# rustc version-scripts every cdylib on GNU targets (local: *), which would
+# localize the re-exported zig_tiktoken_* ABI — so the final link is done
+# explicitly, outside rustc's export control.
+crate-type = ["staticlib", "rlib"]
 
 [dependencies]

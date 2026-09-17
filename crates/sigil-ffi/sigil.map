@@ -1,0 +1,19 @@
+# GNU ld version script for libsigil.so — the complete dynamic ABI.
+# zig_tiktoken_* matches bindings/c/sigil_tiktoken.h; sigil_ffi_pin keeps
+# archive members reachable; sigil_version reports the artifact version.
+{
+    global:
+        zig_tiktoken_open;
+        zig_tiktoken_close;
+        zig_tiktoken_encode_ordinary;
+        zig_tiktoken_encode_piece;
+        zig_tiktoken_free_tokens;
+        zig_tiktoken_encode_single_token;
+        zig_tiktoken_decode_bytes;
+        zig_tiktoken_free_bytes;
+        zig_tiktoken_special_token_id;
+        sigil_ffi_pin;
+        sigil_version;
+    local:
+        *;
+};
