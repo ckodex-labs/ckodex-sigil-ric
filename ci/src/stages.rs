@@ -57,7 +57,7 @@ pub async fn coverage(client: &Query) -> Result<()> {
 pub async fn zig_build(client: &Query) -> Result<()> {
     rust(client, MSRV)
         .with_exec(sh(
-            "zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt \
+            "zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check \
              -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig",
         ))
         .sync()
@@ -85,10 +85,10 @@ pub async fn bindings(client: &Query) -> Result<()> {
     rust_go(client, MSRV)
         .with_exec(sh(
             "mkdir -p zig/tiktoken/zig-out/lib && \
-             zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt \
+             zig build-lib -dynamic -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check \
                -femit-bin=zig/tiktoken/zig-out/lib/libzig_tiktoken.so \
                zig/tiktoken/src/lib.zig && \
-             zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt \
+             zig build-lib -O ReleaseSafe -fPIC -fcompiler-rt -fno-stack-check \
                -femit-bin=zig/tiktoken/zig-out/lib/libzig_tiktoken.a \
                zig/tiktoken/src/lib.zig",
         ))
