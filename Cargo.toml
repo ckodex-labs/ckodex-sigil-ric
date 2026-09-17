@@ -12,6 +12,8 @@ members = [
     "crates/sigil-ffi",
     "crates/sigil-vt",
 ]
+# The Dagger CI driver is tooling, not product — own lockfile, own MSRV.
+exclude = ["ci"]
 resolver = "2"
 
 [workspace.package]

@@ -27,6 +27,16 @@ its scorecard row or the check fails.
 
 ## Commit flow
 
-Feature branch off `develop`, merge with `--no-ff`. CI runs the full
-gate set plus the vt-conformance lane (needs Rust 1.90 + Zig for the
-libghostty-vt comparison harness — the runtime path never touches it).
+Feature branch off `develop`, merge with `--no-ff`. CI lanes run inside
+Dagger via the `ci/` driver crate — GitHub Actions is a thin invoker.
+Reproduce any lane locally:
+
+```
+dagger run cargo run --manifest-path ci/Cargo.toml -- <stage>
+```
+
+Stages: `all` (contracts+fmt+clippy+test+zig), `fmt`, `contracts`,
+`test`, `clippy`, `coverage`, `zig-build`, `bench <preset>`,
+`bindings`, `conformance`, `reports`. The vt-conformance lane needs
+Rust 1.90 + Zig for the libghostty-vt comparison harness — the runtime
+path never touches it.

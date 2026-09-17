@@ -9,6 +9,13 @@ permissions:
   issues: write
   pull-requests: write
 
+# Thin runners — every job delegates to the Dagger Rust driver in ci/.
+# Pipeline logic lives in ci/src/stages.rs; reproduce any lane locally
+# with: dagger run cargo run --manifest-path ci/Cargo.toml -- <stage>
+
+env:
+  DAGGER_DRIVER: cargo run --release --manifest-path ci/Cargo.toml --
+
 jobs:
   verify:
     name: Test and lint
@@ -17,102 +24,67 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Contract docs sync
-        run: python3 scripts/check_contracts.py
+      - name: Rust toolchain (CI driver only — gates run in containers)
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Render QA scorecard artifact
-        run: |
-          python3 scripts/render_qa_scorecard.py \
-            --markdown-out "$RUNNER_TEMP/qa-scorecard.generated.md" \
-            --json-out "$RUNNER_TEMP/qa-scorecard.generated.json" \
-            --comment-out "$RUNNER_TEMP/qa-scorecard.comment.md"
+      - name: Cache CI driver build
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: ci
 
-      - name: Publish QA scorecard summary
+      - name: Verify lane (contracts, fmt, clippy, test, zig)
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} all
+
+      - name: Coverage gate (≥80% lines)
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} coverage
+
+      - name: QA + launch-readiness reports
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} reports
+
+      - name: Publish summaries
         run: |
           {
             echo "## SIGIL QA Scorecard"
             echo
-            cat "$RUNNER_TEMP/qa-scorecard.generated.md"
-          } >> "$GITHUB_STEP_SUMMARY"
-
-      - name: Render launch readiness report
-        run: |
-          python3 scripts/render_launch_readiness.py \
-            --stage internal_qa \
-            --assume-commands-pass \
-            --markdown-out "$RUNNER_TEMP/launch-readiness.generated.md" \
-            --json-out "$RUNNER_TEMP/launch-readiness.generated.json"
-
-      - name: Emit burn-in telemetry smoke bundle
-        run: |
-          cargo run -p sigil-cli -- telemetry \
-            --benchmark bench/baselines/correctness/small.json \
-            --benchmark bench/baselines/correctness/medium.json \
-            --benchmark bench/baselines/correctness/stress.json \
-            --deployment-mode monitor \
-            --monitor-shadow-enabled \
-            --false-positive-rate 0.0 \
-            --false-positive-rate-threshold 0.01 \
-            --unresolved-high-severity-findings 0 \
-            --rollback-ready \
-            --source ci-smoke \
-            --evidence-ref bench/baselines/correctness/small.json \
-            --evidence-ref bench/baselines/correctness/medium.json \
-            --evidence-ref bench/baselines/correctness/stress.json \
-            --output "$RUNNER_TEMP/burn-in-smoke.telemetry.json"
-
-      - name: Render burn-in smoke report
-        run: |
-          python3 scripts/render_burn_in_report.py \
-            --benchmark bench/baselines/correctness/stress.json \
-            --telemetry "$RUNNER_TEMP/burn-in-smoke.telemetry.json" \
-            --markdown-out "$RUNNER_TEMP/burn-in-smoke.generated.md" \
-            --json-out "$RUNNER_TEMP/burn-in-smoke.generated.json" \
-            --fail-on-not-ready
-
-      - name: Render staged rollout smoke readiness
-        run: |
-          python3 scripts/render_launch_readiness.py \
-            --stage staged_rollout \
-            --assume-commands-pass \
-            --burn-in-report "$RUNNER_TEMP/burn-in-smoke.generated.json" \
-            --markdown-out "$RUNNER_TEMP/staged-rollout-smoke.generated.md" \
-            --json-out "$RUNNER_TEMP/staged-rollout-smoke.generated.json"
-
-      - name: Publish launch readiness summary
-        run: |
-          {
+            cat ci-out/qa-scorecard.generated.md
+            echo
             echo "## SIGIL Launch Readiness"
             echo
-            cat "$RUNNER_TEMP/launch-readiness.generated.md"
+            cat ci-out/launch-readiness.generated.md
             echo
             echo "## SIGIL Burn-In Smoke"
             echo
-            cat "$RUNNER_TEMP/burn-in-smoke.generated.md"
+            cat ci-out/burn-in-smoke.generated.md
             echo
             echo "## SIGIL Staged Rollout Smoke"
             echo
-            cat "$RUNNER_TEMP/staged-rollout-smoke.generated.md"
+            cat ci-out/staged-rollout-smoke.generated.md
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload launch readiness artifact
+      - name: Upload reports + coverage
         uses: actions/upload-artifact@v4
         with:
-          name: launch-readiness
-          path: |
-            ${{ runner.temp }}/launch-readiness.generated.md
-            ${{ runner.temp }}/launch-readiness.generated.json
-            ${{ runner.temp }}/burn-in-smoke.telemetry.json
-            ${{ runner.temp }}/burn-in-smoke.generated.md
-            ${{ runner.temp }}/burn-in-smoke.generated.json
-            ${{ runner.temp }}/staged-rollout-smoke.generated.md
-            ${{ runner.temp }}/staged-rollout-smoke.generated.json
+          name: verify-reports
+          path: ci-out/
+          if-no-files-found: error
 
       - name: Publish QA scorecard comment
         if: github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository
         uses: actions/github-script@v7
         env:
-          SCORECARD_COMMENT_PATH: ${{ runner.temp }}/qa-scorecard.comment.md
+          SCORECARD_COMMENT_PATH: ci-out/qa-scorecard.comment.md
         with:
           script: |
             const fs = require('fs');
@@ -140,54 +112,6 @@ jobs:
               });
             }
 
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.78.0
-        with:
-          components: llvm-tools-preview, rustfmt
-
-      - name: Zig toolchain
-        uses: mlugg/setup-zig@v1
-        with:
-          version: 0.15.2
-
-      - name: Format check
-        run: cargo fmt --all -- --check
-
-      - name: Test workspace
-        run: cargo test --workspace
-
-      - name: Install cargo-llvm-cov
-        uses: taiki-e/install-action@cargo-llvm-cov
-
-      # Governance target is 80% lines; measured coverage is 80.54%
-      # (see docs/TRAJECTORY.md C1). The floor is now at the target.
-      - name: Coverage gate
-        run: |
-          cargo llvm-cov --workspace --lcov \
-            --output-path "$RUNNER_TEMP/lcov.info" \
-            --fail-under-lines 80
-
-      - name: Upload coverage report
-        uses: actions/upload-artifact@v4
-        with:
-          name: lcov
-          path: ${{ runner.temp }}/lcov.info
-          if-no-files-found: error
-
-      - name: Clippy workspace
-        run: cargo clippy --workspace --all-targets -- -D warnings
-
-      - name: Build Zig tokenizer
-        run: zig build-lib -O ReleaseSafe -fPIC -femit-bin=/tmp/libzig_tiktoken.a zig/tiktoken/src/lib.zig
-
-      - name: Upload QA scorecard artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: qa-scorecard
-          path: |
-            ${{ runner.temp }}/qa-scorecard.generated.md
-            ${{ runner.temp }}/qa-scorecard.generated.json
-
   benchmark:
     name: Benchmark regression
     needs: verify
@@ -200,30 +124,27 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.78.0
+      - name: Rust toolchain (CI driver only)
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Zig toolchain
-        uses: mlugg/setup-zig@v1
+      - name: Cache CI driver build
+        uses: swatinem/rust-cache@v2
         with:
-          version: 0.15.2
+          workspaces: ci
 
-      - name: Prepare output dir
-        run: mkdir -p "$RUNNER_TEMP/sigil-bench"
-
-      - name: Run benchmark and compare baselines
-        run: >
-          cargo run -p sigil-cli -- bench
-          --preset ${{ matrix.preset }}
-          --format json
-          --baseline-dir bench/baselines
-          --output "$RUNNER_TEMP/sigil-bench/${{ matrix.preset }}.json"
+      - name: Bench ${{ matrix.preset }}
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} bench ${{ matrix.preset }}
 
       - name: Upload benchmark artifact
         uses: actions/upload-artifact@v4
         with:
           name: benchmark-${{ matrix.preset }}
-          path: ${{ runner.temp }}/sigil-bench/${{ matrix.preset }}.json
+          path: ci-out/bench-${{ matrix.preset }}.json
+          if-no-files-found: error
 
   bindings:
     name: Binding smoke tests
@@ -233,55 +154,20 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.78.0
+      - name: Rust toolchain (CI driver only)
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Zig toolchain
-        uses: mlugg/setup-zig@v1
+      - name: Cache CI driver build
+        uses: swatinem/rust-cache@v2
         with:
-          version: 0.15.2
+          workspaces: ci
 
-      - name: Python setup
-        uses: actions/setup-python@v5
+      - name: Bindings lane (zig + python + wasm + go)
+        uses: dagger/dagger-for-github@v7
         with:
-          python-version: "3.11"
-
-      - name: Go setup
-        uses: actions/setup-go@v5
-        with:
-          go-version: "1.22"
-
-      - name: Build tokenizer libraries
-        run: |
-          mkdir -p zig/tiktoken/zig-out/lib
-          zig build-lib -dynamic -O ReleaseSafe -fPIC -femit-bin=zig/tiktoken/zig-out/lib/libzig_tiktoken.so zig/tiktoken/src/lib.zig
-          zig build-lib -O ReleaseSafe -fPIC -femit-bin=zig/tiktoken/zig-out/lib/libzig_tiktoken.a zig/tiktoken/src/lib.zig
-
-      - name: Python binding compile
-        env:
-          SIGIL_TIKTOKEN_LIB: ${{ github.workspace }}/zig/tiktoken/zig-out/lib/libzig_tiktoken.so
-          PYTHONPATH: ${{ github.workspace }}/bindings/python
-        run: |
-          python3 -m py_compile bindings/python/sigil_tiktoken/__init__.py bindings/python/benchmark.py
-          python3 bindings/python/benchmark.py --json --rounds 1 --corpus bench/corpora/small.json
-
-      - name: Build libsigil cdylib and sigil.wasm artifacts
-        run: |
-          cargo build -p sigil-ffi --release
-          scripts/build_wasm.sh
-          ls -l target/release/libsigil.* zig/tiktoken/zig-out/sigil.wasm
-
-      - name: Python binding smoke against libsigil
-        env:
-          SIGIL_TIKTOKEN_LIB: ${{ github.workspace }}/target/release/libsigil.so
-          PYTHONPATH: ${{ github.workspace }}/bindings/python
-        run: python3 bindings/python/benchmark.py --json --rounds 1 --corpus bench/corpora/small.json
-
-      - name: Go binding smoke
-        working-directory: bindings/go
-        run: |
-          go test ./...
-          go run ./cmd/sigil-bench --json --rounds 1 --corpus ../../bench/corpora/small.json
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} bindings
 
   vt-conformance:
     # Cross-checks sigil-vt against libghostty-vt (the `conformance`
@@ -297,16 +183,17 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Rust toolchain
-        uses: dtolnay/rust-toolchain@1.90.0
+      - name: Rust toolchain (CI driver only)
+        uses: dtolnay/rust-toolchain@stable
 
-      - name: Zig toolchain
-        uses: mlugg/setup-zig@v1
+      - name: Cache CI driver build
+        uses: swatinem/rust-cache@v2
         with:
-          version: 0.15.2
+          workspaces: ci
 
-      - name: Conformance tests
-        run: cargo test -p sigil-vt --features conformance
-
-      - name: Clippy conformance
-        run: cargo clippy -p sigil-vt --features conformance --all-targets -- -D warnings
+      - name: Conformance lane (rust 1.90 + zig 0.15.2 in-container)
+        uses: dagger/dagger-for-github@v7
+        with:
+          version: "0.21.8"
+          verb: run
+          args: ${{ env.DAGGER_DRIVER }} conformance
