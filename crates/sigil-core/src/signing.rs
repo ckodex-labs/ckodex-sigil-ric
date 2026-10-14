@@ -16,7 +16,9 @@ use p384::ecdsa::{
     signature::Signer as _, signature::Verifier as _, Signature, SigningKey, VerifyingKey,
 };
 use p384::elliptic_curve::generic_array::GenericArray;
-use p384::pkcs8::{DecodePrivateKey, EncodePrivateKey, EncodePublicKey, LineEnding};
+use p384::pkcs8::{
+    DecodePrivateKey, DecodePublicKey, EncodePrivateKey, EncodePublicKey, LineEnding,
+};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 
@@ -176,21 +178,21 @@ impl EcdsaP384Signer {
     }
 }
 
-/// Verify a receipt signature against a hex-encoded ECDSA P-384
-/// verification key (uncompressed SEC1 point).
+/// Verify a receipt signature against a verification key. Accepts either:
+///   - a hex-encoded uncompressed SEC1 point (97 bytes, 194 hex characters)
+///   - an SPKI PEM string ("-----BEGIN PUBLIC KEY-----...")
+///   - a filesystem path pointing to an SPKI PEM file or hex file
 pub fn verify_receipt_signature(
     message: &[u8],
     signature: &ReceiptSignature,
-    verification_key_hex: &str,
+    verification_key: &str,
 ) -> Result<(), SignatureVerifyError> {
     if signature.algorithm != "ecdsa-p384-sha384" {
         return Err(SignatureVerifyError::UnsupportedAlgorithm(
             signature.algorithm.clone(),
         ));
     }
-    let key_bytes = decode_hex(verification_key_hex).ok_or(SignatureVerifyError::InvalidKey)?;
-    let verifying_key =
-        VerifyingKey::from_sec1_bytes(&key_bytes).map_err(|_| SignatureVerifyError::InvalidKey)?;
+    let verifying_key = parse_verifying_key(verification_key)?;
     let sig_bytes =
         decode_hex(&signature.signature).ok_or(SignatureVerifyError::InvalidSignature)?;
     let signature =
@@ -198,6 +200,29 @@ pub fn verify_receipt_signature(
     verifying_key
         .verify(message, &signature)
         .map_err(|_| SignatureVerifyError::Mismatch)
+}
+
+fn parse_verifying_key(key_input: &str) -> Result<VerifyingKey, SignatureVerifyError> {
+    let content = if let Ok(data) = std::fs::read_to_string(key_input.trim()) {
+        data
+    } else {
+        key_input.to_string()
+    };
+    let trimmed = content.trim();
+
+    if trimmed.contains("-----BEGIN PUBLIC KEY-----") {
+        if let Ok(key) = VerifyingKey::from_public_key_pem(trimmed) {
+            return Ok(key);
+        }
+    }
+
+    if let Some(bytes) = decode_hex(trimmed) {
+        if let Ok(key) = VerifyingKey::from_sec1_bytes(&bytes) {
+            return Ok(key);
+        }
+    }
+
+    Err(SignatureVerifyError::InvalidKey)
 }
 
 fn key_id_for(verifying_key: &VerifyingKey) -> String {
@@ -253,6 +278,22 @@ mod tests {
                 &message(),
                 &receipt_signature,
                 &signer.verification_key_hex()
+            ),
+            Ok(())
+        );
+        let pem = signer.public_key_pem().expect("valid pem");
+        assert_eq!(
+            verify_receipt_signature(&message(), &receipt_signature, &pem),
+            Ok(())
+        );
+        let temp_dir = tempfile::tempdir().expect("temp dir");
+        let pem_path = temp_dir.path().join("key.pub.pem");
+        std::fs::write(&pem_path, &pem).expect("write pem");
+        assert_eq!(
+            verify_receipt_signature(
+                &message(),
+                &receipt_signature,
+                pem_path.to_str().expect("valid path")
             ),
             Ok(())
         );

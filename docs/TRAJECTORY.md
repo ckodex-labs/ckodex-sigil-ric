@@ -1,8 +1,8 @@
 # SIGIL Engineering Trajectory
 
 **Maintained:** yes — update this document at the end of every work increment.
-**Last consolidated:** 2026-09-11
-**Verification at time of writing:** `cargo test --workspace` → **85 passed, 0 failed** (fresh run, this session).
+**Last consolidated:** 2026-10-10
+**Verification at time of writing:** `cargo test --workspace` → **384 passed, 0 failed** (fresh run, this session).
 
 This is the canonical trajectory of the RIC/SIGIL representation-integrity work in
 this repository. It consolidates the session arc, the current verified state, and
@@ -29,10 +29,11 @@ primitive) and proceeded through five increments:
 
 ## 2. Current verified state
 
-**Workspace:** 9 crates, builds clean, **164 tests / 0 failures** (2026-09-11).
+**Workspace:** 9 crates, builds clean, **384 tests / 0 failures** (2026-10-10).
 **Dependencies added this trajectory:** `sha2 0.10.9`, `p384 0.13.1`, `hound 3.5.1`, `sigstore-trust-root 0.11`, `realfft 3.5.0`, `rustfft 6.4.1`, `mp4parse 0.17.0`, `lopdf 0.36.0` (all long-published). `ed25519-dalek` added then removed on the P-384 mandate.
 
 **Maintenance log:**
+- 2026-10-10 (full release consolidation & 17-agent verification): workspace verified at 384 tests / 0 failures across all 9 crates and 31 test suites. Scorecard proof test path alignment in `docs/QA-SCORECARD.md` verified clean (29/29 attack classes `ok`). `docs/LAUNCH-CHECKLIST.toml` aligned with `--report-format json` and `stress-benchmark` id binding. Full live execution of `production_launch` stage verified `Ready` with live benchmark stress telemetry and shadow monitor burn-in verification. Zig static/shared builds, Python ctypes bindings (`roundtrip_parity: true`), Go cgo bindings (`roundtrip_parity: true`), and `sigil.wasm` (`wasm-tools validate: OK`) independently verified.
 - 2026-09-11 (consolidation sweep): D-4 actually resolved (evidence id FNV-1a → SHA-256; earlier note claiming supersession was an overclaim — the bundle id was still FNV). Spec §9 project structure aligned with the real workspace (removed phantom `sigil-ffi`/`sigil-wasm`/`sigil-bench`/`sigil.toml` entries, fixed conformance-vector location, added planned-crates note). CV range references corrected to 001..008 in spec header, formal/README, and analysis doc.
 - 2026-09-11 (residue audit): spec §4.1 CLI examples rewritten against the real binary
   (`sigil-cli`, JSON output, actual subcommands — removed phantom `dlp` subcommand and

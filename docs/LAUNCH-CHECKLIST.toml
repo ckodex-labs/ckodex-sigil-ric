@@ -32,8 +32,8 @@ items = [
 title = "Production Launch"
 extends = "staged_rollout"
 items = [
-  { id = "bench-small", kind = "command", label = "sigil bench --preset small compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset small --baseline-dir bench/baselines --format json" },
-  { id = "bench-medium", kind = "command", label = "sigil bench --preset medium compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset medium --baseline-dir bench/baselines --format json" },
-  { id = "bench-stress", kind = "manual", label = "sigil bench --preset stress is recorded for trend tracking" },
+  { id = "bench-small", kind = "command", label = "sigil bench --preset small compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset small --baseline-dir bench/baselines --report-format json" },
+  { id = "bench-medium", kind = "command", label = "sigil bench --preset medium compares cleanly to baselines", command = "cargo run -p sigil-cli -- bench --preset medium --baseline-dir bench/baselines --report-format json" },
+  { id = "stress-benchmark", kind = "manual", label = "sigil bench --preset stress is recorded for trend tracking" },
   { id = "pr-visible", kind = "file", label = "CI summary and PR comment scorecard are visible to reviewers", path = ".github/workflows/ci.yml" },
 ]

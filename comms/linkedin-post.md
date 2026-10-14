@@ -1,77 +1,37 @@
-# LinkedIn post — AI Representation Integrity
+# LinkedIn post on representation integrity
 
-**What if the AI did not actually "see" what your security controls approved?**
+What if an AI never actually saw what your security checks approved?
 
-This question has been bothering me as AI systems move beyond chat and begin consuming documents, images, audio, video, retrieved knowledge, tool outputs, and other agent-generated content.
+This question started nagging at me once models stopped being simple text boxes. Today they pull in PDF reports, raw images, audio clips, database rows, tool outputs, and text from other agents.
 
-We tend to think about AI security at the content level:
+Most AI security still operates at the file or string level. A user uploads a file, a scanner inspects it, a human glances at a preview, and the model runs.
 
-A user uploads a document.
-A scanner checks it.
-A human sees it.
-The AI processes it.
+That flow hides an uncomfortable gap. The text a human sees, the payload a scanner checks, and the raw byte sequence a model digests are often three distinct things.
 
-But there is a subtle problem.
+Take an image. An OCR pipeline extracts text from pixels. An audio clip becomes text through speech recognition. A PDF might hide invisible layers, white-on-white text, or malformed metadata. A multimodal model then stitches these pieces into one prompt, turning harmless fragments into an actionable instruction that never existed in any single file.
 
-The representation the **human sees**, the representation the **security scanner analyzes**, and the representation the **model actually consumes** may be different.
+The core question changes. Asking whether an upload looks malicious is not enough. You also have to ask whether the boundaries separating trusted instructions from untrusted data survived the trip into the model.
 
-An image can contain text extracted by **OCR (Optical Character Recognition)**.
-Audio can become text through **ASR (Automatic Speech Recognition)**.
-A document may carry visible text, hidden text, metadata, annotations, embedded objects, or retrieved context.
+Two points fail often.
 
-And a multimodal model can fuse several individually harmless inputs into a semantic instruction that did not exist in any single artifact.
+First, text tokenizers drop boundaries. Most models run byte-pair encoding. When a tokenizer merges byte pairs across a prompt boundary, trusted system text and untrusted user inputs fuse into shared tokens. The tokenizer is just doing its job. The security system, however, lost track of who wrote what.
 
-That changes the security question.
+Second, multimodal fusion drops boundaries. A trusted system prompt, an untrusted user query, OCR text from a screenshot, and extracted document metadata get combined into a single context window. Individually, each input looks clean. The command only takes shape once the model reads them together.
 
-Instead of asking only:
+The rule ought to be straightforward. Classify text before transforming it, and carry that provenance directly into the model.
 
-**"Is this content malicious?"**
+I built a small engine called SIGIL around this idea, guided by a rule called the Representation Integrity Contract. The contract says you only execute what you admitted, and you prove both are identical.
 
-we also need to ask:
+SIGIL does not replace tokenizers, OCR engines, or policy tools. It wraps them. It tracks where each fragment came from, records every cleanup step, flags when tokenization crosses a boundary, and notes when combined inputs create new commands.
 
-**"Did a trust boundary disappear while preparing this content for the model?"**
+The output is not a thumbs-up or thumbs-down flag. It is an audit record. Here is what came in, here is how the pipeline altered it, here is what the model received, and here is the authority granted to the run.
 
-There are two boundaries I find particularly interesting.
+That matters for autonomous agents. If the system cannot prove what the model read, it should pull back privileges. Drop from autonomous execution to drafting a change, or stop and ask a human. Relying on a prompt-injection filter to catch everything is wishful thinking.
 
-**1. Unsafe merge boundaries.**
-Modern language models break text into tokens using **BPE (Byte-Pair Encoding)**. During that process, tokenization can combine material from different trust zones — for example, trusted system context and untrusted user content can end up inside the same model-consumable representation. The tokenizer is doing exactly what it was designed to do. From a security perspective, we may have lost provenance.
+The real engineering problem is not writing better prompt filters. It is keeping trust boundaries intact while data gets parsed, resized, and merged.
 
-**2. Unsafe multimodal fusion boundaries.**
-The same phenomenon appears one level higher. Trusted user instruction + untrusted image + OCR-derived text + document metadata + retrieved context → one fused model context. Individually, each input may look harmless. The security event can happen **when they are combined**.
+I tested this with three practical cases, including hidden Unicode tag characters, text hidden inside images, and benign multi-part inputs that only become dangerous when merged. The current build has 384 tests passing across nine crates. Every admission writes an admission receipt that links the input to the exact bytes sent to the model. The engine signs that receipt with ECDSA P-384, meaning anyone with the public key can verify the admission using one CLI call without needing our build setup. The contract itself is documented as RIC v0.1, covering model inputs now with tool and agent boundaries next.
 
-This suggests an architectural principle that deserves far more attention:
+The bottom line is simple. Can you prove your AI saw what you approved?
 
-> **Classification must happen before transformation, and provenance must survive all the way to model perception.**
-
-I have been building a small security kernel called **SIGIL — Source Integrity & Governed Interpretation Layer** — around this idea, governed by a contract we call **RIC — Representation Integrity Contract**: admit what will be interpreted, execute what was admitted, and prove the two are the same.
-
-SIGIL is not intended to replace tokenizers, OCR, ASR, **DLP (Data Loss Prevention)**, or policy engines. It sits around them and preserves:
-
-- where each piece of information came from
-- its trust level and sensitivity
-- how it was transformed
-- whether tokenization erased a boundary
-- whether multimodal fusion elevated or erased one
-- which exact representation was admitted to the model
-
-The goal is not another binary SAFE/UNSAFE verdict. It is a verifiable statement:
-
-**This is what entered. This is how it changed. This is what the model was allowed to perceive. This is the authority we allowed as a result.**
-
-For agentic AI, that last part matters enormously. When representation integrity becomes uncertain, the system should reduce authority — act → draft → observe → escalate — rather than hoping a prompt-injection classifier catches everything.
-
-The most interesting research direction here is not "better prompt-injection detection." It is:
-
-## Trust-Preserving Multimodal Fusion
-
-Can we preserve source, trust, authority, and provenance boundaries while heterogeneous information is transformed and fused into model context — and prove afterward that the representation our controls approved is the representation the model actually consumed?
-
-I am running a bounded **POC (Proof of Concept)** with three reproducible cases: hidden Unicode instructions, image/OCR-based instructions, and cross-modal composition where benign inputs become dangerous only when fused. If the hypothesis is wrong, the experiment should tell us quickly. If it is right, the same primitive could protect **RAG (Retrieval-Augmented Generation)**, document AI, multimodal copilots, and tool-using agents.
-
-**Status update (2026-09):** this is no longer only a proposal. The kernel exists — SIGIL v0.3, a Rust workspace with 85 passing tests and executable conformance vectors (CV-RIC-001..008). Every admission now carries a receipt binding what entered, how it changed, and what the model was allowed to perceive — signed with **ECDSA P-384** and verifiable by a third party with a single CLI command and a pinned key, no producer code required. The contract itself is published as **RIC v0.1**, with per-boundary conformance definitions for model inputs today and tool, retrieval, and agent-to-agent boundaries specified next.
-
-The question I keep coming back to is simple:
-
-> **Can we prove the AI saw what we approved?**
-
-#AISecurity #AgenticAI #MultimodalAI #CyberSecurity #LLMSecurity #ZeroTrust #ResponsibleAI
+#AISecurity #AgenticAI #MultimodalAI #CyberSecurity #LLMSecurity #ZeroTrust

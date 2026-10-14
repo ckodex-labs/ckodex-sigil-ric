@@ -1,34 +1,33 @@
-# LinkedIn follow-up — SIGIL is public
+# LinkedIn follow-up: SIGIL is public
 
-**A few weeks ago I asked: can we prove the AI saw what we approved?**
+A few weeks ago I asked whether we can prove an AI model actually saw what security controls approved.
 
-Today the answer is a public repository.
+Today the code is public.
 
-**SIGIL — Source Integrity & Governed Interpretation Layer** is now open source under ckodex-labs: a Rust workspace that sits in front of the model and enforces one contract — **no authority-bearing consumer may receive a representation that was not itself admitted.**
+SIGIL is open source under ckodex-labs. It is a Rust workspace that runs ahead of model inference. Its job is simple. No system may run on text that was not explicitly checked and admitted.
 
-What shipped since the original post:
+Here is what works in the repository today.
 
-**The kernel is real, not a slide.** Intake, canonicalization, representation binding between raw and model-consumed bytes, provenance through every transform, and a verdict gate owned by the kernel — not by whichever adapter ran last.
+The code runs end to end. Intake, text normalization, raw-to-token byte mapping, transform history, and verdict checks all live in the core engine. The boundary gate belongs to the engine, not to whichever parsing script finished last.
 
-**Every verdict carries evidence.** Admissions emit receipts — what entered, how it changed, what was allowed through — signed with ECDSA P-384, with Sigstore keyless signing support. A third party can verify a receipt with one CLI command and a pinned key. No producer code required.
+Every verdict produces evidence. When the engine admits text, it generates an admission receipt recording the original bytes, each normalization step, and the exact admitted slice. The receipt is signed with ECDSA P-384, with support for Sigstore keyless signing. Anyone with the public key can verify the receipt from the command line without installing our build tools.
 
-**It speaks the vocabulary security teams already use.** Every detector finding maps to MITRE ATLAS and ATT&CK technique IDs — verified against the atlas-data v5.6.0 dataset, not a stale crosswalk — and every detector also maps to the ATLAS mitigation it realizes. `scan` output tells you what the adversary attempted (AML.T0051, AML.T0068, AML.T0010…) and what answered it (AML.M0015, AML.M0020…). We audited our own mapping online and published the corrections in the commit history.
+Findings map to standard security taxonomies. Every detector finding ties directly to MITRE ATLAS and ATT&CK IDs, checked against the atlas-data v5.6.0 release. The scan output lists adversary techniques like AML.T0051 or AML.T0068 alongside the corresponding mitigations. We checked our mappings against live upstream tables and committed the test cases.
 
-**The threat model is honest.** `docs/THREAT-MODEL.md` lists 15 abuse paths — including the ones we don't fully close. Residual risk is documented, not hidden: pinned extractors prove identity, not safety; unsigned receipts carry no cryptographic integrity; the downstream consumer must honour the verdict.
+The threat model documents blind spots. In docs/THREAT-MODEL.md we track 15 abuse paths, including where protection stops. Pinned binaries confirm identity rather than safety. Unsigned receipts lack tamper resistance. Downstream consumers still have to enforce the verdict exit code.
 
-**Multimodal is covered.** Images (OCR + render-divergence for text a human can't see), audio (ASR), video, documents (per-page PDF render comparison), code carriers, terminal escape sequences — each channel derives text with lineage, and the fusion layer treats the merge boundary itself as an attack surface. Individually benign inputs that compose into instructions get flagged at composition, not after.
+Multiple input types are supported. The engine handles OCR from images, speech recognition from audio, video stream demuxing, PDF render comparisons for invisible text, source code comments, and terminal escape sequences. Each pipeline step preserves origin data, and the fusion layer flags when clean inputs combine into malicious prompts.
 
-**One command to try it:**
+Run it on any file:
 
 ```
 cat suspicious.txt | sigil-cli scan --fail-on deny
 ```
 
-Everything runs locally. The tokenizer is the instrument; the boundary is the product.
+Everything runs locally on your machine. The tokenizer is just the tool, but the boundary is the point.
 
-If your agents consume documents, retrieved context, tool output, or other models' output — the question is no longer whether the content was scanned. It is whether the scanned representation is the one the model consumed.
+If your systems consume PDFs, search results, tool output, or prompts from other models, scanning the original file is no longer enough. You need proof that the admitted text matches what the model executed.
 
 Repository: github.com/ckodex-labs/ckodex-sigil-ric
-Threat model, ATLAS/ATT&CK mapping, and conformance vectors are in the tree.
 
 #AISecurity #LLMSecurity #AgenticAI #MultimodalAI #CyberSecurity #ZeroTrust #MITRE
