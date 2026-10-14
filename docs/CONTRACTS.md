@@ -93,4 +93,5 @@ The contract is enforced by:
 - ABI and binding smoke checks
 - benchmark regressions
 - CI gates for Rust, Zig, Python, and Go surfaces
+- reproducible Dagger build pipelines and [dagger-zig](https://github.com/MChorfa/dagger-zig) containerized verification for Zig targets
 - the repository contract sync check in `scripts/check_contracts.py`
