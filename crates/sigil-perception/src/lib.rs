@@ -79,15 +79,15 @@ impl ExternalOcr {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|err| PerceptionError::ExtractorFailed(format!("spawn: {err}")))?;
-        child
-            .stdin
-            .as_mut()
-            .expect("piped stdin")
-            .write_all(bytes)
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("stdin: {err}")))?;
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let payload = bytes.to_vec();
+        let writer_thread = std::thread::spawn(move || {
+            let _ = stdin.write_all(&payload);
+        });
         let output = child
             .wait_with_output()
             .map_err(|err| PerceptionError::ExtractorFailed(format!("wait: {err}")))?;
+        let _ = writer_thread.join();
         if !output.status.success() {
             return Err(PerceptionError::ExtractorFailed(format!(
                 "ocr binary exited with {}",
@@ -149,15 +149,15 @@ impl ExternalPipe {
             .stderr(std::process::Stdio::null())
             .spawn()
             .map_err(|err| PerceptionError::ExtractorFailed(format!("spawn: {err}")))?;
-        child
-            .stdin
-            .as_mut()
-            .expect("piped stdin")
-            .write_all(bytes)
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("stdin: {err}")))?;
+        let mut stdin = child.stdin.take().expect("piped stdin");
+        let payload = bytes.to_vec();
+        let writer_thread = std::thread::spawn(move || {
+            let _ = stdin.write_all(&payload);
+        });
         let output = child
             .wait_with_output()
             .map_err(|err| PerceptionError::ExtractorFailed(format!("wait: {err}")))?;
+        let _ = writer_thread.join();
         if !output.status.success() {
             return Err(PerceptionError::ExtractorFailed(format!(
                 "pipe binary exited with {}",

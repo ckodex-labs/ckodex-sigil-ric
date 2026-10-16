@@ -266,13 +266,15 @@ impl VirtualWindow {
             }
         }
         let s = self.rows_mut();
-        if down {
-            for r in (top..=bottom - n).rev() {
-                s[r + n] = std::mem::take(&mut s[r]);
-            }
-        } else {
-            for r in top..=bottom - n {
-                s[r] = std::mem::take(&mut s[r + n]);
+        if bottom >= n && bottom - n >= top {
+            if down {
+                for r in (top..=bottom - n).rev() {
+                    s[r + n] = std::mem::take(&mut s[r]);
+                }
+            } else {
+                for r in top..=bottom - n {
+                    s[r] = std::mem::take(&mut s[r + n]);
+                }
             }
         }
     }
@@ -388,13 +390,15 @@ impl VirtualWindow {
             }
         }
         let s = self.rows_mut();
-        if insert {
-            for r in (row..=bottom - n).rev() {
-                s[r + n] = std::mem::take(&mut s[r]);
-            }
-        } else {
-            for r in row..=bottom - n {
-                s[r] = std::mem::take(&mut s[r + n]);
+        if bottom >= n && bottom - n >= row {
+            if insert {
+                for r in (row..=bottom - n).rev() {
+                    s[r + n] = std::mem::take(&mut s[r]);
+                }
+            } else {
+                for r in row..=bottom - n {
+                    s[r] = std::mem::take(&mut s[r + n]);
+                }
             }
         }
     }

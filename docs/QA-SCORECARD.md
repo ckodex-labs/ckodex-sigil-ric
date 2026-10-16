@@ -13,6 +13,7 @@ This scorecard maps the main attack classes to the layer that blocks them and to
 | Receipt tampering and unsigned-admission substitution | `sigil-core` receipt signing (ECDSA P-384) | `crates/sigil-core/tests/conformance_vectors.rs` |
 | Tokenizer firewall and reserved token smuggling | `sigil-core` tokenizer boundary | `crates/sigil-core/tests/firewall.rs` |
 | Representation-integrity conformance (receipts, evidence modes, trust composition, raw-range traceability) | `sigil-core` RIC conformance vectors | `crates/sigil-core/tests/conformance_vectors.rs` |
+| Autonomous agent delegation escalation, recursive loopjacking, and representation binding divergence under RIC v0.2 | `sigil-core` delegation validator and lease manager | `crates/sigil-core/tests/delegation_conformance.rs` |
 | Contract boundary invariants and serialization | `sigil-core` / `sigil-s` public contract surface | `crates/sigil-core/tests/contracts.rs` |
 | Batch actor consistency and thread safety | `sigil-core` parallel tokenizer actor | `crates/sigil-core/tests/batch_parallel.rs` |
 | Cross-tool contamination and schema drift | `sigil-mcp` gate | `crates/sigil-mcp/tests/attack_proofs.rs`, `crates/sigil-mcp/tests/gate.rs` |

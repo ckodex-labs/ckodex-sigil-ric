@@ -20,6 +20,7 @@ sigil-perception = { version = "0.3.1", path = "../sigil-perception" }
 sigil-sigstore = { version = "0.3.1", path = "../sigil-sigstore" }
 sigil-vt = { version = "0.3.1", path = "../sigil-vt" }
 clap_complete = "4.5.67"
+sha2 = "0.10.9"
 
 [dev-dependencies]
 tempfile = "3"

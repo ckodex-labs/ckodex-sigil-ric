@@ -400,6 +400,16 @@ fn lone_esc_reported() {
     assert_eq!(seqs[0].kind, TerminalSequenceKind::Escape);
 }
 
+#[test]
+fn sec_audit_high_03_lineshift_large_count_no_underflow() {
+    // 24-row default window: count = 48 exceeds bottom row index (23).
+    // Prior to fix, `bottom - n` underflowed usize and panicked.
+    let _ = scan(b"\x1b[48L");
+    let _ = scan(b"\x1b[48M");
+    let _ = scan(b"\x1b[48S");
+    let _ = scan(b"\x1b[48T");
+}
+
 /// Quarantine + mode-gate tests — `tests/quarantine.rs`.
 mod quarantine;
 

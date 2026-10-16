@@ -119,10 +119,23 @@ pub fn read_token_batches(command: &TokenIdsBatchCommand) -> Result<Vec<Vec<u32>
     }
 }
 
+const MAX_INPUT_BYTES: u64 = 64 * 1024 * 1024;
+
 pub fn read_command_text(input: &Option<PathBuf>, text: &Option<String>) -> Result<String> {
     match (input, text) {
         (Some(path), None) if path.as_os_str() == "-" => read_stdin(),
         (Some(path), None) => {
+            let metadata =
+                fs::metadata(path).with_context(|| format!("stat {}", path.display()))?;
+            if !metadata.is_file() {
+                return Err(anyhow!("{} is not a regular file", path.display()));
+            }
+            if metadata.len() > MAX_INPUT_BYTES {
+                return Err(anyhow!(
+                    "file {} exceeds maximum allowed size (64 MiB)",
+                    path.display()
+                ));
+            }
             Ok(fs::read_to_string(path).with_context(|| format!("read {}", path.display()))?)
         }
         (None, Some(text)) => Ok(text.clone()),
@@ -147,10 +160,11 @@ pub fn read_command_text(input: &Option<PathBuf>, text: &Option<String>) -> Resu
 fn read_stdin() -> Result<String> {
     use std::io::Read;
     let mut buf = String::new();
-    std::io::stdin()
-        .lock()
-        .read_to_string(&mut buf)
-        .context("read stdin")?;
+    let mut handle = std::io::stdin().lock().take(MAX_INPUT_BYTES + 1);
+    handle.read_to_string(&mut buf).context("read stdin")?;
+    if buf.len() > MAX_INPUT_BYTES as usize {
+        return Err(anyhow!("input exceeds maximum allowed size (64 MiB)"));
+    }
     Ok(buf)
 }
 

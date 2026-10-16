@@ -1,4 +1,5 @@
 pub mod attestation;
+pub mod delegation;
 pub mod emit;
 pub mod engine;
 pub mod error;
@@ -20,6 +21,11 @@ pub mod types;
 pub mod vocab;
 
 pub use attestation::{attest_receipt, verify_attestation, DsseEnvelope};
+pub use delegation::{
+    create_root_lease, delegate, is_attenuated, validate_chain, validate_envelope, validate_lease,
+    AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
+    DelegationRequest, RevocationRegistry, RootLeaseParams,
+};
 pub use engine::Sigil;
 pub use error::{Result, SigilError};
 pub use parallel::TokenizerActor;

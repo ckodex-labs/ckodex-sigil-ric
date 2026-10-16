@@ -90,18 +90,7 @@ pub struct FusionAssessment {
 /// Upper bound on the authority any downstream consumer may exercise given
 /// this assessment. Fusion uncertainty degrades authority; it never raises
 /// it (RIC-R-8).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-#[serde(rename_all = "snake_case")]
-pub enum AuthorityCeiling {
-    /// Clean input, no fusion events.
-    Act,
-    /// Clean input, but fusion events warrant caution.
-    Draft,
-    /// Flagged input — observe only.
-    Observe,
-    /// Denied input — human gate required.
-    Escalate,
-}
+pub use sigil_core::AuthorityCeiling;
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct ModalityAssessment {

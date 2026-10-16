@@ -63,6 +63,14 @@ The primary public contracts are versioned Rust types and their serialized forms
 - `zig_tiktoken_*` C ABI
 - `libsigil` shared-library artifact (`crates/sigil-ffi` shared artifact: same `zig_tiktoken_*` exports + `sigil_version`)
 - `sigil.wasm` artifact (`scripts/build_wasm.sh` — wasm32-freestanding reactor, `memory` + `zig_tiktoken_*` exports)
+- `CapabilityLease`
+- `AgentEnvelope`
+- `Capability`
+- `RootLeaseParams`
+- `DelegationRequest`
+- `RevocationRegistry`
+- `LeaseVerificationOutcome`
+- `EnvelopeVerificationOutcome`
 
 ## Contract rules
 
@@ -83,6 +91,7 @@ The primary public contracts are versioned Rust types and their serialized forms
 - Reserved tokenizer sentinels and special-token boundary abuse are fail-closed at the tokenizer firewall.
 - Python and Go wrappers must preserve token IDs and byte-for-byte decode behavior.
 - Zig ABI entrypoints must keep the existing open/encode/decode/special-token contract.
+- Delegated agent capabilities and authority ceilings attenuate monotonically, recursive depth and lease validity windows are strictly bounded, and task representation digests must match admitted receipts.
 
 ## Verification
 

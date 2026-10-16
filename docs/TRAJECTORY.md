@@ -1,10 +1,10 @@
 # SIGIL Engineering Trajectory
 
-**Maintained:** yes — update this document at the end of every work increment.
-**Last consolidated:** 2026-10-10
-**Verification at time of writing:** `cargo test --workspace` → **384 passed, 0 failed** (fresh run, this session).
+**Maintained:** yes, updated at the end of every work increment
+**Last consolidated:** 2026-10-16
+**Verification at time of writing:** `cargo test --workspace` -> **407 passed, 0 failed**
 
-This is the canonical trajectory of the RIC/SIGIL representation-integrity work in
+This is the canonical trajectory of the RIC/SIGIL representation integrity work in
 this repository. It consolidates the session arc, the current verified state, and
 the open work queue. Companion documents are indexed in the map at the end.
 
@@ -12,27 +12,29 @@ the open work queue. Companion documents are indexed in the map at the end.
 
 ## 1. Arc of the work
 
-The session began from a design conversation (RIC — Representation Integrity
-Contract; SIGIL as its enforcement engine; multimodal fusion as the next
-primitive) and proceeded through five increments:
+The trajectory covers eight major increments:
 
 | # | Increment | Outcome | Proof |
 |---|---|---|---|
-| 0 | Recon + critique + gap analysis of the RIC/SIGIL proposal vs. repo | 6 defects found (D-1..D-6), 16 gap items classified, 3 conversation claims corrected | [RIC-DELTA-ANALYSIS.md](./RIC-DELTA-ANALYSIS.md) |
-| 1 | RIC delta implementation | Trust composition fixed, Unicode Tags detected, strip policy real, merge-boundary findings, SHA-256 receipts, fusion-boundary auditor + authority ceilings | 58→73 tests green |
-| 2 | Conformance vectors materialized | CV-RIC-001..006 executable; caught D-7 (mid-character byte ranges) that unit tests missed | `tests/conformance_vectors.rs` |
-| 3 | CLI fusion audit un-starved (D-8) | `--system` flag + per-modality provenance; full fusion chain verified through the binary | smoke matrix |
-| 4 | Always-on evidence mode (DEV-1) | `emit.evidence_mode = non-allow \| always`; clean admissions attestable | CV-RIC-007 + binary smoke |
-| 5 | Base64 heuristic retuned (D-9) | Contiguity gate replaces vacuous shape check; entropy-gate design evaluated and **rejected** by the attack_proofs regression | 3 scan tests + regression |
-| 6 | Receipt signing (DEV-3) | `ReceiptSigner` port + **ECDSA P-384** adapter (mandated), RFC 6979 deterministic nonces | CV-RIC-008 |
+| 0 | Recon + critique + gap analysis of the RIC/SIGIL proposal vs repo | 6 defects found, 16 gap items classified, 3 conversation claims corrected | [RIC-DELTA-ANALYSIS.md](./RIC-DELTA-ANALYSIS.md) |
+| 1 | RIC delta implementation | Trust composition fixed, Unicode Tags detected, strip policy real, merge-boundary findings, SHA-256 receipts, fusion-boundary auditor + authority ceilings | 58 to 73 tests green |
+| 2 | Conformance vectors materialized | CV-RIC-001 through CV-RIC-006 executable | `tests/conformance_vectors.rs` |
+| 3 | CLI fusion audit un-starved | `--system` flag + per-modality provenance, full fusion chain verified through the binary | smoke matrix |
+| 4 | Always-on evidence mode | `emit.evidence_mode = non-allow \| always`, clean admissions attestable | CV-RIC-007 + binary smoke |
+| 5 | Base64 heuristic retuned | Contiguity gate replaces vacuous shape check, entropy-gate design evaluated and rejected by the attack_proofs regression | 3 scan tests + regression |
+| 6 | Receipt signing | `ReceiptSigner` port + **ECDSA P-384** adapter, RFC 6979 deterministic nonces | CV-RIC-008 |
 | 7 | Communication package | 11-slide deck + LinkedIn post rebuilt locally | `comms/` |
+| 8 | RIC v0.2 recursive agent delegation leases | Monotonic capability attenuation, non-escalating authority ceilings, bounded recursion depth, representation-bound task envelopes, instant revocation cascade, CLI lease and envelope management | CV-RIC-009 through CV-RIC-014, `tests/delegation_conformance.rs`, `cli_integration.rs` |
 
 ## 2. Current verified state
 
-**Workspace:** 9 crates, builds clean, **384 tests / 0 failures** (2026-10-10).
-**Dependencies added this trajectory:** `sha2 0.10.9`, `p384 0.13.1`, `hound 3.5.1`, `sigstore-trust-root 0.11`, `realfft 3.5.0`, `rustfft 6.4.1`, `mp4parse 0.17.0`, `lopdf 0.36.0` (all long-published). `ed25519-dalek` added then removed on the P-384 mandate.
+**Workspace:** 9 crates, builds clean, **407 tests / 0 failures** (2026-10-16).
+**Dependencies added this trajectory:** `sha2 0.10.9`, `p384 0.13.1`, `hound 3.5.1`, `sigstore-trust-root 0.11`, `realfft 3.5.0`, `rustfft 6.4.1`, `mp4parse 0.17.0`, `lopdf 0.36.0`.
 
 **Maintenance log:**
+- 2026-10-16: Second deep round of refinements completed. Added lease-revoke CLI subcommand for Day-2 revocation registry manipulation and epoch advancement. Hardened canonical serialization field escaping against newline and return characters. Expanded CLI integration test suite with negative tests covering lease expiration fail-closed enforcement, revocation registry enforcement, and tampered envelope payload detection. Aligned docs/RIC-CONTRACT.md lattice ordering and eliminated parentheses and em dashes. Full workspace verified at 407 tests, 0 failures, 0 clippy warnings under -D warnings, and contracts in sync.
+- 2026-10-16: Multi-subagent deep security audit and remediation completed across SIGIL and RIC v0.2. Four specialized audit agents investigated cryptographic bounds, delegation lattices, input parsers, and CLI transports. Remediated CRIT-01 payload malleability in AgentEnvelope by binding SHA-384 payload digest into canonical signing messages; CRIT-02 signature verification omission by requiring signatures when verification keys are supplied; CRIT-03 fail-open verification exit codes in CLI; CRIT-04 grandparent revocation bypass via ancestor lineage tracking; HIGH-01 capability path traversal and command chaining escapes; HIGH-02 authority ceiling enum inversion in multimodal types; HIGH-03 terminal emulation window lineshift underflow; and HIGH-04 perception pipe buffer deadlocks. Added 6 security regression proof tests, raising passing test suite to 404 tests with 0 failures and 0 clippy warnings under -D warnings.
+- 2026-10-16: RIC v0.2 specification and reference implementation completed. Formalized section 4.4 agent-to-agent boundary in docs/RIC-SPEC.md, docs/RIC-CONTRACT.md, and docs/CONTRACTS.md. Implemented pure semantic kernel delegation in crates/sigil-core/src/delegation, covering Capability, CapabilityLease, AgentEnvelope, RevocationRegistry, and DelegationRequest. Established conformance suite verifying CV-RIC-009 through CV-RIC-014 in crates/sigil-core/tests/delegation_conformance.rs. Added CLI commands lease-create, lease-verify, envelope-create, and envelope-verify to sigil-cli. Full workspace verified at 398 tests, 0 failures, 0 compiler warnings under -D warnings, and contracts in sync.
 - 2026-10-13 (documentation unslop and dagger-zig integration): overhauled README.md, CONTRIBUTING.md, and docs/ARCHITECTURE.md to remove AI tells and parentheses, align release command examples, and document containerized pipeline integration with dagger-zig (https://github.com/MChorfa/dagger-zig) for reproducible Zig and WebAssembly artifact builds.
 - 2026-10-10 (full release consolidation & 17-agent verification): workspace verified at 384 tests / 0 failures across all 9 crates and 31 test suites. Scorecard proof test path alignment in `docs/QA-SCORECARD.md` verified clean (29/29 attack classes `ok`). `docs/LAUNCH-CHECKLIST.toml` aligned with `--report-format json` and `stress-benchmark` id binding. Full live execution of `production_launch` stage verified `Ready` with live benchmark stress telemetry and shadow monitor burn-in verification. Zig static/shared builds, Python ctypes bindings (`roundtrip_parity: true`), Go cgo bindings (`roundtrip_parity: true`), and `sigil.wasm` (`wasm-tools validate: OK`) independently verified.
 - 2026-09-11 (consolidation sweep): D-4 actually resolved (evidence id FNV-1a → SHA-256; earlier note claiming supersession was an overclaim — the bundle id was still FNV). Spec §9 project structure aligned with the real workspace (removed phantom `sigil-ffi`/`sigil-wasm`/`sigil-bench`/`sigil.toml` entries, fixed conformance-vector location, added planned-crates note). CV range references corrected to 001..008 in spec header, formal/README, and analysis doc.

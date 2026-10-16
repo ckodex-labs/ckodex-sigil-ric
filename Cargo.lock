@@ -2140,6 +2140,7 @@ dependencies = [
  "clap_complete",
  "serde",
  "serde_json",
+ "sha2",
  "sigil-core",
  "sigil-mcp",
  "sigil-multimodal",

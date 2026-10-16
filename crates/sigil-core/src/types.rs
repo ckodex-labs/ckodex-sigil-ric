@@ -341,7 +341,7 @@ pub struct EvidenceBundle {
 /// stream is hashed as consumed, and both travel with every output so
 /// "what was inspected" and "what was interpreted" are provably the same
 /// object (docs/RIC-CONTRACT.md, RIC-R-1..R-4).
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepresentationReceipt {
     /// SHA-384 (hex) over the raw input bytes as received, pre-normalization.
     pub raw_digest: String,

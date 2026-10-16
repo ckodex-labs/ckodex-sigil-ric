@@ -316,6 +316,9 @@ fn dispatch(cli: Cli) -> Result<()> {
                     printer.color,
                 )
             })?;
+            if !outcome.valid {
+                std::process::exit(1);
+            }
         }
         Commands::Attest(command) => {
             let envelope = attest_command(&command)?;
@@ -346,6 +349,9 @@ fn dispatch(cli: Cli) -> Result<()> {
                     printer.color,
                 )
             })?;
+            if !outcome.valid {
+                std::process::exit(1);
+            }
         }
         Commands::Sentinel(command) => {
             let model = SentinelModel::default();
@@ -372,6 +378,40 @@ fn dispatch(cli: Cli) -> Result<()> {
                     human_reports::render_sentinel(s, printer.color)
                 })?;
             }
+        }
+        Commands::LeaseCreate(command) => {
+            let lease = lease_create_command(&command, receipt_signer.as_deref())?;
+            printer.emit(&lease, |l| human_reports::render_lease(l, printer.color))?;
+        }
+        Commands::LeaseVerify(command) => {
+            let outcome = lease_verify_command(&command)?;
+            printer.emit(&outcome, |o| {
+                human_reports::render_lease_verification(o, printer.color)
+            })?;
+            if !outcome.valid {
+                std::process::exit(1);
+            }
+        }
+        Commands::EnvelopeCreate(command) => {
+            let envelope = envelope_create_command(&command, receipt_signer.as_deref())?;
+            printer.emit(&envelope, |e| {
+                human_reports::render_envelope(e, printer.color)
+            })?;
+        }
+        Commands::EnvelopeVerify(command) => {
+            let outcome = envelope_verify_command(&command)?;
+            printer.emit(&outcome, |o| {
+                human_reports::render_envelope_verification(o, printer.color)
+            })?;
+            if !outcome.valid {
+                std::process::exit(1);
+            }
+        }
+        Commands::LeaseRevoke(command) => {
+            let registry = lease_revoke_command(&command)?;
+            printer.emit(&registry, |r| {
+                human_reports::render_lease_revoke(r, printer.color)
+            })?;
         }
     }
 

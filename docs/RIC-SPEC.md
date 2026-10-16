@@ -1,10 +1,10 @@
-# RIC — Representation Integrity Specification
+# RIC: Representation integrity specification
 
-**Version:** 0.1.0 (DRAFT)
-**Status:** Normative for SIGIL v0.3.x · proposed as a CKODEX-wide admission primitive
-**Reference implementation:** SIGIL (`crates/sigil-core`, conformance vectors CV-RIC-001..008)
-**Companion documents:** [RIC-CONTRACT.md](./RIC-CONTRACT.md) (SIGIL mapping) · [TRAJECTORY.md](./TRAJECTORY.md) (state)
-**Date:** 2026-09-11
+**Version:** 0.2.0 DRAFT
+**Status:** Normative for SIGIL v0.3.x, proposed as a CKODEX-wide admission primitive
+**Reference implementation:** SIGIL in `crates/sigil-core`, conformance vectors CV-RIC-001 through CV-RIC-014
+**Companion documents:** [RIC-CONTRACT.md](./RIC-CONTRACT.md) for SIGIL mapping, [TRAJECTORY.md](./TRAJECTORY.md) for state
+**Date:** 2026-10-16
 
 ---
 
@@ -18,14 +18,14 @@ one saw.
 
 The result is a **representation differential**: the representation a policy
 approved, the representation a scanner analyzed, and the representation a model
-actually consumed can diverge — invisibly. Unicode tag smuggling, OCR-borne
+actually consumed can diverge silently. Unicode tag smuggling, OCR-borne
 instructions, merge-boundary erosion, and cross-modal instruction formation are
 instances of one failure class:
 
 > **An authority decision made over representation R₁ is silently applied to
 > representation R₂.**
 
-## 2. Constitutional invariant
+## 2. Constitutional invariants
 
 > **RIC-INV-001.** No authority-bearing consumer shall interpret, authorize, or
 > execute a representation that has not itself passed representation admission.
@@ -33,6 +33,25 @@ instances of one failure class:
 An approval of representation `R₁` does not confer authority over representation
 `R₂` unless a deterministic, evidenced transformation proves the permitted
 relationship between them.
+
+> **RIC-INV-002.** Recursive capability attenuation: every delegated child lease
+> capability set must be completely covered by its parent lease capability set.
+> An agent cannot grant what it does not possess.
+
+> **RIC-INV-003.** Monotonic authority ceiling: a delegated child authority ceiling
+> cannot exceed the delegator ceiling under the strict order Escalate < Observe < Draft < Act.
+
+> **RIC-INV-004.** Depth bounding: delegation depth increments monotonically from root
+> at depth zero and must never exceed the declared maximum depth.
+
+> **RIC-INV-005.** Representation binding: every delegated task envelope binds an
+> active capability lease to the exact canonical digest of an admitted task receipt.
+
+> **RIC-INV-006.** Temporal window containment: a delegated child lease expiration
+> timestamp cannot exceed the expiration timestamp of its parent lease.
+
+> **RIC-INV-007.** Revocation cascade: revocation of an ancestor lease or advance of
+> the revocation epoch invalidates the entire downstream delegation subtree synchronously.
 
 ## 3. Normative rules
 
@@ -74,17 +93,23 @@ enforces the rules or honestly declares non-coverage.
 - Retrieved chunks carry source lineage and representation state; retrieval
   never upgrades source authority.
 
-### 4.4 Agent-to-agent boundary (specified, not implemented here)
+### 4.4 Agent-to-agent boundary
 
-- Agent messages are typed envelopes carrying representation state and
-  delegation scope; trust does not cross an agent boundary implicitly.
+- Agent messages are typed envelopes (`AgentEnvelope`) carrying an admitted task `RepresentationReceipt` and an active `CapabilityLease`.
+- Trust does not cross an agent boundary implicitly.
+- Recursive delegation leases form a cryptographically verifiable tree verified from a root principal down to leaf workers.
+- Monotonic capability attenuation, authority ceiling clamping, depth bounding, and representation binding are enforced by `sigil_core::delegation`.
+- Provenance and representation digests are locked at the boundary before execution occurs.
+- Conformance vectors CV-RIC-009 through CV-RIC-014 enforce and verify all recursive delegation rules.
 
 ### 4.5 Human-approval boundary (specified, not implemented here)
 
 - The human approves the same semantic object that executes; approval binds a
   digest, and the pre-execution check re-derives and compares it.
 
-## 5. Receipt schema (v1, implemented)
+## 5. Representation schemas
+
+### 5.1 Representation receipt schema
 
 ```json
 {
@@ -111,6 +136,61 @@ Signing message (versioned, deterministic):
 
 ```
 sigil-receipt-v2|raw=<raw_digest>|canonical=<canonical_digest>|digest=<digest_algorithm>|norm=<normalization>|vocab=<vocab>|tokens=<token_count>
+```
+
+### 5.2 Capability lease schema
+
+```json
+{
+  "lease_id": "lease_root_0123456789abcdef",
+  "parent_lease_id": null,
+  "principal": "agent://orchestrator",
+  "delegatee": "agent://researcher-1",
+  "depth": 0,
+  "max_depth": 3,
+  "capabilities": [
+    { "type": "read", "target": "src/*" },
+    { "type": "tool", "target": "search" }
+  ],
+  "authority_ceiling": "act",
+  "representation_digest": "<hex SHA-384 over admitted RepresentationReceipt canonical digest>",
+  "issued_at": 1773662400,
+  "expires_at": 1773666000,
+  "revocation_epoch": 1,
+  "signature": {
+    "algorithm": "ecdsa-p384-sha384",
+    "key_id": "<hex>",
+    "signature": "<hex r||s>"
+  }
+}
+```
+
+Signing message:
+
+```
+sigil-lease-v1|id=<lease_id>|parent=<parent_lease_id>|principal=<principal>|delegatee=<delegatee>|depth=<depth>|max_depth=<max_depth>|ceiling=<ceiling>|rep=<rep_digest>|issued=<issued>|expires=<expires>|epoch=<epoch>|caps=<caps_sorted>
+```
+
+### 5.3 Agent envelope schema
+
+```json
+{
+  "envelope_id": "env_0123456789abcdef",
+  "lease": { "...": "CapabilityLease" },
+  "receipt": { "...": "RepresentationReceipt" },
+  "payload": "execute research task",
+  "signature": {
+    "algorithm": "ecdsa-p384-sha384",
+    "key_id": "<hex>",
+    "signature": "<hex r||s>"
+  }
+}
+```
+
+Signing message:
+
+```
+sigil-envelope-v1|id=<envelope_id>|lease=<lease_id>|receipt=<canonical_digest>|payload_len=<len>
 ```
 
 Signature algorithm mandate: **ECDSA P-384** (NIST P-384/secp384r1) with
@@ -176,18 +256,19 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
 
 | Area | Status |
 |---|---|
-| §4.1 model-input boundary (receipts, signing, boundary findings, fusion audit, authority ceilings) | **implemented** — SIGIL v0.3.x, CV-RIC-001..008 |
-| §4.2 tool boundary | specified |
-| §4.3 retrieval boundary | specified |
-| §4.4 agent-to-agent boundary | specified |
-| §4.5 human-approval boundary | specified |
-| Multimodal perception (pixels, waveforms, temporal spans) | not implemented — text-extracted channels only |
+| Section 4.1 model-input boundary: receipts, signing, boundary findings, fusion audit, authority ceilings | implemented in SIGIL v0.3.x, CV-RIC-001 through CV-RIC-008 |
+| Section 4.2 tool boundary | specified |
+| Section 4.3 retrieval boundary | specified |
+| Section 4.4 agent-to-agent boundary: capability leases, attenuation, representation binding, revocation | implemented in SIGIL v0.3.1+, CV-RIC-009 through CV-RIC-014 |
+| Section 4.5 human-approval boundary | specified |
+| Multimodal perception: pixels, waveforms, temporal spans | not implemented, text-extracted channels only |
 
 ## 9. Versioning policy
 
-- The receipt schema and signing message are versioned (`sigil-receipt-v1`).
+- The representation schemas and signing messages are versioned: `sigil-receipt-v2`, `sigil-lease-v1`, and `sigil-envelope-v1`.
 - Additive fields are compatible; changing or removing fields requires a major
   version bump of this specification and a new message version string.
 - Conformance is claimable only against the executable vectors; a system that
-  cannot run CV-RIC-001..008 (or their equivalents) may not claim RIC
+  cannot run CV-RIC-001 through CV-RIC-014 or their equivalents may not claim RIC
   conformance.
+

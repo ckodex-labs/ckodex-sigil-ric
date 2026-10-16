@@ -1,12 +1,15 @@
 //! Human renderers for the non-pipeline commands. Same discipline as
 //! `human.rs`: render the kernel/command outcome; never recompute it.
 
-use crate::cli::commands::{KeygenOutcome, PerceiveOutcome};
+use crate::cli::commands::{
+    EnvelopeVerificationOutcome, KeygenOutcome, LeaseVerificationOutcome, PerceiveOutcome,
+};
 use crate::cli::human::{esc, sev};
 use crate::cli::output::{paint, style};
 use crate::cli::results::{BatchDecodeResult, BatchTokenizeResult, DecodeResult};
 use sigil_core::attestation::DsseEnvelope;
 use sigil_core::types::Verdict;
+use sigil_core::{AgentEnvelope, CapabilityLease, RevocationRegistry};
 use sigil_mcp::McpInspection;
 use sigil_multimodal::MultimodalAssessment;
 use sigil_probe::{HealthAction, HealthReport};
@@ -250,6 +253,93 @@ pub fn render_perceive(r: &PerceiveOutcome, color: bool) -> String {
         out.push_str(&verdict_line(&analysis.verdict, color));
     }
     out
+}
+
+pub fn render_lease(lease: &CapabilityLease, color: bool) -> String {
+    let mut out = format!(
+        "  {}  {}\n  principal   {}\n  delegatee   {}\n  depth       {} of max {}\n  ceiling     {}\n  rep digest  {}\n  expires at  {}\n",
+        paint(color, style::BOLD, "CAPABILITY LEASE"),
+        lease.lease_id,
+        lease.principal,
+        lease.delegatee,
+        lease.depth,
+        lease.max_depth,
+        lease.authority_ceiling,
+        truncate(&lease.representation_digest, 24),
+        lease.expires_at,
+    );
+    if let Some(parent) = &lease.parent_lease_id {
+        out.push_str(&format!("  parent      {parent}\n"));
+    }
+    out.push_str(&format!(
+        "  capabilities count {}:\n",
+        lease.capabilities.len()
+    ));
+    for cap in &lease.capabilities {
+        out.push_str(&format!("    • {cap}\n"));
+    }
+    if let Some(sig) = &lease.signature {
+        out.push_str(&format!(
+            "  signature   {} key {}\n",
+            sig.algorithm, sig.key_id
+        ));
+    }
+    out
+}
+
+pub fn render_envelope(envelope: &AgentEnvelope, color: bool) -> String {
+    let mut out = format!(
+        "  {}  {}\n  lease id    {}\n  delegatee   {}\n  receipt     {}\n  payload len {}\n",
+        paint(color, style::BOLD, "AGENT ENVELOPE"),
+        envelope.envelope_id,
+        envelope.lease.lease_id,
+        envelope.lease.delegatee,
+        truncate(&envelope.receipt.canonical_digest, 24),
+        envelope.payload.len(),
+    );
+    if let Some(sig) = &envelope.signature {
+        out.push_str(&format!(
+            "  signature   {} key {}\n",
+            sig.algorithm, sig.key_id
+        ));
+    }
+    out
+}
+
+pub fn render_lease_verification(o: &LeaseVerificationOutcome, color: bool) -> String {
+    let detail = format!(
+        "  lease id    {}\n  delegatee   {}\n  depth       {}\n  ceiling     {}\n",
+        o.lease_id.as_deref().unwrap_or("-"),
+        o.delegatee.as_deref().unwrap_or("-"),
+        o.depth
+            .map(|d| d.to_string())
+            .unwrap_or_else(|| "-".to_string()),
+        o.authority_ceiling.as_deref().unwrap_or("-"),
+    );
+    render_verification(o.valid, &detail, o.error.as_deref(), color)
+}
+
+pub fn render_envelope_verification(o: &EnvelopeVerificationOutcome, color: bool) -> String {
+    let detail = format!(
+        "  envelope id {}\n  lease id    {}\n  delegatee   {}\n  rep digest  {}\n",
+        o.envelope_id.as_deref().unwrap_or("-"),
+        o.lease_id.as_deref().unwrap_or("-"),
+        o.delegatee.as_deref().unwrap_or("-"),
+        o.representation_digest.as_deref().unwrap_or("-"),
+    );
+    render_verification(o.valid, &detail, o.error.as_deref(), color)
+}
+
+pub fn render_lease_revoke(r: &RevocationRegistry, color: bool) -> String {
+    format!(
+        "  {}  epoch {}\n  revoked     {} lease{}\n  lineage     {} mapping{}\n",
+        paint(color, style::BOLD, "REVOCATION REGISTRY"),
+        r.current_epoch,
+        r.revoked_lease_ids.len(),
+        plural(r.revoked_lease_ids.len()),
+        r.parent_map.len(),
+        plural(r.parent_map.len())
+    )
 }
 
 // ── shared ──────────────────────────────────────────────────────────
