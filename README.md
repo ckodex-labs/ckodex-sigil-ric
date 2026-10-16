@@ -8,34 +8,37 @@ SIGIL wraps tokenization. It tracks byte provenance, evaluates security policies
 
 ```mermaid
 flowchart TD
-    subgraph Inputs["Heterogeneous Inputs"]
-        U["Untrusted User Prompt"]
-        T["Tool and Agent Output"]
-        M["Media and OCR Streams"]
+    subgraph Intake["Heterogeneous inputs"]
+        PromptStream["User prompt and tool output"]
+        PerceptionStream["Media and OCR perception stream"]
     end
 
-    subgraph Pipeline["SIGIL Representation Integrity Engine"]
-        N["Intake Normalization"]
-        D["Detector Suite: Injection, DLP, Terminal Escapes"]
-        F["Tokenizer Firewall and BPE Encoding"]
-        V["Verdict Engine: Allow, Flag, Deny"]
-        R["Receipt Signer: ECDSA P-384 or Sigstore"]
+    subgraph CoreEngine["SIGIL representation integrity engine"]
+        Normalize["Intake normalization"]
+        Detectors["Injection and terminal repaint detectors"]
+        TokenizerFirewall["Tokenizer firewall and BPE byte tracking"]
+        ReceiptSigner["ECDSA P-384 admission receipt"]
     end
 
-    subgraph Destination["Inference Execution"]
-        AI["Authorized AI Model"]
-        ABORT["Execution Revoked: Non-zero Exit"]
+    subgraph DelegationControl["Delegation and authority gate"]
+        LeaseVerifier["Capability lease and authority ceiling"]
+        EnvelopeVerifier["Agent envelope and revocation registry"]
     end
 
-    U --> N
-    T --> N
-    M --> N
-    N --> D
-    D --> F
-    F --> V
-    V -->|"Allow or Flag with evidence"| R
-    V -->|"Deny: hard failure"| ABORT
-    R --> AI
+    subgraph Execution["Autonomous execution"]
+        ModelRun["Authorized model invocation"]
+        Revoke["Execution denied or revoked"]
+    end
+
+    PromptStream --> Normalize
+    PerceptionStream --> Normalize
+    Normalize --> Detectors
+    Detectors --> TokenizerFirewall
+    TokenizerFirewall --> ReceiptSigner
+    ReceiptSigner --> EnvelopeVerifier
+    LeaseVerifier --> EnvelopeVerifier
+    EnvelopeVerifier -->|"Valid lease and clean receipt"| ModelRun
+    EnvelopeVerifier -->|"Tampered input or revoked lease"| Revoke
 ```
 
 ## Quick start
@@ -201,7 +204,7 @@ For native Zig targets and cross-compilation, the build pipeline integrates with
 
 The codebase is tested continuously against 29 attack classes documented in [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md):
 
-- 384 cargo tests passing with 0 failures.
+- 407 cargo tests passing with 0 failures across 32 test binaries.
 - Zero clippy warnings under strict `-D warnings`.
 - Detector findings mapped against MITRE ATLAS v5.6.0 and ATT&CK techniques.
 - Conformance verified against ghostty terminal escape tables.

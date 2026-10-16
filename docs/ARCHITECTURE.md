@@ -6,47 +6,46 @@ SIGIL enforces representation integrity between what security controls inspect a
 
 ```mermaid
 flowchart TD
-    subgraph Clients["Intake Channels"]
-        RAW["Raw User Prompts"]
-        MCP_IN["MCP Tool Responses"]
-        MEDIA["Media and Perception Streams"]
+    subgraph Ingress["Intake channels"]
+        RawPrompt["Raw user prompts"]
+        MCPResponse["MCP tool returns"]
+        MediaStream["Media and perception streams"]
     end
 
-    subgraph Adapters["Perception and Gateway Adapters"]
-        PERC["sigil-perception: OCR, ASR, Stream Demux"]
-        MCP_GATE["sigil-mcp: Schema Gate and Taint Tracking"]
+    subgraph Boundary["Representation integrity boundary"]
+        Perception["sigil-perception: OCR, ASR, stream demux"]
+        MCPGate["sigil-mcp: schema gate and taint tracking"]
+        Core["sigil-core: tokenizer firewall and detectors"]
+        VT["sigil-vt: terminal repaint analyzer"]
+        Multimodal["sigil-multimodal: fusion boundary auditor"]
     end
 
-    subgraph Kernel["Representation Integrity Boundary"]
-        CORE["sigil-core: Normalization, Scan, Tokenizer Firewall"]
-        VT["sigil-vt: Terminal Window Repaint Detector"]
-        MULTI["sigil-multimodal: Fusion Boundary Auditor"]
+    subgraph Delegation["RIC v0.2 recursive delegation and assurance"]
+        Receipt["ECDSA P-384 admission receipts"]
+        Sigstore["Sigstore keyless attestations"]
+        Lease["Capability lease and authority ceiling"]
+        Envelope["Agent envelope and revocation registry"]
     end
 
-    subgraph Assurance["Assurance and Signing"]
-        SIG["sigil-sigstore: Keyless Fulcio Attestations"]
-        ECDSA["ECDSA P-384 Admission Receipts"]
-    end
-
-    subgraph Runtime["Execution Interfaces"]
-        CLI["sigil-cli: CLI Runner and Benchmarks"]
+    subgraph Execution["Execution runtimes"]
+        CLI["sigil-cli: operator runner and benchmarks"]
         FFI["sigil-ffi: C ABI, Zig tiktoken, WebAssembly"]
-        SRV["sigil-server: Local Sidecar Daemon"]
-        PROBE["sigil-probe: Drift and Canary Monitoring"]
-        S["sigil-s: Semantic Sentinel Companion"]
+        Server["sigil-server: local daemon"]
+        Semantic["sigil-s: semantic companion"]
     end
 
-    RAW --> CORE
-    MEDIA --> PERC --> MULTI --> CORE
-    MCP_IN --> MCP_GATE --> MULTI
-    CORE <--> VT
-    CORE --> ECDSA
-    CORE --> SIG
-    CORE --> FFI
-    CORE --> CLI
-    CORE --> SRV
-    CORE --> PROBE
-    CORE --> S
+    RawPrompt --> Core
+    MediaStream --> Perception --> Multimodal --> Core
+    MCPResponse --> MCPGate --> Multimodal
+    Core <--> VT
+    Core --> Receipt
+    Core --> Sigstore
+    Receipt --> Envelope
+    Lease --> Envelope
+    Envelope --> CLI
+    Envelope --> FFI
+    Envelope --> Server
+    Envelope --> Semantic
 ```
 
 The architecture consists of eleven modular crates:
@@ -84,18 +83,18 @@ For Zig compilation targets, the pipeline integrates with [dagger-zig](https://g
 
 ```mermaid
 flowchart LR
-    SRC["Repository Source"] --> DAGGER["Dagger Engine Container"]
-    DAGGER --> RUST["Rust CI Driver: ci/"]
-    DAGGER --> ZIG["dagger-zig SDK"]
+    Source["Repository source"] --> DaggerEngine["Dagger engine container"]
+    DaggerEngine --> RustCI["Rust CI driver ci/"]
+    DaggerEngine --> ZigSDK["dagger-zig SDK"]
 
-    RUST --> TESTS["cargo test: 384 tests"]
-    RUST --> CLIPPY["clippy: 0 warnings"]
-    RUST --> REPORTS["ci-out: Scorecard and Launch Reports"]
+    RustCI --> Tests["cargo test: 407 tests"]
+    RustCI --> Clippy["clippy: 0 warnings"]
+    RustCI --> Reports["ci-out: scorecard and launch reports"]
 
-    ZIG --> STATIC["libzig_tiktoken.a"]
-    ZIG --> SHARED["libzig_tiktoken.so"]
-    ZIG --> WASM["sigil.wasm"]
-    ZIG --> PARITY["Polyglot Parity: Python and Go"]
+    ZigSDK --> StaticLib["libzig_tiktoken.a"]
+    ZigSDK --> SharedLib["libzig_tiktoken.so"]
+    ZigSDK --> WasmMod["sigil.wasm"]
+    ZigSDK --> Parity["Polyglot parity: Python and Go"]
 ```
 
 See [SIGIL-SPEC.md](../SIGIL-SPEC.md) for the complete mathematical and behavioral specification.
