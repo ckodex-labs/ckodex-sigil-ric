@@ -2133,7 +2133,7 @@ checksum = "f8fadd59c855ef2080decdef8ff161eb6661b86933c9d82e5ba29dc602a55aba"
 
 [[package]]
 name = "sigil-cli"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "anyhow",
  "clap",
@@ -2155,7 +2155,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-core"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "aho-corasick",
  "base64",
@@ -2180,11 +2180,11 @@ dependencies = [
 
 [[package]]
 name = "sigil-ffi"
-version = "0.3.1"
+version = "0.3.2"
 
 [[package]]
 name = "sigil-mcp"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2195,7 +2195,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-multimodal"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2205,7 +2205,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-perception"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "hound",
  "image",
@@ -2223,7 +2223,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-probe"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2233,7 +2233,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-s"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2243,7 +2243,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-server"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
@@ -2256,7 +2256,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-sigstore"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "base64",
  "const-oid",
@@ -2278,7 +2278,7 @@ dependencies = [
 
 [[package]]
 name = "sigil-vt"
-version = "0.3.1"
+version = "0.3.2"
 dependencies = [
  "libghostty-vt",
  "sigil-core",
