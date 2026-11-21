@@ -45,11 +45,15 @@
 //!   steganalysis system.
 
 mod downmix;
+mod facts;
+mod subaudible;
 
 use realfft::RealFftPlanner;
 use rustfft::num_complex::Complex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
+
+pub use facts::{AliasPrediction, InaudibleBand};
 
 pub use downmix::{
     downmix_to_mono, downmix_to_mono_f32, downmix_to_mono_weighted, downmix_to_mono_weighted_f32,
@@ -64,6 +68,11 @@ pub struct FreqBand {
     pub high_hz: f32,
     pub energy: f32,
     pub fraction_of_total: f32,
+    /// Spectral flatness of the band in the aggregated spectrum (≈1 noise,
+    /// ≪1 tones or speech). Reported for the aggregate high-band anomaly so
+    /// the kernel can tell a noise floor from content.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub flatness: Option<f32>,
 }
 
 /// Result of spectral analysis.
@@ -86,6 +95,14 @@ pub struct SpectralReport {
     pub steganography_findings: Vec<FreqBand>,
     /// Dominant frequency (Hz) — the strongest spectral peak.
     pub dominant_freq_hz: f32,
+    /// Energy above the audible band (sample rates above
+    /// `SpectralConfig::inaudible_min_sample_rate_hz` only).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub inaudible_band: Option<InaudibleBand>,
+    /// What unfiltered decimation to each common model rate would fold into
+    /// baseband.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub alias_predictions: Vec<AliasPrediction>,
 }
 
 /// Configuration for spectral analysis.
@@ -111,6 +128,31 @@ pub struct SpectralConfig {
     /// Distinct high-band peak bins across windows that upgrades a
     /// narrowband-peak finding to `frequency_hopping`.
     pub stego_hop_min_bins: usize,
+    /// A window joins the per-window subliminal check only if it carries at
+    /// least this share of the mean window energy. Near-silent windows
+    /// (pauses, fades) are dominated by DC and rumble, so their sub-audible
+    /// ratio is large while the energy is not; counting them flagged ordinary
+    /// recordings. Default 0.1: a short loud sub-audible burst is still well
+    /// above it.
+    pub subliminal_min_window_energy_ratio: f32,
+    /// Upper edge of human hearing. Default 20 kHz, the conventional upper
+    /// limit of the audible range; content above it is inaudible to the
+    /// listener but survives into a model that resamples without filtering.
+    pub inaudible_cutoff_hz: f32,
+    /// The inaudible-band fact is reported only above this sample rate.
+    /// Default 40 kHz: below it the Nyquist frequency barely exceeds the
+    /// cutoff and the band cannot carry meaningful content.
+    pub inaudible_min_sample_rate_hz: u32,
+    /// Lower edge of the near-ultrasonic region whose folding the alias
+    /// predictor reports as hidden. Default 16 kHz: hearing thresholds rise
+    /// steeply above it for most adult listeners, and it is the band
+    /// near-ultrasonic injection targets. Kept separate from
+    /// `inaudible_cutoff_hz` so the 20 kHz inaudible-band fact stays exact.
+    pub alias_hidden_origin_hz: f32,
+    /// Model input rates to predict aliasing for. Defaults: 16 kHz (Whisper
+    /// and most ASR front ends), 22.05 kHz and 24 kHz (common TTS/codec and
+    /// audio-LM rates).
+    pub alias_target_rates_hz: Vec<u32>,
 }
 
 impl Default for SpectralConfig {
@@ -124,6 +166,11 @@ impl Default for SpectralConfig {
             stego_energy_fraction: 0.05,
             stego_peak_fraction: 0.02,
             stego_hop_min_bins: 3,
+            subliminal_min_window_energy_ratio: 0.1,
+            inaudible_cutoff_hz: 20_000.0,
+            inaudible_min_sample_rate_hz: 40_000,
+            alias_hidden_origin_hz: 16_000.0,
+            alias_target_rates_hz: vec![16_000, 22_050, 24_000],
         }
     }
 }
@@ -150,8 +197,10 @@ pub fn analyze_spectrum(
         return None;
     }
     let stats = accumulate_windows(samples, sample_rate, config)?;
+    let sub_audible = subaudible::analyze(samples, sample_rate, config);
     Some(build_report(
         &stats,
+        sub_audible.as_ref(),
         samples.len(),
         sample_rate,
         config,
@@ -165,9 +214,10 @@ struct WindowStats {
     total_energy: f32,
     dominant_freq_hz: f32,
     dominant_energy: f32,
-    has_subliminal: bool,
     has_stego: bool,
-    subliminal_energy_sum: f32,
+    /// Per-bin energy summed across windows (the aggregated spectrum).
+    bin_energy_sum: Vec<f64>,
+    bin_hz: f32,
     high_band_energy_sum: f32,
     high_band_start_hz: f32,
     nyquist: f32,
@@ -195,7 +245,6 @@ fn accumulate_windows(
     let mut planner = RealFftPlanner::<f32>::new();
     let r2c = planner.plan_fft_forward(fft_size);
 
-    let subliminal_bins = (config.subliminal_cutoff_hz / bin_hz).ceil() as usize;
     let high_band_start_hz = (nyquist - config.stego_high_band_hz).max(0.0);
     let high_band_start_bin = (high_band_start_hz / bin_hz).ceil() as usize;
 
@@ -204,9 +253,9 @@ fn accumulate_windows(
         total_energy: 0.0,
         dominant_freq_hz: 0.0,
         dominant_energy: 0.0,
-        has_subliminal: false,
         has_stego: false,
-        subliminal_energy_sum: 0.0,
+        bin_energy_sum: vec![0.0; fft_size / 2 + 1],
+        bin_hz,
         high_band_energy_sum: 0.0,
         high_band_start_hz,
         nyquist,
@@ -244,7 +293,6 @@ fn accumulate_windows(
             &energies,
             window_energy,
             bin_hz,
-            subliminal_bins,
             high_band_start_bin,
             config,
         );
@@ -263,7 +311,6 @@ fn fold_window(
     energies: &[f32],
     window_energy: f32,
     bin_hz: f32,
-    subliminal_bins: usize,
     high_band_start_bin: usize,
     config: &SpectralConfig,
 ) {
@@ -280,10 +327,8 @@ fn fold_window(
         stats.dominant_freq_hz = peak_bin as f32 * bin_hz;
     }
 
-    let sub_energy: f32 = energies[..subliminal_bins.min(energies.len())].iter().sum();
-    stats.subliminal_energy_sum += sub_energy;
-    if sub_energy / window_energy > config.subliminal_energy_fraction {
-        stats.has_subliminal = true;
+    for (sum, energy) in stats.bin_energy_sum.iter_mut().zip(energies) {
+        *sum += f64::from(*energy);
     }
 
     let high_energy: f32 = energies[high_band_start_bin.min(energies.len())..]
@@ -314,19 +359,21 @@ fn fold_window(
 /// Assemble the `SpectralReport` from the accumulated window stats.
 fn build_report(
     stats: &WindowStats,
+    sub_audible: Option<&subaudible::SubAudible>,
     total_samples: usize,
     sample_rate: u32,
     config: &SpectralConfig,
     artifact_digest: &str,
 ) -> SpectralReport {
     let mut subliminal_findings = Vec::new();
-    if stats.has_subliminal {
+    if let Some(sub_audible) = sub_audible.filter(|sub| sub.flagged) {
         subliminal_findings.push(FreqBand {
             label: "sub_audible".to_string(),
             low_hz: 0.0,
             high_hz: config.subliminal_cutoff_hz,
-            energy: stats.subliminal_energy_sum,
-            fraction_of_total: stats.subliminal_energy_sum / stats.total_energy,
+            energy: sub_audible.energy,
+            fraction_of_total: sub_audible.fraction,
+            flatness: None,
         });
     }
 
@@ -338,6 +385,14 @@ fn build_report(
             high_hz: stats.nyquist,
             energy: stats.high_band_energy_sum,
             fraction_of_total: stats.high_band_energy_sum / stats.total_energy,
+            flatness: Some(facts::flatness(
+                stats
+                    .bin_energy_sum
+                    .iter()
+                    .enumerate()
+                    .filter(|(bin, _)| *bin as f32 * stats.bin_hz >= stats.high_band_start_hz)
+                    .map(|(_, energy)| *energy),
+            )),
         });
     }
     if !stats.high_band_peak_bins.is_empty() {
@@ -357,8 +412,15 @@ fn build_report(
             high_hz: stats.nyquist,
             energy: stats.narrowband_peak_energy_sum,
             fraction_of_total: stats.narrowband_peak_energy_sum / stats.total_energy,
+            flatness: None,
         });
     }
+
+    let spectrum = facts::Spectrum {
+        bins: &stats.bin_energy_sum,
+        bin_hz: f64::from(stats.bin_hz),
+        total: stats.bin_energy_sum.iter().sum(),
+    };
 
     let mut anomalous_bands = Vec::new();
     anomalous_bands.extend(subliminal_findings.clone());
@@ -375,6 +437,18 @@ fn build_report(
         subliminal_findings,
         steganography_findings,
         dominant_freq_hz: stats.dominant_freq_hz,
+        inaudible_band: facts::inaudible_band(
+            &spectrum,
+            sample_rate,
+            config.inaudible_cutoff_hz,
+            config.inaudible_min_sample_rate_hz,
+        ),
+        alias_predictions: facts::alias_predictions(
+            &spectrum,
+            sample_rate,
+            config.alias_hidden_origin_hz,
+            &config.alias_target_rates_hz,
+        ),
     }
 }
 

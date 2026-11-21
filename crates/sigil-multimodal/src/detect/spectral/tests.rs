@@ -1,0 +1,98 @@
+//! Each kernel rule over spectral facts, including the fail-closed defaults.
+
+use super::{HIDDEN_ENERGY_FRACTION_MIN, STRUCTURED_FLATNESS_MAX, spectral_findings};
+use crate::types::MultimodalFindingKind;
+use serde_json::json;
+use sigil_core::types::Severity;
+
+fn kinds(report: serde_json::Value) -> Vec<MultimodalFindingKind> {
+    spectral_findings(&report.to_string(), Severity::None)
+        .into_iter()
+        .map(|f| f.kind)
+        .collect()
+}
+
+fn with_band(fraction: f64, flatness: f64) -> serde_json::Value {
+    json!({ "inaudible_band": {
+        "low_hz": 20000.0, "high_hz": 48000.0, "energy_fraction": fraction,
+        "peak_hz": 32250.0, "flatness": flatness } })
+}
+
+fn with_alias(fraction: f64, flatness: f64) -> serde_json::Value {
+    json!({ "alias_predictions": [{
+        "target_rate_hz": 16000, "hidden_origin_hz": 16000.0, "folding_fraction": fraction,
+        "hidden_folding_fraction": fraction, "hidden_flatness": flatness,
+        "alias_low_hz": 62.5, "alias_high_hz": 1375.0 }] })
+}
+
+#[test]
+fn structured_inaudible_energy_is_a_finding() {
+    assert!(kinds(with_band(0.73, 1e-6)).contains(&MultimodalFindingKind::InaudibleBandEnergy));
+}
+
+#[test]
+fn inaudible_noise_is_not_a_finding() {
+    assert!(kinds(with_band(0.73, STRUCTURED_FLATNESS_MAX + 0.4)).is_empty());
+}
+
+#[test]
+fn faint_inaudible_structure_is_not_a_finding() {
+    assert!(kinds(with_band(HIDDEN_ENERGY_FRACTION_MIN / 2.0, 1e-6)).is_empty());
+}
+
+#[test]
+fn threshold_is_inclusive_at_the_minimum_fraction() {
+    assert!(!kinds(with_band(HIDDEN_ENERGY_FRACTION_MIN, 1e-6)).is_empty());
+}
+
+#[test]
+fn structured_hidden_folding_is_a_resampler_aliasing_finding() {
+    let findings = spectral_findings(&with_alias(0.73, 1e-6).to_string(), Severity::None);
+    let aliasing = findings
+        .iter()
+        .find(|f| f.kind == MultimodalFindingKind::ResamplerAliasing)
+        .expect("aliasing finding");
+    assert!(aliasing.detail.contains("16000 Hz"), "{}", aliasing.detail);
+}
+
+#[test]
+fn noise_that_folds_is_not_a_finding() {
+    assert!(kinds(with_alias(0.73, 0.99)).is_empty());
+}
+
+#[test]
+fn flat_aggregate_high_band_is_a_noise_floor() {
+    let report = json!({ "steganography_findings": [{
+        "label": "high_frequency_anomaly", "low_hz": 46000.0, "high_hz": 48000.0,
+        "energy": 1.0, "fraction_of_total": 0.06, "flatness": 0.99 }] });
+    assert!(kinds(report).is_empty());
+}
+
+#[test]
+fn a_band_without_flatness_still_counts() {
+    // Missing evidence never clears a band: older reports keep their finding.
+    let report = json!({ "steganography_findings": [{
+        "label": "high_frequency_anomaly", "low_hz": 46000.0, "high_hz": 48000.0,
+        "energy": 1.0, "fraction_of_total": 0.06 }] });
+    assert_eq!(
+        kinds(report),
+        vec![MultimodalFindingKind::AudioSteganography]
+    );
+}
+
+#[test]
+fn narrowband_peaks_are_never_cleared_by_flatness() {
+    let report = json!({ "steganography_findings": [{
+        "label": "narrowband_high_freq_peak", "low_hz": 46000.0, "high_hz": 48000.0,
+        "energy": 1.0, "fraction_of_total": 0.01, "flatness": 0.99 }] });
+    assert_eq!(
+        kinds(report),
+        vec![MultimodalFindingKind::AudioSteganography]
+    );
+}
+
+#[test]
+fn reports_without_wp2_facts_yield_no_wp2_findings() {
+    assert!(kinds(json!({ "subliminal_findings": [], "steganography_findings": [] })).is_empty());
+    assert!(kinds(json!("not a report")).is_empty());
+}

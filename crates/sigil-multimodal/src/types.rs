@@ -55,6 +55,13 @@ pub enum MultimodalFindingKind {
     /// Anomalous high-frequency energy near Nyquist — may indicate
     /// audio steganography or covert-channel embedding.
     AudioSteganography,
+    /// Structured content above the audible band holding a material share
+    /// of the file's energy: a channel the listener cannot hear.
+    InaudibleBandEnergy,
+    /// Inaudible structured content that folds into a model's baseband when
+    /// it resamples without an anti-alias filter: the file says different
+    /// things depending on the resampler.
+    ResamplerAliasing,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
