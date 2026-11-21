@@ -14,8 +14,8 @@ use crate::policy::Policy;
 use crate::types::{ByteRange, DetectorId, ScanFinding, Severity};
 use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 const MAX_SPANS: usize = 64;
 const MAX_DECODED: usize = 32 * 1024;
@@ -32,7 +32,7 @@ struct EncodedSpan {
 /// markup schemes capture the *hidden interior* so the rescan targets the
 /// content a renderer would conceal, not the markup itself.
 fn span_regexes() -> &'static [(&'static str, Regex, usize)] {
-    static SPANS: Lazy<Vec<(&'static str, Regex, usize)>> = Lazy::new(|| {
+    static SPANS: LazyLock<Vec<(&'static str, Regex, usize)>> = LazyLock::new(|| {
         vec![
             (
                 "comment",
@@ -194,8 +194,8 @@ fn decode_hex_bare(text: &str) -> Option<String> {
 }
 
 fn decode_entities(text: &str) -> Option<String> {
-    static ENTITY: Lazy<Regex> =
-        Lazy::new(|| Regex::new(r"&#x?([0-9A-Fa-f]{1,6});").expect("entity item regex"));
+    static ENTITY: LazyLock<Regex> =
+        LazyLock::new(|| Regex::new(r"&#x?([0-9A-Fa-f]{1,6});").expect("entity item regex"));
     let mut out = String::new();
     for cap in ENTITY.captures_iter(text) {
         let digits = cap.get(1)?.as_str();

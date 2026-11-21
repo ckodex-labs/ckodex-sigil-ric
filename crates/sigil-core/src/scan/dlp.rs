@@ -2,8 +2,8 @@ use super::helpers::{load_custom_patterns, luhn_valid, redact_sample};
 use super::types::TextMap;
 use crate::policy::{EmailAction, Policy};
 use crate::types::{DetectorId, DlpAction, DlpFinding, DlpKind, ScanFinding, Severity};
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 fn email_verdict(action: &EmailAction) -> Option<(Severity, DlpAction)> {
     match action {
@@ -19,8 +19,8 @@ pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Ve
     let mut findings = Vec::new();
 
     if policy.scan.dlp.credit_cards {
-        static CC_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"\b(?:\d[ -]*?){13,19}\b").expect("cc regex"));
+        static CC_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\b(?:\d[ -]*?){13,19}\b").expect("cc regex"));
         for capture in CC_RE.find_iter(&map.text) {
             let raw = capture.as_str();
             if luhn_valid(raw) {
@@ -45,8 +45,8 @@ pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Ve
     }
 
     if policy.scan.dlp.ssn {
-        static SSN_RE: Lazy<Regex> =
-            Lazy::new(|| Regex::new(r"\b\d{3}-?\d{2}-?\d{4}\b").expect("ssn regex"));
+        static SSN_RE: LazyLock<Regex> =
+            LazyLock::new(|| Regex::new(r"\b\d{3}-?\d{2}-?\d{4}\b").expect("ssn regex"));
         for capture in SSN_RE.find_iter(&map.text) {
             let byte_range = map.source_range_for(capture.start(), capture.end());
             dlp.push(DlpFinding {
@@ -68,7 +68,7 @@ pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Ve
     }
 
     if policy.scan.dlp.api_keys {
-        static KEY_RE: Lazy<Regex> = Lazy::new(|| {
+        static KEY_RE: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"\b(sk-[A-Za-z0-9]{16,}|ghp_[A-Za-z0-9]{20,}|AKIA[0-9A-Z]{16})\b")
                 .expect("api key regex")
         });
@@ -93,7 +93,7 @@ pub(crate) fn detect_dlp(map: &TextMap, policy: &Policy) -> (Vec<DlpFinding>, Ve
     }
 
     if let Some((severity, action)) = email_verdict(&policy.scan.dlp.emails) {
-        static EMAIL_RE: Lazy<Regex> = Lazy::new(|| {
+        static EMAIL_RE: LazyLock<Regex> = LazyLock::new(|| {
             Regex::new(r"(?i)\b[a-z0-9._%+-]+@[a-z0-9.-]+\.[a-z]{2,}\b").expect("email regex")
         });
         for capture in EMAIL_RE.find_iter(&map.text) {

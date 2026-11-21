@@ -2,8 +2,8 @@ use super::helpers::{is_smuggling_char, looks_like_base64, shannon_entropy};
 use super::types::TextMap;
 use crate::policy::{Mode, Policy};
 use crate::types::{ByteRange, DetectorId, EntropyProfile, ScanFinding, Severity};
-use once_cell::sync::Lazy;
 use regex::Regex;
+use std::sync::LazyLock;
 
 pub(crate) fn detect_injection(map: &TextMap, policy: &Policy) -> Vec<ScanFinding> {
     static PATTERNS: &[(&str, Severity, DetectorId)] = &[
@@ -254,7 +254,7 @@ pub(crate) fn detect_smuggling(map: &TextMap, _policy: &Policy) -> Vec<ScanFindi
 }
 
 pub(crate) fn detect_tokenizer_firewall(map: &TextMap, policy: &Policy) -> Vec<ScanFinding> {
-    static RESERVED_PATTERN: Lazy<Regex> = Lazy::new(|| {
+    static RESERVED_PATTERN: LazyLock<Regex> = LazyLock::new(|| {
         Regex::new(r"<\|(?:reserved_\d+|startoftext|endoftext|endofprompt|fim_prefix|fim_middle|fim_suffix|return|constrain|channel|start|end|message|call)\|>")
             .expect("tokenizer firewall regex")
     });

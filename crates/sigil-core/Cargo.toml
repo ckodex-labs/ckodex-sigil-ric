@@ -10,7 +10,6 @@ aho-corasick.workspace = true
 base64 = "0.22"
 fancy-regex = "0.13"
 getrandom = "0.2"
-once_cell.workspace = true
 p384 = { version = "0.13", features = ["ecdsa", "pkcs8"] }
 rayon = "1"
 regex.workspace = true
