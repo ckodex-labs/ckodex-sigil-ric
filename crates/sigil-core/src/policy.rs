@@ -2,6 +2,9 @@ use crate::error::Result;
 use serde::{Deserialize, Serialize};
 use std::{fs, path::Path, str::FromStr};
 
+mod validate;
+pub(crate) use validate::read_custom_pattern_file;
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Mode {
@@ -112,8 +115,25 @@ impl Policy {
         Self::from_toml_str(&contents)
     }
 
+    /// Parses and validates a policy. A policy that parses but cannot be
+    /// enforced as written (see [`Policy::validate`]) is rejected.
     pub fn from_toml_str(contents: &str) -> Result<Self> {
-        Ok(toml::from_str(contents)?)
+        let policy: Self = toml::from_str(contents)?;
+        policy.validate()?;
+        Ok(policy)
+    }
+
+    /// Checks that every configured control can actually run. Fail closed: a
+    /// custom DLP pattern file that is missing or malformed, or a pattern that
+    /// does not compile, is a configuration error instead of a silently
+    /// disabled detector. Policies built in code should call this before use.
+    ///
+    /// # Errors
+    ///
+    /// [`SigilError::Schema`](crate::error::SigilError::Schema) naming the
+    /// offending `scan.dlp.custom_patterns` entry.
+    pub fn validate(&self) -> Result<()> {
+        self.scan.dlp.validate_custom_patterns()
     }
 }
 

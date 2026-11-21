@@ -92,18 +92,13 @@ pub(crate) fn redact_sample(sample: &str) -> String {
     format!("{prefix}…{suffix}")
 }
 
+/// Scan-time read of a custom pattern file. Policies loaded through
+/// `Policy::from_file` / `from_toml_str` were already validated, so an error
+/// here only reaches a policy built in code without `Policy::validate`, or a
+/// file changed after load.
 pub(crate) fn load_custom_patterns(path: &str) -> Vec<String> {
-    let contents = std::fs::read_to_string(path).unwrap_or_default();
-    if contents.is_empty() {
-        return Vec::new();
-    }
-    #[derive(serde::Deserialize)]
-    struct CustomPatternFile {
-        patterns: Vec<String>,
-    }
-
-    match toml::from_str::<CustomPatternFile>(&contents) {
-        Ok(file) => file.patterns,
-        Err(_) => Vec::new(),
-    }
+    // TODO(ckodex): the scan-time read is still fail-open for policies that
+    // skipped validation; surface it as named evidence when plan step M4 (F9)
+    // moves this I/O out of the kernel.
+    crate::policy::read_custom_pattern_file(path).unwrap_or_default()
 }
