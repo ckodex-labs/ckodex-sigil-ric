@@ -131,6 +131,7 @@ impl DocumentAdapter {
 
         let mut rendered = String::new();
         let mut rendered_count = 0usize;
+        let mut partial_input = false;
         for page in 1..=render_pages {
             let page_args = [
                 "-f".to_string(),
@@ -141,9 +142,15 @@ impl DocumentAdapter {
             match compare
                 .renderer
                 .run_with(bytes, &page_args)
-                .and_then(|png| compare.ocr.extract(&png))
-            {
-                Ok(text) => {
+                .and_then(|png| {
+                    let ocr = compare.ocr.extract(&png.output)?;
+                    Ok((ocr.output, png.input_complete && ocr.input_complete))
+                }) {
+                Ok((text, input_complete)) => {
+                    if !input_complete {
+                        partial_input = true;
+                        properties.push((key(&format!("page{page}")), "partial-input".to_string()));
+                    }
                     rendered.push_str(&text);
                     rendered.push('\n');
                     rendered_count += 1;
@@ -169,7 +176,7 @@ impl DocumentAdapter {
                 config_digest: chain_digest.clone(),
             },
             confidence: Some(0.7),
-            truncated: total_pages > render_pages,
+            truncated: total_pages > render_pages || partial_input,
         });
 
         let extracted = channels

@@ -7,6 +7,7 @@
 pub mod audio;
 pub mod code;
 pub mod document;
+pub mod pinned;
 pub mod spectral;
 pub mod video;
 
@@ -15,9 +16,9 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
 use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
 
+pub use pinned::{ExecLimits, OCR_EXTRACTOR, PinnedTool, TRANSCRIPT_EXTRACTOR, ToolOutput};
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
-use std::io::{Cursor, Write};
-use std::process::Command;
+use std::io::Cursor;
 
 /// Image adapter: decodes the artifact, inventories metadata, and optionally
 /// extracts an OCR text channel through a pinned external OCR binary.
@@ -30,143 +31,12 @@ pub struct ImageAdapter {
     pub ocr: Option<ExternalOcr>,
 }
 
-/// Configuration for the external-command OCR extractor.
-#[derive(Clone, Debug)]
-pub struct ExternalOcr {
-    /// Path to the OCR binary. Pinned by digest at construction.
-    pub binary: std::path::PathBuf,
-    /// Arguments passed to the binary. Artifact bytes are streamed on
-    /// stdin, never placed in an argument.
-    pub args: Vec<String>,
-    /// Human-readable version label recorded in extractor identity.
-    pub version: String,
-    /// SHA-384 over the binary, computed at pin time.
-    pub binary_digest: String,
-}
+/// OCR extractor: a [`PinnedTool`] whose stdout is the recognised text.
+pub type ExternalOcr = PinnedTool;
 
-impl ExternalOcr {
-    /// Pin an OCR binary: computes its SHA-384 digest for the evidence chain.
-    pub fn pin(
-        binary: std::path::PathBuf,
-        args: Vec<String>,
-        version: String,
-    ) -> std::io::Result<Self> {
-        let bytes = std::fs::read(&binary)?;
-        let mut hasher = Sha384::new();
-        hasher.update(&bytes);
-        let binary_digest = hex_digest(&hasher.finalize());
-        Ok(Self {
-            binary,
-            args,
-            version,
-            binary_digest,
-        })
-    }
-
-    fn identity(&self) -> ExtractorIdentity {
-        ExtractorIdentity {
-            name: "external-ocr".to_string(),
-            version: self.version.clone(),
-            config_digest: self.binary_digest.clone(),
-        }
-    }
-
-    pub(crate) fn extract(&self, bytes: &[u8]) -> Result<String, PerceptionError> {
-        let mut child = Command::new(&self.binary)
-            .args(&self.args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("spawn: {err}")))?;
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        let payload = bytes.to_vec();
-        let writer_thread = std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-        let output = child
-            .wait_with_output()
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("wait: {err}")))?;
-        let _ = writer_thread.join();
-        if !output.status.success() {
-            return Err(PerceptionError::ExtractorFailed(format!(
-                "ocr binary exited with {}",
-                output.status
-            )));
-        }
-        String::from_utf8(output.stdout)
-            .map_err(|_| PerceptionError::ExtractorFailed("non-UTF-8 OCR output".to_string()))
-    }
-}
-
-/// A pinned external binary with the same contract as [`ExternalOcr`] but
-/// returning raw bytes — for renderers (e.g. `pdftoppm`) whose stdout is an
-/// image, not text. Artifact bytes stream on stdin, never in an argument.
-#[derive(Clone, Debug)]
-pub struct ExternalPipe {
-    pub binary: std::path::PathBuf,
-    pub args: Vec<String>,
-    pub version: String,
-    pub binary_digest: String,
-}
-
-impl ExternalPipe {
-    /// Pin a pipe binary: computes its SHA-384 digest for the evidence chain.
-    pub fn pin(
-        binary: std::path::PathBuf,
-        args: Vec<String>,
-        version: String,
-    ) -> std::io::Result<Self> {
-        let bytes = std::fs::read(&binary)?;
-        let mut hasher = Sha384::new();
-        hasher.update(&bytes);
-        let binary_digest = hex_digest(&hasher.finalize());
-        Ok(Self {
-            binary,
-            args,
-            version,
-            binary_digest,
-        })
-    }
-
-    pub fn run(&self, bytes: &[u8]) -> Result<Vec<u8>, PerceptionError> {
-        self.run_with(bytes, &[])
-    }
-
-    /// Like `run`, but appends per-invocation args after the pinned set
-    /// (e.g. `-f N -l N` to select one page per render). The pinned digest
-    /// covers the base args; callers record appended args as evidence.
-    pub fn run_with(
-        &self,
-        bytes: &[u8],
-        extra_args: &[String],
-    ) -> Result<Vec<u8>, PerceptionError> {
-        let mut child = Command::new(&self.binary)
-            .args(&self.args)
-            .args(extra_args)
-            .stdin(std::process::Stdio::piped())
-            .stdout(std::process::Stdio::piped())
-            .stderr(std::process::Stdio::null())
-            .spawn()
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("spawn: {err}")))?;
-        let mut stdin = child.stdin.take().expect("piped stdin");
-        let payload = bytes.to_vec();
-        let writer_thread = std::thread::spawn(move || {
-            let _ = stdin.write_all(&payload);
-        });
-        let output = child
-            .wait_with_output()
-            .map_err(|err| PerceptionError::ExtractorFailed(format!("wait: {err}")))?;
-        let _ = writer_thread.join();
-        if !output.status.success() {
-            return Err(PerceptionError::ExtractorFailed(format!(
-                "pipe binary exited with {}",
-                output.status
-            )));
-        }
-        Ok(output.stdout)
-    }
-}
+/// Renderer or demux pipe: a [`PinnedTool`] whose stdout is raw bytes
+/// (e.g. `pdftoppm` PNG, ffmpeg WAV). Artifact bytes stream on stdin.
+pub type ExternalPipe = PinnedTool;
 
 impl PerceptionAdapter for ImageAdapter {
     fn modality(&self) -> sigil_multimodal::Modality {
@@ -225,17 +95,16 @@ impl PerceptionAdapter for ImageAdapter {
 
         // OCR channel via the pinned external binary, when configured.
         if let Some(ocr) = &self.ocr {
-            let text = ocr.extract(artifact.bytes)?;
+            let run = ocr.extract(artifact.bytes)?;
             channels.push(ExtractedChannel {
                 channel_kind: ChannelKind::OcrText,
-                content: text,
-                extractor: ocr.identity(),
+                content: run.output,
+                extractor: ocr.identity(OCR_EXTRACTOR),
                 confidence: None,
-                // The external-OCR contract requires the binary to emit its
-                // complete output; a non-zero exit is an error, not a
-                // truncation. The adapter cannot detect silent truncation
-                // inside the binary — documented limitation.
-                truncated: false,
+                // A non-zero exit is an error. A clean exit that left input
+                // unread (e.g. bytes appended after the image) is declared:
+                // the OCR text does not cover the whole artifact.
+                truncated: !run.input_complete,
             });
         }
 

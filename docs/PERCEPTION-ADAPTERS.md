@@ -82,6 +82,20 @@ adapter pins the binary path, passes text via stdin/stdout only, and records
 `extractor.digest` for the evidence chain. A bundled OCR engine remains a
 future option once the channel contract is proven.
 
+All external tools (OCR, ASR, renderer, ffmpeg) share one primitive,
+`sigil_perception::PinnedTool` (`ExternalOcr`, `ExternalPipe` and
+`ExternalTranscript` are aliases). Execution is bounded and fail-closed:
+
+- wall-clock timeout (default 120 s) and stdout cap (default 256 MiB),
+  configurable through `ExecLimits`; exceeding either is
+  `ExtractorFailed`, never a partial result;
+- a non-zero exit is `ExtractorFailed` with the last 2 KiB of stderr;
+- a clean exit that left input unread marks the channel `truncated`
+  (rule 5 below). Detection is exact when the tool closes stdin before the
+  write completes, which always holds for inputs larger than the OS pipe
+  buffer; smaller inputs that fit the buffer read as complete. For the
+  video adapter, partial pipe input is a `stream.*.input = partial` property.
+
 ## 4. What adapters must never do (conformance rules)
 
 1. Produce channels with `System`/`User` provenance (authority fabrication).

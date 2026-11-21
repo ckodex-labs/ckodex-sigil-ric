@@ -24,8 +24,9 @@ impl VideoAdapter {
         }
         if let Some(pipe) = &extract.subtitles {
             match pipe.run(artifact.bytes) {
-                Ok(bytes) if !bytes.is_empty() => {
-                    match String::from_utf8(bytes) {
+                Ok(run) if !run.output.is_empty() => {
+                    let truncated = !run.input_complete;
+                    match String::from_utf8(run.output) {
                         Ok(text) => {
                             channels.push(ExtractedChannel {
                                 channel_kind: ChannelKind::Caption,
@@ -36,7 +37,7 @@ impl VideoAdapter {
                                     config_digest: pipe.binary_digest.clone(),
                                 },
                                 confidence: None,
-                                truncated: false,
+                                truncated,
                             });
                             // mp4parse has no TrackType::Subtitle — mov_text
                             // lands in Unknown, so a caption the demuxer found
@@ -73,7 +74,12 @@ impl VideoAdapter {
         channels: &mut Vec<ExtractedChannel>,
     ) {
         let wav = match pipe.run(artifact.bytes) {
-            Ok(bytes) if !bytes.is_empty() => wav_patch_streamed_sizes(bytes),
+            Ok(run) if !run.output.is_empty() => {
+                if !run.input_complete {
+                    properties.push((format!("{id}.stream.audio.input"), "partial".to_string()));
+                }
+                wav_patch_streamed_sizes(run.output)
+            }
             Ok(_) => {
                 properties.push((format!("{id}.stream.audio"), "absent".to_string()));
                 return;
@@ -114,7 +120,12 @@ impl VideoAdapter {
         channels: &mut Vec<ExtractedChannel>,
     ) {
         let bytes = match frame_ocr.frames.run(artifact.bytes) {
-            Ok(bytes) => bytes,
+            Ok(run) => {
+                if !run.input_complete {
+                    properties.push((format!("{id}.stream.frames.input"), "partial".to_string()));
+                }
+                run.output
+            }
             Err(err) => {
                 properties.push((format!("{id}.stream.frames"), format!("failed: {err}")));
                 return;
@@ -126,19 +137,19 @@ impl VideoAdapter {
             properties.push((format!("{id}.stream.frames_capped"), MAX_FRAMES.to_string()));
         }
         for (i, png) in frames.iter().take(MAX_FRAMES).enumerate() {
-            if let Ok(text) = frame_ocr.ocr.extract(png)
-                && !text.trim().is_empty()
+            if let Ok(run) = frame_ocr.ocr.extract(png)
+                && !run.output.trim().is_empty()
             {
                 channels.push(ExtractedChannel {
                     channel_kind: ChannelKind::OcrText,
-                    content: text,
+                    content: run.output,
                     extractor: ExtractorIdentity {
                         name: format!("{id}/frame-ocr[{i}]"),
                         version: frame_ocr.ocr.version.clone(),
                         config_digest: frame_ocr.ocr.binary_digest.clone(),
                     },
                     confidence: None,
-                    truncated: false,
+                    truncated: !run.input_complete,
                 });
             }
         }

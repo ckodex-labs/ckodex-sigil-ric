@@ -135,21 +135,20 @@ fn wav_properties(
     ]
 }
 
-/// The external-ASR contract requires the binary to emit its complete
-/// output; a non-zero exit is an error, not a truncation. The adapter
-/// cannot detect silent truncation inside the binary — documented
-/// limitation.
+/// A non-zero ASR exit is an error; a clean exit that left input unread is
+/// declared as a truncated channel. Truncation inside the ASR binary itself
+/// (e.g. a model that stops decoding early) is not observable here.
 fn transcript_channel(
     transcript: &ExternalTranscript,
     bytes: &[u8],
 ) -> Result<ExtractedChannel, PerceptionError> {
-    let text = transcript.extract(bytes)?;
+    let run = transcript.extract(bytes)?;
     Ok(ExtractedChannel {
         channel_kind: ChannelKind::Transcript,
-        content: text,
-        extractor: transcript.identity(),
+        content: run.output,
+        extractor: transcript.identity(crate::TRANSCRIPT_EXTRACTOR),
         confidence: None,
-        truncated: false,
+        truncated: !run.input_complete,
     })
 }
 

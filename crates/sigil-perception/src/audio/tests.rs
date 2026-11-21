@@ -312,7 +312,7 @@ mod transcript_tests {
             ExternalTranscript::pin(path.clone(), vec!["-x".into()], "v1".into()).expect("pin");
         assert_eq!(pinned.binary_digest.len(), 96); // sha384 hex
         assert_eq!(pinned.version, "v1");
-        let id = pinned.identity();
+        let id = pinned.identity(crate::TRANSCRIPT_EXTRACTOR);
         assert_eq!(id.name, "external-transcript");
         assert_eq!(id.config_digest, pinned.binary_digest);
         let _ = std::fs::remove_file(path);
@@ -334,7 +334,8 @@ mod transcript_tests {
         let path = temp_binary("cat", "#!/bin/sh\nexec cat\n");
         let t = ExternalTranscript::pin(path.clone(), vec![], "cat".into()).expect("pin");
         let out = t.extract(b"transcribe me").expect("extract");
-        assert_eq!(out, "transcribe me");
+        assert_eq!(out.output, "transcribe me");
+        assert!(out.input_complete);
         let _ = std::fs::remove_file(path);
     }
 
