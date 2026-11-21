@@ -124,6 +124,29 @@ fn structured_slices_count_even_when_noise_dominates_the_band() {
 }
 
 #[test]
+fn region_rule_still_fires_when_the_slice_sum_falls_short() {
+    // One payload slice noised flat, the other structured but under 5 % of
+    // the file. The slice sum misses it; the region summary (structure 0.1,
+    // 30 % of the energy) does not. Rules are combined, so it fires.
+    let mut report = sliced(&[(0.27, 0.99), (0.03, 0.1)]);
+    report["inaudible_band"]["energy_fraction"] = json!(0.3);
+    report["inaudible_band"]["flatness"] = json!(0.1);
+    assert!(kinds(report).contains(&MultimodalFindingKind::InaudibleBandEnergy));
+}
+
+#[test]
+fn structured_summary_keeps_the_aggregate_high_band_finding() {
+    let report = json!({ "steganography_findings": [{
+        "label": "high_frequency_anomaly", "low_hz": 46000.0, "high_hz": 48000.0,
+        "energy": 1.0, "fraction_of_total": 0.06, "flatness": 0.2,
+        "subbands": [{ "low_hz": 46000.0, "high_hz": 48000.0, "energy_fraction": 0.06, "flatness": 0.99 }] }] });
+    assert_eq!(
+        kinds(report),
+        vec![MultimodalFindingKind::AudioSteganography]
+    );
+}
+
+#[test]
 fn noise_only_slices_are_not_a_finding() {
     assert!(kinds(sliced(&[(0.3, 0.99), (0.3, 0.97), (0.3, 0.95)])).is_empty());
 }

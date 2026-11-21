@@ -79,18 +79,16 @@ fn non_empty_len(report: &Value, key: &str) -> Option<usize> {
 }
 
 /// A reported steganography band counts unless it is the aggregate
-/// high-band anomaly and every slice of it is flat (a noise floor). Without
-/// slices, the band's own flatness decides; a band with neither counts:
-/// missing evidence never clears a band.
+/// high-band anomaly, no slice of it is structured AND its own flatness marks
+/// it as a noise floor. A band without flatness counts: missing evidence
+/// never clears a band.
 fn structured_band(band: &Value) -> bool {
     let aggregate = band.get("label").and_then(Value::as_str) == Some("high_frequency_anomaly");
     if !aggregate {
         return true;
     }
-    match structured_energy(band.get("subbands")) {
-        Some(energy) => energy > 0.0,
-        None => number(band, "flatness").is_none_or(|flatness| flatness < STRUCTURED_FLATNESS_MAX),
-    }
+    structured_energy(band.get("subbands")).is_some_and(|energy| energy > 0.0)
+        || number(band, "flatness").is_none_or(|flatness| flatness < STRUCTURED_FLATNESS_MAX)
 }
 
 fn number(value: &Value, key: &str) -> Option<f64> {
@@ -130,13 +128,12 @@ fn structured_energy(slices: Option<&Value>) -> Option<f64> {
     )
 }
 
-/// Hidden when the structured slices together reach the energy minimum; for
-/// reports without slices, the region-level rule.
+/// Hidden when the structured slices together reach the energy minimum, or
+/// when the region-level summary says so. The two rules are combined, never
+/// substituted: either one alone has inputs it misses.
 fn hidden_region(slices: Option<&Value>, fraction: Option<f64>, flatness: Option<f64>) -> bool {
-    match structured_energy(slices) {
-        Some(energy) => energy >= HIDDEN_ENERGY_FRACTION_MIN,
-        None => hidden(fraction, flatness),
-    }
+    structured_energy(slices).is_some_and(|energy| energy >= HIDDEN_ENERGY_FRACTION_MIN)
+        || hidden(fraction, flatness)
 }
 
 fn inaudible_band(report: &Value, severity: Severity) -> Option<MultimodalFinding> {
