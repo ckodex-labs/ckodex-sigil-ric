@@ -154,6 +154,33 @@ impl TextMap {
         range
     }
 
+    /// Derived view of the Unicode tag characters U+E0020–U+E007E decoded to
+    /// the ASCII they shadow, in order, across the whole text. Tokenizers keep
+    /// these code points and models read them as text, so the scanner must
+    /// read them too. Each decoded character maps back to the source range of
+    /// the tag it came from. `None` when the text carries no tag text.
+    pub(crate) fn tag_shadow(&self) -> Option<TextMap> {
+        const TAG_ASCII_OFFSET: u32 = 0xE0000;
+        let mut text = String::new();
+        let mut units = Vec::new();
+        for (idx, ch) in self.text.char_indices() {
+            let code = u32::from(ch);
+            let Ok(ascii) = u8::try_from(code.wrapping_sub(TAG_ASCII_OFFSET)) else {
+                continue;
+            };
+            if !(0x20..=0x7E).contains(&ascii) {
+                continue;
+            }
+            let start = text.len();
+            text.push(char::from(ascii));
+            units.push(TextUnit {
+                source_range: self.source_range_for(idx, idx + ch.len_utf8()),
+                text_range: ByteRange::new(start, text.len()),
+            });
+        }
+        (!text.trim().is_empty()).then_some(TextMap { text, units })
+    }
+
     pub(crate) fn snippet_for(&self, start: usize, end: usize) -> String {
         self.text.get(start..end).unwrap_or_default().to_string()
     }

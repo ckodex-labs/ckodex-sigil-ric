@@ -2,6 +2,7 @@ mod decode;
 mod detectors;
 mod dlp;
 mod helpers;
+mod override_grammar;
 mod run;
 mod types;
 

@@ -43,10 +43,15 @@ pub fn build_evidence(
     }
 }
 
+/// Bounds the evidence list. When it must cut, the most severe findings are
+/// kept (stable within a severity): a flood of low-severity findings, such as
+/// one `UnicodeControl` per smuggled tag character, must not push the finding
+/// that decided the verdict out of the record.
 fn truncate_findings(mut findings: Vec<ScanFinding>, max_findings: usize) -> Vec<ScanFinding> {
     if findings.len() <= max_findings {
         return findings;
     }
+    findings.sort_by_key(|finding| std::cmp::Reverse(finding.severity));
     findings.truncate(max_findings);
     findings
 }
@@ -102,4 +107,39 @@ fn stable_evidence_id(summary: &str, token_count: usize, timestamp_unix_ms: u64)
     let digest = hasher.finalize();
     let truncated = u64::from_be_bytes(digest[..8].try_into().expect("8-byte slice"));
     format!("sigil-{truncated:016x}")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::truncate_findings;
+    use crate::types::{ByteRange, DetectorId, ScanFinding, Severity};
+
+    fn finding(severity: Severity, tag: &str) -> ScanFinding {
+        ScanFinding {
+            byte_range: ByteRange::new(0, 1),
+            severity,
+            detectors: vec![DetectorId::UnicodeControl],
+            confidence: 0.9,
+            evidence: tag.to_string(),
+        }
+    }
+
+    #[test]
+    fn truncation_keeps_the_most_severe_findings() {
+        let mut findings: Vec<ScanFinding> = (0..40)
+            .map(|i| finding(Severity::Medium, &format!("m{i}")))
+            .collect();
+        findings.push(finding(Severity::High, "decisive"));
+        let kept = truncate_findings(findings, 8);
+        assert_eq!(kept.len(), 8);
+        assert_eq!(kept[0].evidence, "decisive");
+        assert_eq!(kept[1].evidence, "m0", "stable within a severity");
+    }
+
+    #[test]
+    fn evidence_within_the_bound_keeps_its_order() {
+        let findings = vec![finding(Severity::Low, "a"), finding(Severity::High, "b")];
+        let kept = truncate_findings(findings.clone(), 8);
+        assert_eq!(kept, findings);
+    }
 }

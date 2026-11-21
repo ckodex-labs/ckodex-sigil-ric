@@ -116,6 +116,8 @@ pub fn run_scan_with_engines(
         terminal = Some(treport);
     }
 
+    findings.extend(tag_shadow_findings(&map, policy));
+
     annotate_graphemes(tainted, &findings);
     let summary = summarize_findings(&findings);
     ScanReport {
@@ -129,6 +131,29 @@ pub fn run_scan_with_engines(
         perplexity,
         terminal,
     }
+}
+
+/// Rescan the tag-character shadow text as its own derived channel. The tag
+/// characters keep their `UnicodeControl` findings; this adds what the hidden
+/// text says, located on the tag characters that carry it.
+fn tag_shadow_findings(map: &TextMap, policy: &Policy) -> Vec<crate::types::ScanFinding> {
+    let Some(shadow) = map.tag_shadow() else {
+        return Vec::new();
+    };
+    let mut findings = Vec::new();
+    if policy.scan.injection_detection {
+        findings.extend(detect_injection(&shadow, policy));
+    }
+    if policy.scan.tokenizer_firewall {
+        findings.extend(detect_tokenizer_firewall(&shadow, policy));
+    }
+    if policy.scan.dlp_enabled {
+        findings.extend(detect_dlp(&shadow, policy).1);
+    }
+    for finding in &mut findings {
+        finding.evidence = format!("[tag-shadow] {}", finding.evidence);
+    }
+    findings
 }
 
 /// Run the scan stage with a cross-input history for slow-rate detection.

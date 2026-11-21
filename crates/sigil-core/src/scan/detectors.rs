@@ -116,6 +116,8 @@ pub(crate) fn detect_injection(map: &TextMap, policy: &Policy) -> Vec<ScanFindin
         }
     }
 
+    findings.extend(super::override_grammar::detect_override(map));
+
     // Unicode abuse is treated as part of the injection surface.
     findings.extend(detect_unicode_abuse(map, policy));
     findings
