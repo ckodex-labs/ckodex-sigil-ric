@@ -57,15 +57,13 @@ impl PerceptionAdapter for DocumentAdapter {
 
         let (mut properties, mut channels) = match media_type.as_str() {
             "text/plain" | "text/markdown" | "text/x-markdown" => {
-                extract_plain_text(artifact.bytes, &artifact_digest, self.adapter_id())
+                extract_plain_text(artifact.bytes, self.adapter_id())
             }
-            "application/pdf" => {
-                extract_pdf_text(artifact.bytes, &artifact_digest, self.adapter_id())
-            }
+            "application/pdf" => extract_pdf_text(artifact.bytes, self.adapter_id()),
             _ => {
                 // Try to detect and fall back to plain text.
                 if is_likely_text(artifact.bytes) {
-                    extract_plain_text(artifact.bytes, &artifact_digest, self.adapter_id())
+                    extract_plain_text(artifact.bytes, self.adapter_id())
                 } else {
                     return Err(PerceptionError::UnsupportedMediaType(media_type));
                 }
@@ -144,10 +142,10 @@ impl DocumentAdapter {
                 .run_with(bytes, &page_args)
                 .and_then(|png| {
                     let ocr = compare.ocr.extract(&png.output)?;
-                    Ok((ocr.output, png.input_complete && ocr.input_complete))
+                    Ok((ocr.output, png.input_unread || ocr.input_unread))
                 }) {
-                Ok((text, input_complete)) => {
-                    if !input_complete {
+                Ok((text, input_unread)) => {
+                    if input_unread {
                         partial_input = true;
                         properties.push((key(&format!("page{page}")), "partial-input".to_string()));
                     }
@@ -170,11 +168,12 @@ impl DocumentAdapter {
         out.push(ExtractedChannel {
             channel_kind: ChannelKind::OcrText,
             content: rendered.clone(),
-            extractor: ExtractorIdentity {
-                name: format!("{}/render-ocr", self.adapter_id()),
-                version: format!("{}+{}", compare.renderer.version, compare.ocr.version),
-                config_digest: chain_digest.clone(),
-            },
+            extractor: chain_identity(
+                format!("{}/render-ocr", self.adapter_id()),
+                format!("{}+{}", compare.renderer.version, compare.ocr.version),
+                &chain_digest,
+                compare,
+            ),
             confidence: Some(0.7),
             truncated: total_pages > render_pages || partial_input,
         });
@@ -190,17 +189,38 @@ impl DocumentAdapter {
             out.push(ExtractedChannel {
                 channel_kind: ChannelKind::Divergence,
                 content: divergent.join("\n"),
-                extractor: ExtractorIdentity {
-                    name: format!("{}/divergence", self.adapter_id()),
-                    version: "word-coverage/1.0".to_string(),
-                    config_digest: chain_digest,
-                },
+                extractor: chain_identity(
+                    format!("{}/divergence", self.adapter_id()),
+                    "word-coverage/1.0".to_string(),
+                    &chain_digest,
+                    compare,
+                ),
                 confidence: Some(0.8),
                 truncated: false,
             });
         }
         (properties, out)
     }
+}
+
+/// Identity of the render-then-OCR chain: the combined binary digest plus both
+/// tools' pinned arguments (tagged by role) and their declared models.
+fn chain_identity(
+    name: String,
+    version: String,
+    chain_digest: &str,
+    compare: &RenderCompare,
+) -> ExtractorIdentity {
+    let tagged = |role: &str, args: &[String]| {
+        args.iter()
+            .map(|arg| format!("{role}:{arg}"))
+            .collect::<Vec<_>>()
+    };
+    let mut args = tagged("renderer", &compare.renderer.args);
+    args.extend(tagged("ocr", &compare.ocr.args));
+    let mut models = compare.renderer.model_digests.clone();
+    models.extend(compare.ocr.model_digests.iter().cloned());
+    ExtractorIdentity::bound(name, version, chain_digest.to_string(), args, models)
 }
 
 fn normalized_words(text: &str) -> std::collections::HashSet<String> {
@@ -257,7 +277,6 @@ fn is_likely_text(bytes: &[u8]) -> bool {
 
 fn extract_plain_text(
     bytes: &[u8],
-    artifact_digest: &str,
     adapter_id: &str,
 ) -> (Vec<(String, String)>, Vec<ExtractedChannel>) {
     let content = String::from_utf8_lossy(bytes).to_string();
@@ -273,11 +292,7 @@ fn extract_plain_text(
     let channel = ExtractedChannel {
         channel_kind: ChannelKind::TextLayer,
         content,
-        extractor: ExtractorIdentity {
-            name: format!("{adapter_id}/text",),
-            version: "utf8/1.0".to_string(),
-            config_digest: artifact_digest.to_string(),
-        },
+        extractor: crate::in_process_identity(format!("{adapter_id}/text"), "utf8/1.0", &[]),
         confidence: Some(1.0),
         truncated: false,
     };
@@ -303,7 +318,6 @@ fn extract_plain_text(
 /// - Encrypted PDFs with non-empty passwords are not decrypted.
 fn extract_pdf_text(
     bytes: &[u8],
-    artifact_digest: &str,
     adapter_id: &str,
 ) -> (Vec<(String, String)>, Vec<ExtractedChannel>) {
     let (text, truncated, page_count) = match lopdf::Document::load_mem(bytes) {
@@ -323,11 +337,11 @@ fn extract_pdf_text(
         ExtractedChannel {
             channel_kind: ChannelKind::TextLayer,
             content: text,
-            extractor: ExtractorIdentity {
-                name: format!("{adapter_id}/pdf-text"),
-                version: "lopdf/0.36".to_string(),
-                config_digest: artifact_digest.to_string(),
-            },
+            extractor: crate::in_process_identity(
+                format!("{adapter_id}/pdf-text"),
+                "lopdf/0.36",
+                &[],
+            ),
             confidence: Some(if truncated { 0.6 } else { 0.85 }),
             truncated,
         }
@@ -337,11 +351,11 @@ fn extract_pdf_text(
             content: format!(
                 "pdf_text_extracted = 0\npdf_pages = {page_count}\npdf_truncated = {truncated}\n"
             ),
-            extractor: ExtractorIdentity {
-                name: format!("{adapter_id}/pdf-header"),
-                version: "lopdf/0.36".to_string(),
-                config_digest: artifact_digest.to_string(),
-            },
+            extractor: crate::in_process_identity(
+                format!("{adapter_id}/pdf-header"),
+                "lopdf/0.36",
+                &[],
+            ),
             confidence: None,
             truncated: true,
         }

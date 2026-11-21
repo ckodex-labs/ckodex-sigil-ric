@@ -19,5 +19,8 @@ sha2 = "0.10.9"
 sigil-core = { path = "../sigil-core" }
 sigil-multimodal = { path = "../sigil-multimodal" }
 
+[dev-dependencies]
+tempfile = "3"
+
 [lints]
 workspace = true

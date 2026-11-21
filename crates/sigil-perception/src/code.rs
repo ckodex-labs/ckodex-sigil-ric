@@ -11,7 +11,7 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
-use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
+use sigil_multimodal::{ChannelKind, ExtractedChannel};
 
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
 
@@ -173,11 +173,8 @@ impl PerceptionAdapter for CodeAdapter {
         let src = std::str::from_utf8(artifact.bytes).map_err(|_| PerceptionError::DecodeFailed)?;
         let s = split_code_surfaces(src);
         let id = self.adapter_id();
-        let identity = |name: &str| ExtractorIdentity {
-            name: format!("{id}/{name}"),
-            version: "lexer/0.1".to_string(),
-            config_digest: artifact_digest.clone(),
-        };
+        let identity =
+            |name: &str| crate::in_process_identity(format!("{id}/{name}"), "lexer/0.1", &[]);
         let channels = vec![
             ExtractedChannel {
                 channel_kind: ChannelKind::TextLayer,

@@ -6,11 +6,14 @@
 //! - a wall-clock timeout and a stdout cap bound every run; exceeding either is
 //!   a named [`PerceptionError::ExtractorFailed`], never a partial result;
 //! - a non-zero exit is an error carrying a bounded stderr tail;
-//! - a tool that exits cleanly without reading all of its input yields output
-//!   with [`ToolOutput::input_complete`] = false, which callers surface as a
-//!   truncated channel. Detection is exact when the tool closes stdin before
-//!   the write finishes (always for inputs larger than the OS pipe buffer);
-//!   smaller inputs are absorbed by the pipe buffer and read as complete.
+//! - a tool that exits cleanly while part of its input was never delivered
+//!   yields output with [`ToolOutput::input_unread`] = true, which callers
+//!   surface as a truncated channel. This is observed only when the tool
+//!   closes stdin before the write finishes (always the case for inputs
+//!   larger than the OS pipe buffer). Input that fits the pipe buffer is
+//!   accepted by the OS whether or not the tool reads it, so
+//!   `input_unread = false` means "no unread input observed", never "the
+//!   tool read everything".
 //!
 //! A stdout or stderr handle inherited by a grandchild can outlive the killed
 //! child; the reader thread then ends when that grandchild exits. The run
@@ -70,8 +73,10 @@ impl Default for ExecLimits {
 pub struct ToolOutput<T> {
     /// What the tool wrote to stdout.
     pub output: T,
-    /// False when the tool exited without reading all of its input.
-    pub input_complete: bool,
+    /// True when the tool exited while part of its input was observed
+    /// undelivered. False is the absence of that observation, not proof that
+    /// the tool consumed every byte (see the module docs).
+    pub input_unread: bool,
 }
 
 /// A digest-pinned external binary with fixed arguments.
@@ -85,6 +90,9 @@ pub struct PinnedTool {
     pub version: String,
     /// SHA-384 over the binary, computed at pin time.
     pub binary_digest: String,
+    /// SHA-384 (hex) of each declared model artifact (weights, tokenizer,
+    /// language data) that decides this tool's output, in declaration order.
+    pub model_digests: Vec<String>,
     /// Execution bounds.
     pub limits: ExecLimits,
 }
@@ -103,8 +111,29 @@ impl PinnedTool {
             args,
             version,
             binary_digest,
+            model_digests: Vec::new(),
             limits: ExecLimits::default(),
         })
+    }
+
+    /// Declares the model artifacts this tool loads, pinning each by SHA-384.
+    /// They are bound into the extractor identity (RIC-R-4).
+    ///
+    /// # Errors
+    ///
+    /// The I/O error for the first artifact that cannot be read: a declared
+    /// model that is missing is a configuration error.
+    pub fn with_models(mut self, models: &[PathBuf]) -> io::Result<Self> {
+        for model in models {
+            let bytes = std::fs::read(model).map_err(|err| {
+                io::Error::new(
+                    err.kind(),
+                    format!("model artifact {}: {err}", model.display()),
+                )
+            })?;
+            self.model_digests.push(hex_digest(&Sha384::digest(&bytes)));
+        }
+        Ok(self)
     }
 
     /// Replaces the execution bounds.
@@ -114,14 +143,17 @@ impl PinnedTool {
         self
     }
 
-    /// The extractor identity recorded on channels this tool produced.
+    /// The v2 extractor identity recorded on channels this tool produced:
+    /// binary digest, pinned arguments and declared model digests.
     #[must_use]
     pub fn identity(&self, name: &str) -> ExtractorIdentity {
-        ExtractorIdentity {
-            name: name.to_string(),
-            version: self.version.clone(),
-            config_digest: self.binary_digest.clone(),
-        }
+        ExtractorIdentity::bound(
+            name.to_string(),
+            self.version.clone(),
+            self.binary_digest.clone(),
+            self.args.clone(),
+            self.model_digests.clone(),
+        )
     }
 
     /// Runs the tool and decodes stdout as UTF-8 text.
@@ -135,7 +167,7 @@ impl PinnedTool {
             .map_err(|_| self.failure("wrote non-UTF-8 output".to_string()))?;
         Ok(ToolOutput {
             output: text,
-            input_complete: run.input_complete,
+            input_unread: run.input_unread,
         })
     }
 
@@ -181,10 +213,12 @@ impl PinnedTool {
             let tail = stderr.recv_timeout(EXIT_POLL * 20).unwrap_or_default();
             return Err(self.failure(format!("exited with {status}{}", stderr_suffix(&tail))));
         }
-        let input_complete = matches!(writer.recv_timeout(EXIT_POLL * 20), Ok(Ok(())));
+        // A write that failed, or that had not finished after the tool exited,
+        // left input undelivered.
+        let input_unread = !matches!(writer.recv_timeout(EXIT_POLL * 20), Ok(Ok(())));
         Ok(ToolOutput {
             output,
-            input_complete,
+            input_unread,
         })
     }
 

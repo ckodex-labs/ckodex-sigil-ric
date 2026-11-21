@@ -60,12 +60,7 @@ impl PerceptionAdapter for AudioAdapter {
         let adapter_id = self.adapter_id();
 
         let mut properties = wav_properties(&spec, duration_secs, adapter_id);
-        let mut channels = vec![sampling::metadata_channel(
-            &spec,
-            duration_secs,
-            adapter_id,
-            &artifact_digest,
-        )];
+        let mut channels = vec![sampling::metadata_channel(&spec, duration_secs, adapter_id)];
 
         // Spectral analysis channel: low-frequency deception detection.
         // Downmixes to mono (weighted per ITU-R BS.775-4 for >2 channels,
@@ -148,7 +143,7 @@ fn transcript_channel(
         content: run.output,
         extractor: transcript.identity(crate::TRANSCRIPT_EXTRACTOR),
         confidence: None,
-        truncated: !run.input_complete,
+        truncated: run.input_unread,
     })
 }
 

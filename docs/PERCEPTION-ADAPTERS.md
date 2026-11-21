@@ -48,8 +48,9 @@ Each returned channel is a `ModalInput` plus lineage:
 - `provenance` — **always a derived class** (`McpTool`/`Retrieval`-class trust);
   an adapter that emits `User`/`System` provenance is non-conformant (RIC-R-7)
 - `derived_from` — the parent artifact id
-- `extractor` — name, version, configuration digest (the adapter's own
-  receipt, so "which OCR produced this text" is answerable later)
+- `extractor` — the interpreter's identity (see "Extractor identity v2" below),
+  so "which OCR, run how, with which weights, produced this text" is
+  answerable later
 - `confidence` — optional; **confidence never changes epistemic class**
 
 The kernel consumes channels through the existing `MultimodalEngine::analyze`
@@ -90,11 +91,48 @@ All external tools (OCR, ASR, renderer, ffmpeg) share one primitive,
   configurable through `ExecLimits`; exceeding either is
   `ExtractorFailed`, never a partial result;
 - a non-zero exit is `ExtractorFailed` with the last 2 KiB of stderr;
-- a clean exit that left input unread marks the channel `truncated`
-  (rule 5 below). Detection is exact when the tool closes stdin before the
-  write completes, which always holds for inputs larger than the OS pipe
-  buffer; smaller inputs that fit the buffer read as complete. For the
+- a clean exit while part of the input was observed undelivered marks the
+  channel `truncated` (rule 5 below). This is observed when the tool closes
+  stdin before the write completes, which always holds for inputs larger than
+  the OS pipe buffer. Input that fits the buffer is accepted by the OS whether
+  or not the tool reads it, so an untruncated channel means "no unread input
+  observed", not "the tool read every byte". Closing that gap needs an
+  in-process container-end check (bytes after PNG IEND, RIFF data, PDF
+  %%EOF), which is not implemented yet. For the
   video adapter, partial pipe input is a `stream.*.input = partial` property.
+
+### Extractor identity v2 (RIC-R-4, RIC-MM-001 WP1)
+
+An extractor's output is decided by its binary, its argument vector and the
+model artifacts it loads. Identity v1 recorded only the binary digest, so a
+Whisper run through a filtered resampler and one through plain decimation
+carried the same identity. v2 (`identity_version: 2`) adds:
+
+- `args`: the pinned argument vector (for in-process extractors, their
+  `key=value` descriptor);
+- `model_digests`: SHA-384 of each declared model file, sorted;
+- `identity_digest` = SHA-384 over the length-prefixed encoding documented in
+  `crates/sigil-multimodal/src/extractor_identity.rs` (domain
+  `sigil-extractor-identity-v2`, `config_digest`, args, sorted models).
+
+Models are declared on the CLI with `--ocr-model <path>` and
+`--transcript-model <path>` (repeatable). Each is pinned by SHA-384 at
+startup, and a missing file is a configuration error. A model flag without
+its tool (`--transcript-model` without `--transcript-binary`) is rejected.
+
+`config_digest` semantics: in v1 records an in-process extractor (WAV header,
+spectral, EXIF, PDF text, code lexer, MP4 header) stored the **artifact**
+digest here. In v2 it is SHA-384 over the extractor's name, version, crate
+version and configuration, never the artifact. v1 records still deserialize
+(`identity_version` defaults to 1); `ExtractorIdentity::is_self_consistent`
+checks a v2 record against its own fields.
+
+Residual gap (class S): an interpreted adapter, such as the Python
+`scripts/reference/whisper-stdin`, is pinned by its script bytes. The
+interpreter, its site-packages and any file the script opens on its own are
+not bound unless declared with a model flag. Declaring every weight file the
+adapter loads (encoder, decoder, tokens) closes the weight part. The
+interpreter part stays open.
 
 ## 4. What adapters must never do (conformance rules)
 

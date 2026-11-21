@@ -1,4 +1,4 @@
-use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
+use sigil_multimodal::{ChannelKind, ExtractedChannel};
 use std::io::Cursor;
 
 /// Estimate duration in seconds from the WAV spec and sample count.
@@ -19,7 +19,6 @@ pub(crate) fn metadata_channel(
     spec: &hound::WavSpec,
     duration_secs: f64,
     adapter_id: &str,
-    artifact_digest: &str,
 ) -> ExtractedChannel {
     let content = format!(
         "sample_rate = {}\nchannels = {}\nbits_per_sample = {}\nsample_format = {:?}\nduration_secs = {:.3}\n",
@@ -28,11 +27,7 @@ pub(crate) fn metadata_channel(
     ExtractedChannel {
         channel_kind: ChannelKind::Metadata,
         content,
-        extractor: ExtractorIdentity {
-            name: format!("{adapter_id}/wav-header"),
-            version: "hound/3.5".to_string(),
-            config_digest: artifact_digest.to_string(),
-        },
+        extractor: crate::in_process_identity(format!("{adapter_id}/wav-header"), "hound/3.5", &[]),
         confidence: None,
         truncated: false,
     }
@@ -95,22 +90,19 @@ pub(crate) fn spectral_channel(
     artifact_digest: &str,
     dropped_samples: usize,
 ) -> Option<ExtractedChannel> {
-    let report = crate::spectral::analyze_spectrum(
-        mono,
-        spec.sample_rate,
-        &crate::spectral::SpectralConfig::default(),
-        artifact_digest,
-    )?;
+    let config = crate::spectral::SpectralConfig::default();
+    let report =
+        crate::spectral::analyze_spectrum(mono, spec.sample_rate, &config, artifact_digest)?;
     let content = serde_json::to_string_pretty(&report)
         .unwrap_or_else(|_| "spectral_analysis_error".to_string());
     Some(ExtractedChannel {
         channel_kind: ChannelKind::Metadata,
         content,
-        extractor: ExtractorIdentity {
-            name: format!("{adapter_id}/spectral"),
-            version: "realfft/3.5".to_string(),
-            config_digest: artifact_digest.to_string(),
-        },
+        extractor: crate::in_process_identity(
+            format!("{adapter_id}/spectral"),
+            "realfft/3.5",
+            &[("config", format!("{config:?}"))],
+        ),
         confidence: None,
         truncated: dropped_samples > 0,
     })

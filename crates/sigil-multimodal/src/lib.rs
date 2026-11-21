@@ -8,6 +8,7 @@
 //! and whether the fusion could form an instruction that did not exist in any
 //! single artifact (unsafe-fusion detection, docs/RIC-CONTRACT.md RIC-R-6).
 
+mod extractor_identity;
 pub mod perception;
 
 mod detect;
@@ -18,8 +19,8 @@ mod verdict;
 
 pub use engine::MultimodalEngine;
 pub use perception::{
-    ArtifactRef, ChannelKind, ExtractedChannel, ExtractorIdentity, PerceptionAdapter,
-    PerceptionError, PerceptionReport,
+    ArtifactRef, ChannelKind, EXTRACTOR_IDENTITY_V1, EXTRACTOR_IDENTITY_V2, ExtractedChannel,
+    ExtractorIdentity, PerceptionAdapter, PerceptionError, PerceptionReport,
 };
 pub use types::{
     AuthorityCeiling, CrossModalAssessment, CrossModalCorrelation, FusionAssessment, FusionEvent,

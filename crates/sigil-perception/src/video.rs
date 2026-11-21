@@ -9,7 +9,7 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
-use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
+use sigil_multimodal::{ChannelKind, ExtractedChannel};
 
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
 use std::io::Cursor;
@@ -117,6 +117,28 @@ impl StreamExtract {
     }
 }
 
+impl StreamExtract {
+    /// Declares the model artifacts of the frame OCR and the audio ASR,
+    /// pinning each into that tool's extractor identity.
+    ///
+    /// # Errors
+    ///
+    /// The I/O error for the first declared model that cannot be read.
+    pub fn with_models(
+        mut self,
+        ocr_models: &[std::path::PathBuf],
+        transcript_models: &[std::path::PathBuf],
+    ) -> std::io::Result<Self> {
+        if let Some(frames) = self.frames.as_mut() {
+            frames.ocr = frames.ocr.clone().with_models(ocr_models)?;
+        }
+        if let Some(transcript) = self.transcript.take() {
+            self.transcript = Some(transcript.with_models(transcript_models)?);
+        }
+        Ok(self)
+    }
+}
+
 impl PerceptionAdapter for VideoAdapter {
     fn modality(&self) -> sigil_multimodal::Modality {
         sigil_multimodal::Modality::Video
@@ -199,11 +221,11 @@ impl PerceptionAdapter for VideoAdapter {
         channels.push(ExtractedChannel {
             channel_kind: ChannelKind::Metadata,
             content: metadata_content,
-            extractor: ExtractorIdentity {
-                name: format!("{}/mp4-header", self.adapter_id()),
-                version: "mp4parse/0.17".to_string(),
-                config_digest: artifact_digest.clone(),
-            },
+            extractor: crate::in_process_identity(
+                format!("{}/mp4-header", self.adapter_id()),
+                "mp4parse/0.17",
+                &[],
+            ),
             confidence: None,
             truncated: false,
         });

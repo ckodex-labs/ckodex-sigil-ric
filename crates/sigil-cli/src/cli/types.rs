@@ -389,6 +389,15 @@ pub struct PerceiveCommand {
     /// Arguments for the ASR binary (artifact bytes travel on stdin).
     #[arg(long, default_value = "")]
     pub transcript_args: String,
+    /// Model artifact the OCR binary loads (e.g. traineddata). Repeatable.
+    /// Each file is pinned by SHA-384 and bound into the extractor identity;
+    /// a missing file is a configuration error.
+    #[arg(long = "ocr-model")]
+    pub ocr_model: Vec<PathBuf>,
+    /// Model artifact the ASR binary loads (encoder, decoder, tokens).
+    /// Repeatable; pinned and bound like --ocr-model.
+    #[arg(long = "transcript-model")]
+    pub transcript_model: Vec<PathBuf>,
     /// External renderer binary to pin for render-vs-extract comparison
     /// (document/PDF, optional — e.g. `pdftoppm`).
     #[arg(long)]

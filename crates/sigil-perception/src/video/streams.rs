@@ -25,17 +25,13 @@ impl VideoAdapter {
         if let Some(pipe) = &extract.subtitles {
             match pipe.run(artifact.bytes) {
                 Ok(run) if !run.output.is_empty() => {
-                    let truncated = !run.input_complete;
+                    let truncated = run.input_unread;
                     match String::from_utf8(run.output) {
                         Ok(text) => {
                             channels.push(ExtractedChannel {
                                 channel_kind: ChannelKind::Caption,
                                 content: text,
-                                extractor: ExtractorIdentity {
-                                    name: format!("{id}/subtitles"),
-                                    version: pipe.version.clone(),
-                                    config_digest: pipe.binary_digest.clone(),
-                                },
+                                extractor: pipe.identity(&format!("{id}/subtitles")),
                                 confidence: None,
                                 truncated,
                             });
@@ -75,7 +71,7 @@ impl VideoAdapter {
     ) {
         let wav = match pipe.run(artifact.bytes) {
             Ok(run) if !run.output.is_empty() => {
-                if !run.input_complete {
+                if run.input_unread {
                     properties.push((format!("{id}.stream.audio.input"), "partial".to_string()));
                 }
                 wav_patch_streamed_sizes(run.output)
@@ -121,7 +117,7 @@ impl VideoAdapter {
     ) {
         let bytes = match frame_ocr.frames.run(artifact.bytes) {
             Ok(run) => {
-                if !run.input_complete {
+                if run.input_unread {
                     properties.push((format!("{id}.stream.frames.input"), "partial".to_string()));
                 }
                 run.output
@@ -143,13 +139,9 @@ impl VideoAdapter {
                 channels.push(ExtractedChannel {
                     channel_kind: ChannelKind::OcrText,
                     content: run.output,
-                    extractor: ExtractorIdentity {
-                        name: format!("{id}/frame-ocr[{i}]"),
-                        version: frame_ocr.ocr.version.clone(),
-                        config_digest: frame_ocr.ocr.binary_digest.clone(),
-                    },
+                    extractor: frame_ocr.ocr.identity(&format!("{id}/frame-ocr[{i}]")),
                     confidence: None,
-                    truncated: !run.input_complete,
+                    truncated: run.input_unread,
                 });
             }
         }

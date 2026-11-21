@@ -83,11 +83,11 @@ impl PerceptionAdapter for ImageAdapter {
             channels.push(ExtractedChannel {
                 channel_kind: ChannelKind::Metadata,
                 content,
-                extractor: ExtractorIdentity {
-                    name: format!("{}/exif", self.adapter_id()),
-                    version: "kamadak-exif/0.19".to_string(),
-                    config_digest: artifact_digest.clone(),
-                },
+                extractor: in_process_identity(
+                    format!("{}/exif", self.adapter_id()),
+                    "kamadak-exif/0.19",
+                    &[],
+                ),
                 confidence: None,
                 truncated,
             });
@@ -104,7 +104,7 @@ impl PerceptionAdapter for ImageAdapter {
                 // A non-zero exit is an error. A clean exit that left input
                 // unread (e.g. bytes appended after the image) is declared:
                 // the OCR text does not cover the whole artifact.
-                truncated: !run.input_complete,
+                truncated: run.input_unread,
             });
         }
 
@@ -152,6 +152,21 @@ fn inventory_exif(bytes: &[u8]) -> Option<(String, usize, bool)> {
 pub struct PerceptionOutcome {
     pub adapter_id: String,
     pub report: PerceptionReport,
+}
+
+/// Identity of an extractor that runs inside this crate: bound to the crate
+/// version and the extractor's own descriptor, never to the artifact (v2).
+pub(crate) fn in_process_identity(
+    name: String,
+    version: &str,
+    descriptor: &[(&str, String)],
+) -> ExtractorIdentity {
+    let mut full = vec![(
+        "crate",
+        concat!("sigil-perception/", env!("CARGO_PKG_VERSION")).to_string(),
+    )];
+    full.extend(descriptor.iter().cloned());
+    ExtractorIdentity::in_process(name, version.to_string(), &full)
 }
 
 fn hex_digest(bytes: &[u8]) -> String {

@@ -44,7 +44,7 @@ fn stdin_reaches_the_tool_and_stdout_comes_back() {
     let script = Script::new("cat", "exec cat");
     let run = script.tool().run(b"artifact bytes").expect("run");
     assert_eq!(run.output, b"artifact bytes");
-    assert!(run.input_complete);
+    assert!(!run.input_unread);
 }
 
 #[test]
@@ -52,7 +52,7 @@ fn a_tool_that_reads_everything_is_complete_even_for_large_input() {
     let script = Script::new("drain", "cat >/dev/null; echo ok");
     let run = script.tool().run(&vec![b'a'; LARGE_INPUT]).expect("run");
     assert_eq!(run.output, b"ok\n");
-    assert!(run.input_complete);
+    assert!(!run.input_unread);
 }
 
 #[test]
@@ -66,7 +66,7 @@ fn a_tool_that_exits_without_reading_its_input_is_declared_incomplete() {
         .expect("clean exit is output");
     assert_eq!(run.output, b"partial\n");
     assert!(
-        !run.input_complete,
+        run.input_unread,
         "unread input must be declared, never silent"
     );
 }

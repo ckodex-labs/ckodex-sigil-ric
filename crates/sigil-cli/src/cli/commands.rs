@@ -247,6 +247,15 @@ pub fn perceive_command(
     let routed = sniffed.filter(|s| *s != command.modality.as_str());
     let effective_modality = sniffed.unwrap_or(command.modality.as_str());
 
+    // A declared model with no tool to load it would read as "bound" while
+    // binding nothing.
+    if !command.ocr_model.is_empty() && command.ocr_binary.is_none() {
+        return Err(anyhow!("--ocr-model needs --ocr-binary"));
+    }
+    if !command.transcript_model.is_empty() && command.transcript_binary.is_none() {
+        return Err(anyhow!("--transcript-model needs --transcript-binary"));
+    }
+
     // Reject adapter flags that cannot apply to the routed modality —
     // a silently-ignored flag reads as "configured" to the operator.
     for (flag, present, allowed) in [
@@ -268,6 +277,16 @@ pub fn perceive_command(
         (
             "--transcript-args",
             !command.transcript_args.is_empty(),
+            ["audio", "video"].as_slice(),
+        ),
+        (
+            "--ocr-model",
+            !command.ocr_model.is_empty(),
+            ["image", "video", "document"].as_slice(),
+        ),
+        (
+            "--transcript-model",
+            !command.transcript_model.is_empty(),
             ["audio", "video"].as_slice(),
         ),
         (
@@ -311,6 +330,7 @@ pub fn perceive_command(
                         },
                         "external".to_string(),
                     )
+                    .and_then(|tool| tool.with_models(&command.transcript_model))
                     .map_err(|err| anyhow!("pin transcript binary: {err}"))?,
                 ),
                 None => None,
@@ -342,6 +362,9 @@ pub fn perceive_command(
                             .clone()
                             .map(|b| (b, split_args(&command.transcript_args))),
                     )
+                    .and_then(|extract| {
+                        extract.with_models(&command.ocr_model, &command.transcript_model)
+                    })
                     .map_err(|err| anyhow!("pin video stream extractors: {err}"))?,
                 ),
                 None => {
@@ -396,6 +419,7 @@ pub fn perceive_command(
                                 .collect(),
                             "external".to_string(),
                         )
+                        .and_then(|tool| tool.with_models(&command.ocr_model))
                         .map_err(|err| anyhow!("pin ocr binary: {err}"))?,
                     })
                 }
@@ -441,6 +465,7 @@ pub fn perceive_command(
                         },
                         "external".to_string(),
                     )
+                    .and_then(|tool| tool.with_models(&command.ocr_model))
                     .map_err(|err| anyhow!("pin ocr binary: {err}"))?,
                 ),
                 None => None,

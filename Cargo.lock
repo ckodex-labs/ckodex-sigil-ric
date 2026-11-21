@@ -2198,6 +2198,7 @@ version = "0.3.2"
 dependencies = [
  "serde",
  "serde_json",
+ "sha2",
  "sigil-core",
  "thiserror",
 ]
@@ -2218,6 +2219,7 @@ dependencies = [
  "sha2",
  "sigil-core",
  "sigil-multimodal",
+ "tempfile",
 ]
 
 [[package]]

@@ -335,7 +335,7 @@ mod transcript_tests {
         let t = ExternalTranscript::pin(path.clone(), vec![], "cat".into()).expect("pin");
         let out = t.extract(b"transcribe me").expect("extract");
         assert_eq!(out.output, "transcribe me");
-        assert!(out.input_complete);
+        assert!(!out.input_unread);
         let _ = std::fs::remove_file(path);
     }
 
