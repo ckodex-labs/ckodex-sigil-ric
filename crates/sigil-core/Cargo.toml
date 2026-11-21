@@ -27,3 +27,6 @@ x509-cert = "0.2"
 rand = "0.8"
 tempfile = "3"
 sigil-s = { path = "../sigil-s" }
+
+[lints]
+workspace = true

@@ -22,6 +22,16 @@ edition = "2021"
 rust-version = "1.88"
 license-file = "LICENSE"
 
+# Workspace-wide lint floor. `unsafe` is denied everywhere; the two FFI
+# boundaries (sigil-core::tokenizer_ffi, sigil-ffi exports) carry scoped allows
+# with reasons, and every unsafe block must say why it is sound.
+[workspace.lints.rust]
+unsafe_code = "deny"
+unsafe_op_in_unsafe_fn = "deny"
+
+[workspace.lints.clippy]
+undocumented_unsafe_blocks = "deny"
+
 [workspace.dependencies]
 anyhow = "1"
 aho-corasick = "1"

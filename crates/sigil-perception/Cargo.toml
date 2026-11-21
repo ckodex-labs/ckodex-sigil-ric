@@ -18,3 +18,6 @@ serde_json.workspace = true
 sha2 = "0.10.9"
 sigil-core = { path = "../sigil-core" }
 sigil-multimodal = { path = "../sigil-multimodal" }
+
+[lints]
+workspace = true

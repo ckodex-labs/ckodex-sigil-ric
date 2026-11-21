@@ -86,6 +86,7 @@ extern "C" {
 /// Pin every ABI symbol into the cdylib's export table. Referencing each
 /// function forces the linker to pull its archive member; the symbols are
 /// then re-exported from `libsigil` unchanged.
+#[allow(unsafe_code, reason = "C ABI export: the symbol name is the contract")]
 #[no_mangle]
 pub extern "C" fn sigil_ffi_pin() -> usize {
     let fns: [*const (); 9] = [
@@ -108,6 +109,7 @@ pub extern "C" fn sigil_ffi_pin() -> usize {
 
 /// Artifact version, NUL-terminated. Lets FFI consumers detect which
 /// `libsigil` build they loaded without symbol-versioning machinery.
+#[allow(unsafe_code, reason = "C ABI export: the symbol name is the contract")]
 #[no_mangle]
 pub extern "C" fn sigil_version() -> *const c_char {
     concat!(env!("CARGO_PKG_VERSION"), "\0").as_ptr() as *const c_char

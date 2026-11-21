@@ -13,3 +13,6 @@ sigil-mcp = { path = "../sigil-mcp" }
 sigil-probe = { path = "../sigil-probe" }
 sigil-multimodal = { path = "../sigil-multimodal" }
 sigil-s = { path = "../sigil-s" }
+
+[lints]
+workspace = true

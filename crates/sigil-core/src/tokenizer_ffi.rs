@@ -1,3 +1,20 @@
+//! Safe wrapper over the Zig tiktoken static library (`zig/tiktoken/src/lib.zig`).
+//!
+//! This is the only module in `sigil-core` allowed to use `unsafe`. Every block
+//! below carries a SAFETY note that names the Zig-side guarantee it relies on.
+//! Shared contract, read from `lib.zig`:
+//! - `zig_tiktoken_open` writes a heap handle only on return code 0; the handle
+//!   is freed exactly once, by `Drop`.
+//! - After `open`, every exported function only reads the handle's maps; the
+//!   maps are written during `Tokenizer.init` and never again.
+//! - Output buffers are allocated from `std.heap.page_allocator` (thread-safe),
+//!   are valid for `len` elements on return code 0, and are released through the
+//!   matching `zig_tiktoken_free_*` call.
+#![allow(
+    unsafe_code,
+    reason = "FFI boundary to the Zig tokenizer; each unsafe block documents its invariant"
+)]
+
 use std::{
     collections::HashMap,
     ffi::c_void,
@@ -73,12 +90,19 @@ pub struct ZigTokenizer {
     handle: NonNull<c_void>,
 }
 
+// SAFETY: the handle is an owned heap allocation with no thread affinity, freed
+// once by `Drop`; moving it between threads is sound.
 unsafe impl Send for ZigTokenizer {}
+// SAFETY: after `open` the Zig side only reads the handle (all map writes happen
+// in `Tokenizer.init`), and per-call output buffers come from the thread-safe
+// `page_allocator`, so concurrent `&self` calls do not race.
 unsafe impl Sync for ZigTokenizer {}
 
 impl ZigTokenizer {
     pub fn open(name: &str) -> Result<Arc<Self>, ZigTokenizerError> {
         let mut handle = null_mut();
+        // SAFETY: `name` is valid for `name.len()` bytes for the duration of the call;
+        // `handle` is a live out-pointer that Zig writes only on success.
         let rc = unsafe { zig_tiktoken_open(name.as_ptr(), name.len(), &mut handle) };
         if rc != 0 {
             return Err(ZigTokenizerError::from_code(rc));
@@ -93,6 +117,8 @@ impl ZigTokenizer {
             items: null_mut(),
             len: 0,
         };
+        // SAFETY: the handle is live (owned by `self`), `text` is valid for
+        // `text.len()` bytes, and `buffer` is a live out-pointer.
         let rc = unsafe {
             zig_tiktoken_encode_ordinary(
                 self.handle.as_ptr(),
@@ -105,7 +131,14 @@ impl ZigTokenizer {
             return Err(ZigTokenizerError::from_code(rc));
         }
 
-        let spans = unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() };
+        let spans = if buffer.len == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: on return code 0 Zig set `items` to an allocation valid for
+            // `len` spans; `len > 0` here, so the pointer is non-null.
+            unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() }
+        };
+        // SAFETY: `buffer` holds the allocation Zig just returned and is freed once.
         unsafe { zig_tiktoken_free_tokens(self.handle.as_ptr(), &mut buffer) };
         Ok(spans)
     }
@@ -115,6 +148,8 @@ impl ZigTokenizer {
             items: null_mut(),
             len: 0,
         };
+        // SAFETY: as in `encode_ordinary`: live handle, valid input slice, live
+        // out-pointer.
         let rc = unsafe {
             zig_tiktoken_encode_piece(self.handle.as_ptr(), text.as_ptr(), text.len(), &mut buffer)
         };
@@ -122,13 +157,22 @@ impl ZigTokenizer {
             return Err(ZigTokenizerError::from_code(rc));
         }
 
-        let spans = unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() };
+        let spans = if buffer.len == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: on return code 0 Zig set `items` to an allocation valid for
+            // `len` spans; `len > 0` here, so the pointer is non-null.
+            unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() }
+        };
+        // SAFETY: `buffer` holds the allocation Zig just returned and is freed once.
         unsafe { zig_tiktoken_free_tokens(self.handle.as_ptr(), &mut buffer) };
         Ok(spans)
     }
 
     pub fn encode_single_token(&self, text: &str) -> Result<u32, ZigTokenizerError> {
         let mut id = 0u32;
+        // SAFETY: live handle, `text` valid for `text.len()` bytes, `id` is a live
+        // out-pointer.
         let rc = unsafe {
             zig_tiktoken_encode_single_token(
                 self.handle.as_ptr(),
@@ -148,6 +192,8 @@ impl ZigTokenizer {
             items: null_mut(),
             len: 0,
         };
+        // SAFETY: live handle, `ids` valid for `ids.len()` elements, `buffer` is a
+        // live out-pointer.
         let rc = unsafe {
             zig_tiktoken_decode_bytes(self.handle.as_ptr(), ids.as_ptr(), ids.len(), &mut buffer)
         };
@@ -155,13 +201,22 @@ impl ZigTokenizer {
             return Err(ZigTokenizerError::from_code(rc));
         }
 
-        let bytes = unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() };
+        let bytes = if buffer.len == 0 {
+            Vec::new()
+        } else {
+            // SAFETY: on return code 0 Zig set `items` to an allocation valid for
+            // `len` bytes; `len > 0` here, so the pointer is non-null.
+            unsafe { slice::from_raw_parts(buffer.items, buffer.len).to_vec() }
+        };
+        // SAFETY: `buffer` holds the allocation Zig just returned and is freed once.
         unsafe { zig_tiktoken_free_bytes(self.handle.as_ptr(), &mut buffer) };
         Ok(bytes)
     }
 
     pub fn special_token_id(&self, name: &str) -> Result<Option<u32>, ZigTokenizerError> {
         let mut id = 0u32;
+        // SAFETY: live handle, `name` valid for `name.len()` bytes, `id` is a live
+        // out-pointer.
         let rc = unsafe {
             zig_tiktoken_special_token_id(self.handle.as_ptr(), name.as_ptr(), name.len(), &mut id)
         };
@@ -175,6 +230,8 @@ impl ZigTokenizer {
 
 impl Drop for ZigTokenizer {
     fn drop(&mut self) {
+        // SAFETY: the handle came from a successful `open` and `Drop` runs once, so
+        // it is closed exactly once and never used afterwards.
         unsafe { zig_tiktoken_close(self.handle.as_ptr()) };
     }
 }
