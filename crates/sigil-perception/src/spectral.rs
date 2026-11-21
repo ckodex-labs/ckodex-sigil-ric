@@ -53,7 +53,7 @@ use rustfft::num_complex::Complex;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
 
-pub use facts::{AliasPrediction, InaudibleBand};
+pub use facts::{AliasPrediction, InaudibleBand, SubBand};
 
 pub use downmix::{
     downmix_to_mono, downmix_to_mono_f32, downmix_to_mono_weighted, downmix_to_mono_weighted_f32,
@@ -73,6 +73,9 @@ pub struct FreqBand {
     /// the kernel can tell a noise floor from content.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub flatness: Option<f32>,
+    /// Equal slices of the band, for the aggregate high-band anomaly.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub subbands: Vec<SubBand>,
 }
 
 /// Result of spectral analysis.
@@ -365,6 +368,12 @@ fn build_report(
     config: &SpectralConfig,
     artifact_digest: &str,
 ) -> SpectralReport {
+    let spectrum = facts::Spectrum {
+        bins: &stats.bin_energy_sum,
+        bin_hz: f64::from(stats.bin_hz),
+        total: stats.bin_energy_sum.iter().sum(),
+    };
+
     let mut subliminal_findings = Vec::new();
     if let Some(sub_audible) = sub_audible.filter(|sub| sub.flagged) {
         subliminal_findings.push(FreqBand {
@@ -374,9 +383,17 @@ fn build_report(
             energy: sub_audible.energy,
             fraction_of_total: sub_audible.fraction,
             flatness: None,
+            subbands: Vec::new(),
         });
     }
 
+    let high_band: Vec<(usize, f64)> = stats
+        .bin_energy_sum
+        .iter()
+        .enumerate()
+        .filter(|(bin, _)| *bin as f32 * stats.bin_hz >= stats.high_band_start_hz)
+        .map(|(bin, energy)| (bin, *energy))
+        .collect();
     let mut steganography_findings = Vec::new();
     if stats.has_stego {
         steganography_findings.push(FreqBand {
@@ -386,14 +403,9 @@ fn build_report(
             energy: stats.high_band_energy_sum,
             fraction_of_total: stats.high_band_energy_sum / stats.total_energy,
             flatness: Some(facts::structure(
-                &stats
-                    .bin_energy_sum
-                    .iter()
-                    .enumerate()
-                    .filter(|(bin, _)| *bin as f32 * stats.bin_hz >= stats.high_band_start_hz)
-                    .map(|(_, energy)| *energy)
-                    .collect::<Vec<_>>(),
+                &high_band.iter().map(|(_, e)| *e).collect::<Vec<_>>(),
             )),
+            subbands: facts::subbands(&spectrum, &high_band),
         });
     }
     if !stats.high_band_peak_bins.is_empty() {
@@ -414,14 +426,9 @@ fn build_report(
             energy: stats.narrowband_peak_energy_sum,
             fraction_of_total: stats.narrowband_peak_energy_sum / stats.total_energy,
             flatness: None,
+            subbands: Vec::new(),
         });
     }
-
-    let spectrum = facts::Spectrum {
-        bins: &stats.bin_energy_sum,
-        bin_hz: f64::from(stats.bin_hz),
-        total: stats.bin_energy_sum.iter().sum(),
-    };
 
     let mut anomalous_bands = Vec::new();
     anomalous_bands.extend(subliminal_findings.clone());

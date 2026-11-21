@@ -5,6 +5,19 @@
 //! needs both properties: enough energy where the listener cannot hear it,
 //! and structure (speech or tones, not noise). Energy alone would flag white
 //! noise beds; structure alone would flag a faint ultrasonic pilot tone.
+//!
+//! Structure is judged per slice of each region: the adapter reports every
+//! slice (range, share of the file's energy, flatness) and this module sums
+//! the energy of structured slices, so noise in other slices cannot dilute a
+//! payload's slices.
+//!
+//! Known limit: noise added *inside* the payload's own slices raises their
+//! flatness too. On the generated +32 kHz payload with band noise leaking
+//! into its slices, detection holds at noise gain 8 and is lost from gain 12
+//! (crates/sigil-perception/tests/spectral_wp2.rs). Whether an ASR still
+//! decodes the payload at that SNR is not measured. A temporal-modulation
+//! test (speech carries a 2-8 Hz syllabic envelope, a noise bed does not) is
+//! the candidate remedy and is not implemented.
 
 use crate::types::{MultimodalFinding, MultimodalFindingKind};
 use serde_json::Value;
@@ -66,11 +79,18 @@ fn non_empty_len(report: &Value, key: &str) -> Option<usize> {
 }
 
 /// A reported steganography band counts unless it is the aggregate
-/// high-band anomaly and its flatness marks it as a noise floor. A band with
-/// no flatness (older reports) counts: missing evidence never clears a band.
+/// high-band anomaly and every slice of it is flat (a noise floor). Without
+/// slices, the band's own flatness decides; a band with neither counts:
+/// missing evidence never clears a band.
 fn structured_band(band: &Value) -> bool {
     let aggregate = band.get("label").and_then(Value::as_str) == Some("high_frequency_anomaly");
-    !aggregate || number(band, "flatness").is_none_or(|flatness| flatness < STRUCTURED_FLATNESS_MAX)
+    if !aggregate {
+        return true;
+    }
+    match structured_energy(band.get("subbands")) {
+        Some(energy) => energy > 0.0,
+        None => number(band, "flatness").is_none_or(|flatness| flatness < STRUCTURED_FLATNESS_MAX),
+    }
 }
 
 fn number(value: &Value, key: &str) -> Option<f64> {
@@ -89,11 +109,41 @@ fn hidden(fraction: Option<f64>, flatness: Option<f64>) -> bool {
     }
 }
 
+/// Energy (as a share of the file) in slices whose flatness marks them as
+/// structured. `None` when the report has no slices (older reports); a slice
+/// with an unreadable value counts as structured (fail closed).
+fn structured_energy(slices: Option<&Value>) -> Option<f64> {
+    let slices = slices?.as_array().filter(|s| !s.is_empty())?;
+    Some(
+        slices
+            .iter()
+            .map(|slice| {
+                let fraction = number(slice, "energy_fraction").filter(|f| f.is_finite());
+                let flatness = number(slice, "flatness").filter(|f| f.is_finite());
+                match (fraction, flatness) {
+                    (Some(_), Some(flatness)) if flatness >= STRUCTURED_FLATNESS_MAX => 0.0,
+                    (Some(fraction), Some(_)) => fraction,
+                    _ => f64::INFINITY,
+                }
+            })
+            .sum(),
+    )
+}
+
+/// Hidden when the structured slices together reach the energy minimum; for
+/// reports without slices, the region-level rule.
+fn hidden_region(slices: Option<&Value>, fraction: Option<f64>, flatness: Option<f64>) -> bool {
+    match structured_energy(slices) {
+        Some(energy) => energy >= HIDDEN_ENERGY_FRACTION_MIN,
+        None => hidden(fraction, flatness),
+    }
+}
+
 fn inaudible_band(report: &Value, severity: Severity) -> Option<MultimodalFinding> {
     let band = report.get("inaudible_band")?;
     let fraction = number(band, "energy_fraction");
     let flatness = number(band, "flatness");
-    if !hidden(fraction, flatness) {
+    if !hidden_region(band.get("subbands"), fraction, flatness) {
         return None;
     }
     Some(MultimodalFinding {

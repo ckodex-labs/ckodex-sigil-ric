@@ -320,6 +320,47 @@ fn masking_noise_over_the_hidden_band_does_not_clear_the_finding() {
     }
 }
 
+/// Noise confined (approximately: cascaded one-pole filters) to [low, high].
+fn band_noise(len: usize, rate: u32, low_hz: f64, high_hz: f64, seed: u64) -> Vec<f64> {
+    let raw = white_noise(len, seed);
+    let cascade = |cutoff| (0..4).fold(raw.clone(), |s, _| low_pass(&s, rate, cutoff));
+    let (upper, lower) = (cascade(high_hz), cascade(low_hz));
+    upper.iter().zip(&lower).map(|(u, l)| u - l).collect()
+}
+
+#[test]
+fn noise_beside_the_payload_at_moderate_level_does_not_hide_it() {
+    // Payload at +32 kHz; noise filtered to 20-30.5 kHz (one-pole cascade, so
+    // it leaks into the payload's slices). Regression at the level the
+    // structure test still resolves. Known limit, measured 2026-11-21: from
+    // gain 12 the leaked noise makes every slice flat and nothing fires; see
+    // the module docs of sigil-multimodal detect/spectral.rs.
+    let rate = 96_000;
+    let n = (f64::from(rate) * SECONDS) as usize;
+    let hidden = hidden_payload(rate, 32_000.0, 0);
+    let noise = band_noise(n, rate, 20_000.0, 30_500.0, 21);
+    for gain in [4.0, 8.0] {
+        let report = report(&mix(&[(&hidden, 1.0), (&noise, gain)]), rate);
+        let band = report.inaudible_band.as_ref().expect("band");
+        let payload_share: f32 = band
+            .subbands
+            .iter()
+            .filter(|s| s.low_hz >= 31_000.0)
+            .map(|s| s.energy_fraction)
+            .sum();
+        assert!(
+            payload_share > 0.05,
+            "gain {gain}: payload share {payload_share}"
+        );
+        let kinds = kernel_kinds(&report);
+        assert!(
+            kinds.contains(&MultimodalFindingKind::InaudibleBandEnergy),
+            "gain {gain}: {kinds:?} payload share {payload_share} {:?}",
+            band.subbands
+        );
+    }
+}
+
 #[test]
 fn audible_content_that_folds_is_reported_but_not_a_finding() {
     // Music folds into a 16 kHz baseband too (its harmonics reach 15 kHz),

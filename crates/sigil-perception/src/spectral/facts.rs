@@ -18,6 +18,16 @@ const FLATNESS_FLOOR: f64 = 1e-9;
 /// noise floor, not content.
 const ALIAS_RANGE_FLOOR: f64 = 0.01;
 
+/// One slice of a reported region: its range, its share of the file's total
+/// energy and its spectral flatness. The kernel judges structure per slice.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub struct SubBand {
+    pub low_hz: f32,
+    pub high_hz: f32,
+    pub energy_fraction: f32,
+    pub flatness: f32,
+}
+
 /// Energy above the audible band, for sample rates that can carry it.
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct InaudibleBand {
@@ -27,11 +37,13 @@ pub struct InaudibleBand {
     pub energy_fraction: f32,
     /// Strongest frequency inside the band.
     pub peak_hz: f32,
-    /// Structure of the band (see `structure`): the lowest spectral flatness
-    /// among sub-bands holding at least 10 % of the band's energy. ≈1 for
-    /// white noise, far below for structured content such as shifted speech,
-    /// including when noise is spread over the rest of the band.
+    /// Summary structure (see `structure`): lowest flatness among sub-bands
+    /// holding at least 10 % of the band's energy. Evidence for a reader; the
+    /// kernel decides from `subbands`.
     pub flatness: f32,
+    /// The band in equal slices, every slice reported.
+    #[serde(default)]
+    pub subbands: Vec<SubBand>,
 }
 
 /// What unfiltered decimation to `target_rate_hz` would fold into baseband.
@@ -46,8 +58,11 @@ pub struct AliasPrediction {
     /// `hidden_origin_hz`: content the listener does not hear but the model
     /// will, after unfiltered resampling.
     pub hidden_folding_fraction: f32,
-    /// Structure (lowest material sub-band flatness) of that hidden region.
+    /// Summary structure (lowest material sub-band flatness) of that region.
     pub hidden_flatness: f32,
+    /// The hidden region in equal slices, every slice reported.
+    #[serde(default)]
+    pub hidden_subbands: Vec<SubBand>,
     /// Baseband range the hidden content lands in after folding (bins holding
     /// at least 1 % of the strongest folding bin's energy).
     pub alias_low_hz: f32,
@@ -99,6 +114,7 @@ pub(super) fn inaudible_band(
         energy_fraction: (energy / spectrum.total) as f32,
         peak_hz: spectrum.freq(peak_bin) as f32,
         flatness: structure(&band.iter().map(|(_, e)| *e).collect::<Vec<_>>()),
+        subbands: subbands(spectrum, &band),
     })
 }
 
@@ -137,6 +153,7 @@ fn predict(spectrum: &Spectrum<'_>, target_hz: u32, origin_hz: f64) -> AliasPred
         folding_fraction: (folding / spectrum.total) as f32,
         hidden_folding_fraction: (hidden_energy / spectrum.total) as f32,
         hidden_flatness: structure(&hidden.iter().map(|(_, e)| *e).collect::<Vec<_>>()),
+        hidden_subbands: subbands(spectrum, &hidden),
         alias_low_hz: if low.is_finite() { low as f32 } else { 0.0 },
         alias_high_hz: high as f32,
     }
@@ -153,7 +170,25 @@ pub(super) fn fold(freq: f64, rate: f64) -> f64 {
     }
 }
 
-/// Sub-bands a region is split into for [`structure`].
+/// Every slice of a region, with its share of the file's total energy.
+pub(super) fn subbands(spectrum: &Spectrum<'_>, region: &[(usize, f64)]) -> Vec<SubBand> {
+    let width = region.len().div_ceil(SUBBANDS).max(4);
+    region
+        .chunks(width)
+        .filter_map(|chunk| {
+            let (first, last) = (chunk.first()?.0, chunk.last()?.0);
+            let energy: f64 = chunk.iter().map(|(_, e)| e).sum();
+            Some(SubBand {
+                low_hz: spectrum.freq(first) as f32,
+                high_hz: spectrum.freq(last) as f32,
+                energy_fraction: (energy / spectrum.total) as f32,
+                flatness: flatness(chunk.iter().map(|(_, e)| *e)),
+            })
+        })
+        .collect()
+}
+
+/// Sub-bands a region is split into for [`structure`] and [`subbands`].
 const SUBBANDS: usize = 8;
 /// A sub-band joins the structure test when it holds at least this share of
 /// the region's energy; quieter sub-bands carry no content worth testing.

@@ -97,6 +97,62 @@ fn reports_without_wp2_facts_yield_no_wp2_findings() {
     assert!(kinds(json!("not a report")).is_empty());
 }
 
+fn sliced(slices: &[(f64, f64)]) -> serde_json::Value {
+    let subbands: Vec<_> = slices
+        .iter()
+        .map(|(fraction, flatness)| {
+            json!({ "low_hz": 0.0, "high_hz": 1.0,
+            "energy_fraction": fraction, "flatness": flatness })
+        })
+        .collect();
+    json!({ "inaudible_band": { "low_hz": 20000.0, "high_hz": 48000.0,
+        "energy_fraction": 0.9, "peak_hz": 25000.0, "flatness": 0.99, "subbands": subbands } })
+}
+
+#[test]
+fn structured_slices_count_even_when_noise_dominates_the_band() {
+    // Region-level flatness says noise; three structured slices together hold
+    // 9 % of the file, each under the 5 % minimum on its own.
+    let report = sliced(&[
+        (0.4, 0.99),
+        (0.4, 0.98),
+        (0.03, 0.1),
+        (0.03, 0.05),
+        (0.03, 0.2),
+    ]);
+    assert!(kinds(report).contains(&MultimodalFindingKind::InaudibleBandEnergy));
+}
+
+#[test]
+fn noise_only_slices_are_not_a_finding() {
+    assert!(kinds(sliced(&[(0.3, 0.99), (0.3, 0.97), (0.3, 0.95)])).is_empty());
+}
+
+#[test]
+fn faint_structured_slices_are_not_a_finding() {
+    assert!(kinds(sliced(&[(0.5, 0.99), (0.01, 0.1), (0.02, 0.1)])).is_empty());
+}
+
+#[test]
+fn an_unreadable_slice_fails_closed() {
+    let mut report = sliced(&[(0.5, 0.99)]);
+    report["inaudible_band"]["subbands"][0]["flatness"] = serde_json::Value::Null;
+    assert!(kinds(report).contains(&MultimodalFindingKind::InaudibleBandEnergy));
+}
+
+#[test]
+fn a_structured_slice_keeps_the_aggregate_high_band_finding() {
+    let report = json!({ "steganography_findings": [{
+        "label": "high_frequency_anomaly", "low_hz": 46000.0, "high_hz": 48000.0,
+        "energy": 1.0, "fraction_of_total": 0.06, "flatness": 0.99,
+        "subbands": [{ "low_hz": 46000.0, "high_hz": 47000.0, "energy_fraction": 0.05, "flatness": 0.99 },
+                     { "low_hz": 47000.0, "high_hz": 48000.0, "energy_fraction": 0.002, "flatness": 0.05 }] }] });
+    assert_eq!(
+        kinds(report),
+        vec![MultimodalFindingKind::AudioSteganography]
+    );
+}
+
 #[test]
 fn unreadable_inaudible_facts_fail_closed() {
     // NaN in the samples poisons the spectrum and serializes as null.
