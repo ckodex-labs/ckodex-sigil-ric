@@ -17,7 +17,7 @@ use crate::trust::types::{TrustError, TrustRoot};
 use der::asn1::OctetString;
 use der::{Decode as _, Encode as _};
 use p256::ecdsa::{
-    signature::Verifier as _, Signature as P256Signature, VerifyingKey as P256VerifyingKey,
+    Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier as _,
 };
 use sha2::{Digest as _, Sha256};
 use x509_cert::certificate::Certificate;

@@ -140,9 +140,11 @@ mod tests {
         let (tokens, findings) = security_aware_merge(&vocab, &graphemes, true);
 
         assert_eq!(findings.len(), 1);
-        assert!(findings[0]
-            .detectors
-            .contains(&crate::types::DetectorId::MergeBoundary));
+        assert!(
+            findings[0]
+                .detectors
+                .contains(&crate::types::DetectorId::MergeBoundary)
+        );
         assert!(findings[0].evidence.contains("System→User"));
         // No token may span the boundary.
         for token in &tokens {
@@ -175,8 +177,10 @@ mod tests {
         assert!(findings[0].evidence.contains("permitted by policy"));
         // With suppression disabled, tokens may span the boundary — that is
         // exactly the condition the finding flags.
-        assert!(tokens
-            .iter()
-            .any(|token| token.byte_range.start < 4 && token.byte_range.end > 4));
+        assert!(
+            tokens
+                .iter()
+                .any(|token| token.byte_range.start < 4 && token.byte_range.end > 4)
+        );
     }
 }

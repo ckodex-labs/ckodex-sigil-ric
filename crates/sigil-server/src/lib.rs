@@ -4,15 +4,15 @@
 //! SIGIL-MCP, SIGIL-PROBE, SIGIL-M, and SIGIL-S.
 
 use sigil_core::{
+    Vocab,
     engine::Sigil,
     policy::Policy,
     types::{InputAssessment, Provenance, SigilOutput, TextSegment},
-    Vocab,
 };
 use sigil_mcp::{McpGate, McpInspection, McpScanConfig, McpSession, ResponseSchema};
 use sigil_multimodal::{ModalInput, MultimodalAssessment, MultimodalEngine};
 use sigil_probe::{BaselineProfile, HealthReport, ProbeConfig, ProbeEngine, ProbeSample};
-use sigil_s::{compose_with_sigil, CompositeVerdict, SentinelModel, SentinelVerdict};
+use sigil_s::{CompositeVerdict, SentinelModel, SentinelVerdict, compose_with_sigil};
 
 #[derive(Clone, Debug)]
 pub struct SidecarConfig {

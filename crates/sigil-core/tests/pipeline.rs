@@ -1,9 +1,9 @@
 use sigil_core::{
+    Vocab,
     engine::Sigil,
     error::SigilError,
     policy::{Mode, Policy},
     types::{ByteSegment, Provenance, Severity, TextSegment, Verdict},
-    Vocab,
 };
 
 #[test]
@@ -73,12 +73,16 @@ fn preserves_provenance_boundaries_across_segments() {
         ])
         .unwrap();
 
-    assert!(output
-        .annotations
-        .iter()
-        .any(|annotation| annotation.provenance == Provenance::System));
-    assert!(output
-        .annotations
-        .iter()
-        .any(|annotation| annotation.provenance == Provenance::User));
+    assert!(
+        output
+            .annotations
+            .iter()
+            .any(|annotation| annotation.provenance == Provenance::System)
+    );
+    assert!(
+        output
+            .annotations
+            .iter()
+            .any(|annotation| annotation.provenance == Provenance::User)
+    );
 }

@@ -1,6 +1,6 @@
 use crate::error::*;
 use base64::Engine as _;
-use p384::ecdsa::{signature::Signer as _, Signature, SigningKey};
+use p384::ecdsa::{Signature, SigningKey, signature::Signer as _};
 use serde::{Deserialize, Serialize};
 use x509_cert::attr::Attributes;
 use x509_cert::name::RdnSequence;
@@ -8,8 +8,8 @@ use x509_cert::request::{CertReq, CertReqInfo};
 use x509_cert::spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};
 
 pub(crate) fn build_csr(signing_key: &SigningKey) -> Result<Vec<u8>, SigstoreError> {
-    use der::asn1::BitString;
     use der::Encode;
+    use der::asn1::BitString;
 
     let public_key = p384::PublicKey::from(signing_key.verifying_key());
     let spki =

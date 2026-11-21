@@ -12,8 +12,8 @@ use super::detectors::detect_injection;
 use super::types::TextMap;
 use crate::policy::Policy;
 use crate::types::{ByteRange, DetectorId, ScanFinding, Severity};
-use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use base64::Engine;
+use base64::engine::general_purpose::{STANDARD, STANDARD_NO_PAD, URL_SAFE, URL_SAFE_NO_PAD};
 use regex::Regex;
 use std::sync::LazyLock;
 

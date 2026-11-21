@@ -27,8 +27,8 @@ use base64::Engine as _;
 use sigstore_trust_root::SigstoreInstance;
 use sigstore_trust_root::TrustedRoot as SigstoreTrustedRoot;
 
-use crate::trust::TrustRoot;
 use crate::SigstoreError;
+use crate::trust::TrustRoot;
 
 /// Load the embedded production trust root and convert it to our
 /// `TrustRoot` struct. No network access required.

@@ -2,10 +2,10 @@ use crate::helpers::{compose_verdict, stable_hash, truncate_output, validate_sch
 use crate::sink::EvidenceSink;
 use crate::types::*;
 use sigil_core::{
+    Vocab,
     engine::Sigil,
     policy::{Policy, TaintPolicy},
     types::{FlagReason, Provenance, Severity, TextSegment, TrustLevel, Verdict},
-    Vocab,
 };
 use std::sync::{Arc, Mutex};
 

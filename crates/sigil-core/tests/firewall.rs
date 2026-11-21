@@ -1,7 +1,7 @@
 use sigil_core::{
+    Sigil, Vocab,
     policy::{Mode, Policy},
     types::{Severity, Verdict},
-    Sigil, Vocab,
 };
 
 #[test]

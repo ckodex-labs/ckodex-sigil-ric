@@ -32,10 +32,10 @@ mod signer;
 pub use bundle_convert::parse_upstream_bundle;
 pub use bundle_ops::{build_bundle, verify_bundle};
 pub use bundle_types::{
-    BundleCertificate, BundleMessageDigest, BundleMessageSignature, BundleVerificationMaterial,
-    BundleX509Chain, SigstoreBundle, BUNDLE_MEDIA_TYPE,
+    BUNDLE_MEDIA_TYPE, BundleCertificate, BundleMessageDigest, BundleMessageSignature,
+    BundleVerificationMaterial, BundleX509Chain, SigstoreBundle,
 };
-pub use error::{OidcSource, SigstoreError, FULCIO_URL, REKOR_URL};
+pub use error::{FULCIO_URL, OidcSource, REKOR_URL, SigstoreError};
 pub use rekor_upload::upload_to_rekor;
 pub use signer::{RekorUploadReceipt, SigstoreKeylessSigner};
 

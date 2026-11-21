@@ -1,5 +1,5 @@
-use crate::trust::types::TrustError;
 use crate::SigstoreError;
+use crate::trust::types::TrustError;
 use base64::Engine as _;
 use serde::Deserialize;
 use x509_cert::certificate::Certificate;

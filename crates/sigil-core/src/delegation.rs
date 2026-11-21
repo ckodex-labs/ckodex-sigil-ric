@@ -10,8 +10,8 @@ pub mod validator;
 mod tests;
 
 pub use types::{
-    is_attenuated, AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
-    DelegationRequest, RevocationRegistry, RootLeaseParams,
+    AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
+    DelegationRequest, RevocationRegistry, RootLeaseParams, is_attenuated,
 };
 pub use validator::{
     create_root_lease, delegate, validate_chain, validate_envelope, validate_lease,

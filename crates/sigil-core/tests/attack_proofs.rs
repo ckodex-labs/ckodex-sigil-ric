@@ -1,9 +1,9 @@
 use serde::Deserialize;
 use sigil_core::{
+    Sigil, Vocab,
     error::SigilError,
     policy::{Mode, Policy},
     types::{DenyReason, FlagReason, Provenance, Severity, Verdict},
-    Sigil, Vocab,
 };
 
 #[derive(Debug, Deserialize)]

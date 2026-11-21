@@ -1,8 +1,8 @@
 use crate::cli::commands::*;
 use crate::cli::helpers::*;
 use crate::cli::types::*;
-use sigil_core::policy::Policy;
 use sigil_core::Vocab;
+use sigil_core::policy::Policy;
 
 mod verify_receipt_tests {
     use super::*;

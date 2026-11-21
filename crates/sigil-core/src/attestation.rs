@@ -26,7 +26,7 @@
 use base64::Engine as _;
 use serde::{Deserialize, Serialize};
 
-use crate::signing::{hex_digest, verify_receipt_signature, ReceiptSigner, SignatureVerifyError};
+use crate::signing::{ReceiptSigner, SignatureVerifyError, hex_digest, verify_receipt_signature};
 
 pub const STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
 pub const PREDICATE_TYPE: &str = "https://sigil.dev/ric/receipt/v2";

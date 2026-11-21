@@ -33,11 +33,7 @@ pub fn apply_provenance(graphemes: Vec<Grapheme>, provenance: Provenance) -> Vec
 /// yields the *lower* of the two. Trust never elevates through composition
 /// (anti-dilution doctrine, SIGIL-SPEC §10.2 INV-002 analog).
 pub fn combine_trust(a: TrustLevel, b: TrustLevel) -> TrustLevel {
-    if a <= b {
-        a
-    } else {
-        b
-    }
+    if a <= b { a } else { b }
 }
 
 #[cfg(test)]

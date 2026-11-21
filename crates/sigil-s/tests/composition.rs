@@ -1,5 +1,5 @@
 use sigil_core::types::{DenyReason, FlagReason, InputAssessment, Severity, Verdict};
-use sigil_s::{compose_with_sigil, SentinelAction, SentinelModel, SentinelVerdict};
+use sigil_s::{SentinelAction, SentinelModel, SentinelVerdict, compose_with_sigil};
 
 #[test]
 fn flags_jailbreak_language() {

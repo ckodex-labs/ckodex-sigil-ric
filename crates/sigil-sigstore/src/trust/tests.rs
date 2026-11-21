@@ -236,12 +236,12 @@ fn rekor_binding_rejects_wrong_signature() {
 /// workload identities. Signature and chain fields are inert; the test only
 /// exercises `check_san_identity`.
 fn cert_with_uri_san(identity: &str) -> x509_cert::certificate::Certificate {
-    use der::asn1::{BitString, Ia5String, OctetString, UtcTime};
     use der::Encode;
+    use der::asn1::{BitString, Ia5String, OctetString, UtcTime};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use x509_cert::certificate::{Certificate, TbsCertificate, Version};
-    use x509_cert::ext::pkix::name::{GeneralName, GeneralNames};
     use x509_cert::ext::Extension;
+    use x509_cert::ext::pkix::name::{GeneralName, GeneralNames};
     use x509_cert::name::Name;
     use x509_cert::serial_number::SerialNumber;
     use x509_cert::time::{Time, Validity};

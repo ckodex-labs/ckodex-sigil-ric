@@ -20,11 +20,11 @@ pub mod tokenizer_ffi;
 pub mod types;
 pub mod vocab;
 
-pub use attestation::{attest_receipt, verify_attestation, DsseEnvelope};
+pub use attestation::{DsseEnvelope, attest_receipt, verify_attestation};
 pub use delegation::{
-    create_root_lease, delegate, is_attenuated, validate_chain, validate_envelope, validate_lease,
     AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
-    DelegationRequest, RevocationRegistry, RootLeaseParams,
+    DelegationRequest, RevocationRegistry, RootLeaseParams, create_root_lease, delegate,
+    is_attenuated, validate_chain, validate_envelope, validate_lease,
 };
 pub use engine::Sigil;
 pub use error::{Result, SigilError};

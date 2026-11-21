@@ -358,11 +358,7 @@ fn verdict_word(verdict: &Verdict, color: bool) -> String {
 }
 
 fn plural(n: usize) -> &'static str {
-    if n == 1 {
-        ""
-    } else {
-        "s"
-    }
+    if n == 1 { "" } else { "s" }
 }
 
 fn truncate(s: &str, n: usize) -> String {

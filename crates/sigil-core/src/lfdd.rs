@@ -257,9 +257,11 @@ mod tests {
         let findings = detect_rare_patterns(text, &config);
         // "xyzq" is rare — should produce at least one finding.
         assert!(!findings.is_empty(), "rare n-gram should be detected");
-        assert!(findings
-            .iter()
-            .all(|f| f.detectors.contains(&DetectorId::RarePattern)));
+        assert!(
+            findings
+                .iter()
+                .all(|f| f.detectors.contains(&DetectorId::RarePattern))
+        );
     }
 
     #[test]

@@ -1,9 +1,9 @@
-use rand::{rngs::StdRng, Rng, RngCore, SeedableRng};
+use rand::{Rng, RngCore, SeedableRng, rngs::StdRng};
 use sigil_core::{
+    Sigil, Vocab,
     error::SigilError,
     policy::{Mode, Policy},
     types::{ByteSegment, Provenance, Severity, Verdict},
-    Sigil, Vocab,
 };
 use std::panic::AssertUnwindSafe;
 

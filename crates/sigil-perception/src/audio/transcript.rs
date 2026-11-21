@@ -3,8 +3,8 @@ use sigil_multimodal::ExtractorIdentity;
 use std::io::Write;
 use std::process::Command;
 
-use super::hex_digest;
 use super::PerceptionError;
+use super::hex_digest;
 
 /// Configuration for the external-command ASR transcript extractor.
 #[derive(Clone, Debug)]

@@ -15,10 +15,12 @@ fn document_adapter_extracts_plain_text() {
 
     assert_eq!(report.source_id, "doc-1");
     assert_eq!(report.artifact_digest.len(), 96);
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, _)| k.ends_with(".format")));
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, _)| k.ends_with(".format"))
+    );
     let text_channel = report
         .channels
         .iter()
@@ -102,10 +104,12 @@ fn document_adapter_auto_detects_text() {
         .expect("perceive");
 
     assert_eq!(report.media_type, "text/plain");
-    assert!(report
-        .channels
-        .iter()
-        .any(|c| c.channel_kind == ChannelKind::TextLayer));
+    assert!(
+        report
+            .channels
+            .iter()
+            .any(|c| c.channel_kind == ChannelKind::TextLayer)
+    );
 }
 
 #[test]
@@ -187,8 +191,9 @@ fn pdf_extraction_falls_back_for_invalid_documents() {
 /// Create a minimal valid PDF using lopdf's API, serialized to bytes.
 fn create_minimal_pdf_with_text(text: &str) -> Vec<u8> {
     use lopdf::{
+        Document, Object, Stream,
         content::{Content, Operation},
-        dictionary, Document, Object, Stream,
+        dictionary,
     };
     let mut doc = Document::with_version("1.4");
     let pages_id = doc.add_object(dictionary! {
@@ -267,7 +272,7 @@ fn pdf_without_extractable_text_emits_metadata_channel() {
 
 #[test]
 fn zero_page_pdf_emits_metadata_channel() {
-    use lopdf::{dictionary, Document, Object};
+    use lopdf::{Document, Object, dictionary};
     let mut doc = Document::with_version("1.4");
     let pages_id = doc.add_object(dictionary! {
         "Type" => "Pages", "Count" => 0, "Kids" => Vec::<Object>::new(),
@@ -350,8 +355,9 @@ fn divergence_channel_uses_divergence_kind() {
 /// Build a valid N-page PDF, one visible line per page.
 fn create_multi_page_pdf(pages: &[&str]) -> Vec<u8> {
     use lopdf::{
+        Document, Object, Stream,
         content::{Content, Operation},
-        dictionary, Document, Object, Stream,
+        dictionary,
     };
     let mut doc = Document::with_version("1.4");
     let pages_id = doc.add_object(dictionary! {

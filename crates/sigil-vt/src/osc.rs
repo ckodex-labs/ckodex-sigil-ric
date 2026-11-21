@@ -1,7 +1,7 @@
 //! OSC sequence handling: consume the ST/BEL-terminated span and
 //! classify the payload's command selector.
 
-use crate::{digits, seq, BEL, C1_ST, ESC};
+use crate::{BEL, C1_ST, ESC, digits, seq};
 use sigil_core::terminal::{TerminalSequence, TerminalSequenceKind};
 
 /// Consume an OSC sequence: payload to BEL or ST, then classify the
@@ -20,11 +20,7 @@ pub(crate) fn osc_end(
         i += 1;
     }
     let end = if i < bytes.len() {
-        if bytes[i] == ESC {
-            i + 2
-        } else {
-            i + 1
-        }
+        if bytes[i] == ESC { i + 2 } else { i + 1 }
     } else {
         i
     };

@@ -1,6 +1,6 @@
 use crate::cli::helpers::*;
 use crate::cli::types::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use serde::{Deserialize, Serialize};
 use sigil_core::policy::Policy;
 use sigil_core::signing::ReceiptSigner;
@@ -160,7 +160,7 @@ pub fn attest_command(command: &AttestCommand) -> Result<sigil_core::attestation
 pub fn verify_attestation_command(
     command: &VerifyAttestationCommand,
 ) -> Result<AttestationVerificationOutcome> {
-    use sigil_core::attestation::{verify_attestation, DsseEnvelope};
+    use sigil_core::attestation::{DsseEnvelope, verify_attestation};
 
     let contents = fs::read_to_string(&command.attestation)?;
     let mut value: serde_json::Value = serde_json::from_str(&contents)?;
@@ -403,7 +403,7 @@ pub fn perceive_command(
                 _ => {
                     return Err(anyhow!(
                         "render-compare needs both --render-binary and --ocr-binary"
-                    ))
+                    ));
                 }
             };
             let adapter = sigil_perception::document::DocumentAdapter { render_compare };
@@ -595,8 +595,8 @@ pub fn lease_create_command(
     signer: Option<&dyn ReceiptSigner>,
 ) -> Result<sigil_core::CapabilityLease> {
     use sigil_core::{
-        create_root_lease, delegate, Capability, CapabilityLease, DelegationRequest,
-        RootLeaseParams,
+        Capability, CapabilityLease, DelegationRequest, RootLeaseParams, create_root_lease,
+        delegate,
     };
     use std::collections::BTreeSet;
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -660,7 +660,7 @@ pub fn lease_create_command(
 
 /// Verifies a capability lease or full delegation chain.
 pub fn lease_verify_command(command: &LeaseVerifyCommand) -> Result<LeaseVerificationOutcome> {
-    use sigil_core::{validate_chain, validate_lease, CapabilityLease};
+    use sigil_core::{CapabilityLease, validate_chain, validate_lease};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let now = command.now.unwrap_or_else(|| {
@@ -736,8 +736,8 @@ pub fn envelope_create_command(
     signer: Option<&dyn ReceiptSigner>,
 ) -> Result<sigil_core::AgentEnvelope> {
     use sha2::{Digest, Sha384};
-    use sigil_core::signing::{hex_digest, ReceiptSignature};
     use sigil_core::AgentEnvelope;
+    use sigil_core::signing::{ReceiptSignature, hex_digest};
     use std::time::{SystemTime, UNIX_EPOCH};
 
     let lease = load_lease_from_path(&command.lease)?;

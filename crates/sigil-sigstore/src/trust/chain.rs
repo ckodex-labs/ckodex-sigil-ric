@@ -1,6 +1,6 @@
 use crate::trust::types::{TrustError, TrustRoot};
 use p256::ecdsa::{
-    signature::Verifier as _, Signature as P256Signature, VerifyingKey as P256VerifyingKey,
+    Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier as _,
 };
 use x509_cert::certificate::Certificate;
 use x509_cert::time::Time;

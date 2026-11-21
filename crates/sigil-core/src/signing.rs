@@ -13,7 +13,7 @@
 //! detectable (docs/RIC-CONTRACT.md RIC-R-1..R-4).
 
 use p384::ecdsa::{
-    signature::Signer as _, signature::Verifier as _, Signature, SigningKey, VerifyingKey,
+    Signature, SigningKey, VerifyingKey, signature::Signer as _, signature::Verifier as _,
 };
 use p384::elliptic_curve::generic_array::GenericArray;
 use p384::pkcs8::{

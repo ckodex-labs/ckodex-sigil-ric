@@ -3,7 +3,7 @@ use crate::trust::fetch::parse_cert;
 use crate::trust::rekor::{verify_inclusion_proof, verify_rekor_entry_binding, verify_rekor_set};
 use crate::trust::sct::verify_embedded_scts;
 use crate::trust::types::{RekorEntry, TrustError, TrustRoot};
-use crate::{SigstoreBundle, BUNDLE_MEDIA_TYPE};
+use crate::{BUNDLE_MEDIA_TYPE, SigstoreBundle};
 use base64::Engine as _;
 
 /// Full keyless verification of a Sigstore bundle against a pinned trust root.

@@ -115,11 +115,7 @@ impl VirtualWindow {
     }
 
     fn grid_ref(&self, alt: bool) -> &[Cell] {
-        if alt {
-            &self.alt
-        } else {
-            &self.cells
-        }
+        if alt { &self.alt } else { &self.cells }
     }
 
     /// Row-state vec for the *active* grid.
@@ -137,11 +133,7 @@ impl VirtualWindow {
     }
 
     fn rows_ref(&self, alt: bool) -> &[RowState] {
-        if alt {
-            &self.alt_rows
-        } else {
-            &self.rows
-        }
+        if alt { &self.alt_rows } else { &self.rows }
     }
 
     /// Write a printable byte at the cursor (DECAWM wrap); fires an

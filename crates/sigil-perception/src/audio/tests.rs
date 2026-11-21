@@ -1,6 +1,6 @@
 use super::*;
-use sigil_multimodal::perception::channels_to_modal_inputs;
 use sigil_multimodal::ArtifactRef;
+use sigil_multimodal::perception::channels_to_modal_inputs;
 
 /// Encode a minimal valid WAV file with the given sample rate, channels,
 /// and sample count. Each sample is a zero-amplitude 16-bit value.
@@ -81,23 +81,31 @@ fn audio_adapter_decodes_wav_and_reports_structure() {
 
     assert_eq!(report.source_id, "audio-1");
     assert_eq!(report.artifact_digest.len(), 96, "SHA-384 hex");
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with(".sample_rate") && v == "16000"));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with(".channels") && v == "1"));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with(".bits_per_sample") && v == "16"));
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with(".sample_rate") && v == "16000")
+    );
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with(".channels") && v == "1")
+    );
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with(".bits_per_sample") && v == "16")
+    );
     // Metadata channel present, no transcript configured.
-    assert!(report
-        .channels
-        .iter()
-        .all(|channel| channel.channel_kind == ChannelKind::Metadata));
+    assert!(
+        report
+            .channels
+            .iter()
+            .all(|channel| channel.channel_kind == ChannelKind::Metadata)
+    );
 }
 
 #[test]

@@ -1,4 +1,4 @@
-use crate::signing::{hex_digest, ReceiptSignature};
+use crate::signing::{ReceiptSignature, hex_digest};
 use crate::types::RepresentationReceipt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
@@ -462,9 +462,7 @@ pub enum DelegationError {
         current_epoch: u64,
     },
 
-    #[error(
-        "broken delegation chain: parent lease id {expected:?} does not match actual {actual}"
-    )]
+    #[error("broken delegation chain: parent lease id {expected:?} does not match actual {actual}")]
     BrokenChain {
         expected: Option<String>,
         actual: String,

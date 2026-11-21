@@ -6,10 +6,10 @@
 //! here as conformance failures, not warnings.
 
 use sigil_core::{
+    Sigil, Vocab,
     merge::security_aware_merge,
     policy::{IntakePolicy, InvisibleCharPolicy, Mode, Policy},
     types::{DetectorId, Provenance, Severity, TextSegment, TrustLevel, Verdict},
-    Sigil, Vocab,
 };
 
 fn policy(mode: Mode, invisible: InvisibleCharPolicy) -> Policy {
@@ -136,10 +136,12 @@ fn cv_ric_003_merge_suppression_records_boundaries() {
         "suppressed merges must be recorded as MergeBoundary findings"
     );
     // Provenance survives: system tokens carry System provenance.
-    assert!(output
-        .annotations
-        .iter()
-        .any(|annotation| annotation.provenance == Provenance::System));
+    assert!(
+        output
+            .annotations
+            .iter()
+            .any(|annotation| annotation.provenance == Provenance::System)
+    );
 }
 
 /// CV-RIC-003b: with suppression disabled by policy, the crossing is
@@ -173,9 +175,11 @@ fn cv_ric_003b_unsuppressed_crossing_is_high_severity() {
 
     assert_eq!(findings.len(), 1);
     assert_eq!(findings[0].severity, Severity::High);
-    assert!(tokens
-        .iter()
-        .any(|token| token.byte_range.start < 4 && token.byte_range.end > 4));
+    assert!(
+        tokens
+            .iter()
+            .any(|token| token.byte_range.start < 4 && token.byte_range.end > 4)
+    );
 }
 
 /// CV-RIC-004 (RIC-R-1..R-4): receipts are deterministic functions of
@@ -290,7 +294,7 @@ fn cv_ric_007_evidence_mode_gates_always_on_attestation() {
 /// breaks it.
 #[test]
 fn cv_ric_008_receipts_are_signed_and_verifiable() {
-    use sigil_core::signing::{receipt_message, EcdsaP384Signer};
+    use sigil_core::signing::{EcdsaP384Signer, receipt_message};
     use std::sync::Arc;
 
     let signer =

@@ -1,5 +1,5 @@
 use crate::cli::types::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use sigil_core::engine::Sigil;
 use sigil_core::policy::Policy;
 use sigil_core::signing::ReceiptSigner;

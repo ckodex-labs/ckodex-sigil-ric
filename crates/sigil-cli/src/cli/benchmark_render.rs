@@ -1,10 +1,10 @@
 use crate::cli::benchmark::*;
 use crate::cli::results::*;
 use crate::cli::types::*;
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
+use sigil_core::Vocab;
 use sigil_core::vocab::EncodedToken;
 use sigil_core::vocab::SpecialTokenMode;
-use sigil_core::Vocab;
 use std::collections::BTreeSet;
 use std::fs;
 use std::path::PathBuf;

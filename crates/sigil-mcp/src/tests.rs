@@ -1,7 +1,7 @@
 use super::*;
+use sigil_core::Vocab;
 use sigil_core::policy::Policy;
 use sigil_core::types::Verdict;
-use sigil_core::Vocab;
 
 #[test]
 fn flags_schema_and_budget() {

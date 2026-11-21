@@ -5,7 +5,7 @@ use crate::{
     merge::security_aware_merge,
     policy::Policy,
     scan::run_scan_with_engines,
-    signing::{receipt_message, ReceiptSignature, ReceiptSigner},
+    signing::{ReceiptSignature, ReceiptSigner, receipt_message},
     sink::EvidenceSink,
     taint::apply_provenance,
     types::{

@@ -2,7 +2,7 @@ use crate::cli::benchmark_render::*;
 use crate::cli::helpers::*;
 use crate::cli::results::*;
 use crate::cli::types::*;
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use sigil_core::vocab::SpecialTokenMode;
 use sigil_core::{TokenizerActor, Vocab};
 use std::fs;
@@ -106,7 +106,7 @@ pub fn resolve_adhoc_benchmark(
         (None, true) => {
             return Err(anyhow!(
                 "provide either --input, one or more --text values, or a preset/manifest"
-            ))
+            ));
         }
     };
 

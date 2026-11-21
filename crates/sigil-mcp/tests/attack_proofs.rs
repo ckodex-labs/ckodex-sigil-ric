@@ -1,4 +1,4 @@
-use sigil_core::{policy::Policy, types::Severity, Vocab};
+use sigil_core::{Vocab, policy::Policy, types::Severity};
 use sigil_mcp::{
     ContentType, McpGate, McpScanConfig, McpSession, ResourcePolicy, ResponseSchema,
     ServerTrustProfile,

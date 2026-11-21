@@ -2,7 +2,7 @@ use super::detectors::{
     detect_entropy, detect_injection, detect_smuggling, detect_tokenizer_firewall,
 };
 use super::dlp::detect_dlp;
-use super::types::{annotate_graphemes, summarize_findings, ScanReport, TextMap};
+use super::types::{ScanReport, TextMap, annotate_graphemes, summarize_findings};
 use crate::policy::Policy;
 use crate::types::{EntropyProfile, Severity, TaintedGrapheme};
 

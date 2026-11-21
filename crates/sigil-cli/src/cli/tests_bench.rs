@@ -295,14 +295,18 @@ mod tests {
         assert!(telemetry.rollback_ready);
         assert_eq!(telemetry.source.as_deref(), Some("test-runtime"));
         assert_eq!(telemetry.captured_at_unix_ms, Some(42));
-        assert!(telemetry
-            .evidence_refs
-            .iter()
-            .any(|value| value.contains("small.json")));
-        assert!(telemetry
-            .evidence_refs
-            .iter()
-            .any(|value| value.contains("bench/run-123")));
+        assert!(
+            telemetry
+                .evidence_refs
+                .iter()
+                .any(|value| value.contains("small.json"))
+        );
+        assert!(
+            telemetry
+                .evidence_refs
+                .iter()
+                .any(|value| value.contains("bench/run-123"))
+        );
     }
 
     #[test]
@@ -363,10 +367,12 @@ mod tests {
 
         let telemetry = emit_burn_in_telemetry(&command).expect("telemetry should emit");
         assert_eq!(telemetry.representative_corpora, vec!["small".to_string()]);
-        assert!(telemetry
-            .evidence_refs
-            .iter()
-            .any(|value| value.contains("small.json")));
+        assert!(
+            telemetry
+                .evidence_refs
+                .iter()
+                .any(|value| value.contains("small.json"))
+        );
     }
 
     fn benchmark_result(name: &str, corpus: &str, items: usize) -> BenchmarkResult {

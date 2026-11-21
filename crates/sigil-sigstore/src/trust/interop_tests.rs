@@ -2,10 +2,10 @@
 //! `sigstore-types` wire format (with inline `tlogEntries`, as cosign
 //! produces) must convert and verify through `verify_upstream_bundle`.
 
-use crate::trust::e2e_tests::{fixture, make_bundle, make_entry, Fixture, IDENTITY};
+use crate::trust::e2e_tests::{Fixture, IDENTITY, fixture, make_bundle, make_entry};
 use crate::trust::types::TrustError;
 use crate::trust::verify::verify_upstream_bundle;
-use crate::{parse_upstream_bundle, SigstoreBundle};
+use crate::{SigstoreBundle, parse_upstream_bundle};
 
 /// Render a `SigstoreBundle` + `RekorEntry` as upstream wire-format JSON:
 /// v0.3 media type, single `certificate` verification material, one

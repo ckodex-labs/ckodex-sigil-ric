@@ -1,6 +1,6 @@
 use crate::cli::human::{esc, render_sigil};
 use crate::cli::human_reports::*;
-use crate::cli::output::{paint, style, Printer};
+use crate::cli::output::{Printer, paint, style};
 use crate::cli::types::{ColorMode, OutputFormat};
 use sigil_core::{Policy, Sigil, Vocab};
 

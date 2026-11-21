@@ -1,4 +1,4 @@
-use rand::{rngs::StdRng, Rng, SeedableRng};
+use rand::{Rng, SeedableRng, rngs::StdRng};
 use serde::{Deserialize, Serialize};
 use sigil_core::{SpecialTokenMode, Vocab};
 use std::{collections::HashMap, process::Command};

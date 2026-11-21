@@ -1,8 +1,8 @@
 use crate::engine::MultimodalEngine;
 use crate::types::*;
+use sigil_core::Vocab;
 use sigil_core::policy::Policy;
 use sigil_core::types::{Provenance, Severity, Verdict};
-use sigil_core::Vocab;
 
 #[allow(clippy::module_inception)]
 mod tests {
@@ -56,11 +56,13 @@ mod tests {
             ])
             .expect("analysis");
 
-        assert!(assessment
-            .fusion
-            .events
-            .iter()
-            .any(|event| event.kind == FusionRiskKind::CrossTrustFusion));
+        assert!(
+            assessment
+                .fusion
+                .events
+                .iter()
+                .any(|event| event.kind == FusionRiskKind::CrossTrustFusion)
+        );
         assert_eq!(assessment.authority_ceiling, AuthorityCeiling::Draft);
     }
 
@@ -109,11 +111,13 @@ mod tests {
             }])
             .expect("analysis");
 
-        assert!(assessment
-            .fusion
-            .events
-            .iter()
-            .any(|event| event.kind == FusionRiskKind::DerivedAuthorityEscalation));
+        assert!(
+            assessment
+                .fusion
+                .events
+                .iter()
+                .any(|event| event.kind == FusionRiskKind::DerivedAuthorityEscalation)
+        );
     }
 
     #[test]

@@ -2,7 +2,7 @@ use crate::bundle_types::*;
 use crate::error::*;
 use base64::Engine as _;
 use sha2::{Digest as _, Sha384};
-use sigil_core::signing::{hex_digest, SignatureVerifyError};
+use sigil_core::signing::{SignatureVerifyError, hex_digest};
 
 pub fn build_bundle(
     message: &[u8],

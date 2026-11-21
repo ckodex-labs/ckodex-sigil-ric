@@ -78,9 +78,11 @@ fn multiscale_outlier_produces_finding_covering_spike() {
     assert_eq!(findings.len(), 1);
     let range = &findings[0].byte_range;
     assert!(range.start <= 150 && range.end >= 210, "range {range:?}");
-    assert!(findings[0]
-        .detectors
-        .contains(&DetectorId::PerplexityAnomaly));
+    assert!(
+        findings[0]
+            .detectors
+            .contains(&DetectorId::PerplexityAnomaly)
+    );
     assert_eq!(findings[0].severity, Severity::Medium);
 }
 
@@ -103,10 +105,12 @@ fn min_scales_suppresses_single_scale_outlier() {
     if report.flagged.is_empty() {
         assert!(findings.is_empty());
     } else {
-        assert!(report
-            .flagged
-            .iter()
-            .all(|f| findings.iter().any(|g| g.byte_range == f.byte_range)));
+        assert!(
+            report
+                .flagged
+                .iter()
+                .all(|f| findings.iter().any(|g| g.byte_range == f.byte_range))
+        );
     }
 }
 

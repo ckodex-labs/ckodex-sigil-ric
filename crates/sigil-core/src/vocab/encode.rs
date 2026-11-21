@@ -1,5 +1,5 @@
 use crate::tokenizer_ffi::ZigTokenizerError;
-use crate::tokenizer_ffi::{tokenizer_for_name, ZigTokenSpan, ZigTokenizer};
+use crate::tokenizer_ffi::{ZigTokenSpan, ZigTokenizer, tokenizer_for_name};
 use crate::types::{BoundaryContext, ByteRange, Provenance, TaintedGrapheme, TrustLevel};
 use crate::vocab::tables::{
     contains_disallowed_special, next_allowed_special, regex_for_encoding,

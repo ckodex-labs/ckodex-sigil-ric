@@ -1,19 +1,19 @@
 use crate::trust::types::{InclusionProof, RekorEntry, TrustError, TrustRoot};
 use crate::trust::verify::verify_bundle_with_trust;
-use crate::{build_bundle, SigstoreBundle};
+use crate::{SigstoreBundle, build_bundle};
 use base64::Engine as _;
 use der::asn1::{BitString, Ia5String, OctetString, UtcTime};
 use der::{Decode as _, Encode as _};
 use p256::ecdsa::{
-    signature::Signer as _, Signature as P256Signature, SigningKey as P256SigningKey,
+    Signature as P256Signature, SigningKey as P256SigningKey, signature::Signer as _,
 };
 use p384::ecdsa::SigningKey as P384SigningKey;
 use sha2::{Digest as _, Sha256};
 use std::str::FromStr as _;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use x509_cert::certificate::{Certificate, TbsCertificate, Version};
-use x509_cert::ext::pkix::name::{GeneralName, GeneralNames};
 use x509_cert::ext::Extension;
+use x509_cert::ext::pkix::name::{GeneralName, GeneralNames};
 use x509_cert::name::Name;
 use x509_cert::serial_number::SerialNumber;
 use x509_cert::spki::{AlgorithmIdentifierOwned, SubjectPublicKeyInfoOwned};

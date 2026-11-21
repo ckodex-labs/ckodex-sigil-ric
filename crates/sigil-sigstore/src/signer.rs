@@ -1,7 +1,7 @@
 use crate::csr::*;
 use crate::error::*;
 use crate::rekor_upload::*;
-use p384::ecdsa::{signature::Signer as _, Signature, SigningKey};
+use p384::ecdsa::{Signature, SigningKey, signature::Signer as _};
 use serde::{Deserialize, Serialize};
 use sigil_core::signing::ReceiptSigner;
 use std::sync::Mutex;

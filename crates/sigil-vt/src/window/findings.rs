@@ -4,7 +4,7 @@
 //! end-of-stream. `window.rs` owns grid + cursor state; this module
 //! owns "did the display diverge".
 
-use super::{VirtualWindow, COLS, NO_SRC, ROWS};
+use super::{COLS, NO_SRC, ROWS, VirtualWindow};
 use sigil_core::types::ByteRange;
 
 /// Findings are bounded: beyond the cap the first dropped range is

@@ -1,6 +1,6 @@
 use crate::bundle_ops::*;
 use crate::bundle_types::*;
-use p384::ecdsa::{signature::Signer as _, Signature, SigningKey};
+use p384::ecdsa::{Signature, SigningKey, signature::Signer as _};
 use p384::elliptic_curve::generic_array::GenericArray;
 use sigil_core::signing::SignatureVerifyError;
 use x509_cert::spki::AlgorithmIdentifierOwned;
@@ -54,8 +54,8 @@ fn bundle_rejects_wrong_media_type() {
 /// tests (the real leaf comes from the Fulcio exchange). Constructed
 /// directly from the x509-cert 0.2 DER types (no builder module there).
 fn self_signed_certificate(signing_key: &SigningKey) -> Vec<u8> {
-    use der::asn1::{BitString, UtcTime};
     use der::Encode;
+    use der::asn1::{BitString, UtcTime};
     use std::time::{Duration, SystemTime, UNIX_EPOCH};
     use x509_cert::certificate::{Certificate, TbsCertificate};
     use x509_cert::name::Name;

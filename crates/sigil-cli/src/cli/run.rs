@@ -6,7 +6,7 @@ use crate::cli::output::*;
 use crate::cli::results::*;
 use crate::cli::types::*;
 use crate::cli::{human, human_reports};
-use anyhow::{anyhow, Context, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{CommandFactory, Parser};
 use sigil_core::signing::ReceiptSigner;
 use sigil_core::types::{Provenance, TextSegment};
@@ -18,7 +18,7 @@ use sigil_probe::{
     BaselineProfile, BoundaryProbe, CanaryCase, FingerprintProbe, ProbeConfig, ProbeEngine,
     ProbeSample,
 };
-use sigil_s::{compose_with_sigil, SentinelModel};
+use sigil_s::{SentinelModel, compose_with_sigil};
 use sigil_sigstore::{OidcSource, SigstoreKeylessSigner};
 use std::fs;
 

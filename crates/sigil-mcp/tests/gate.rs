@@ -1,4 +1,4 @@
-use sigil_core::{policy::Policy, types::Verdict, Vocab};
+use sigil_core::{Vocab, policy::Policy, types::Verdict};
 use sigil_mcp::{ContentType, McpGate, McpScanConfig, McpSession, ResponseSchema};
 
 #[test]

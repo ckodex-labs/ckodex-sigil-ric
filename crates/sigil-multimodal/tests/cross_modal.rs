@@ -1,7 +1,7 @@
 use sigil_core::{
+    Vocab,
     policy::Policy,
     types::{Provenance, Severity, Verdict},
-    Vocab,
 };
 use sigil_multimodal::{ModalInput, Modality, MultimodalEngine};
 

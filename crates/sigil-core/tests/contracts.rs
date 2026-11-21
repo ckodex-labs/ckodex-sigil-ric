@@ -1,9 +1,9 @@
 use sigil_core::{
+    Sigil, Vocab,
     policy::{Mode, Policy},
     types::{DenyReason, InputAssessment, Severity, Verdict},
-    Sigil, Vocab,
 };
-use sigil_s::{compose_with_sigil, SentinelAction, SentinelVerdict};
+use sigil_s::{SentinelAction, SentinelVerdict, compose_with_sigil};
 
 #[test]
 fn policy_and_output_contracts_round_trip_cleanly() {

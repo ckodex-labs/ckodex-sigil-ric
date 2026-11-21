@@ -37,9 +37,10 @@ mod tests {
         let csr_der = build_csr(&signing_key).expect("csr");
         let pem = pem_csr(&csr_der).expect("pem");
         assert!(pem.starts_with("-----BEGIN CERTIFICATE REQUEST-----"));
-        assert!(pem
-            .trim_end()
-            .ends_with("-----END CERTIFICATE REQUEST-----"));
+        assert!(
+            pem.trim_end()
+                .ends_with("-----END CERTIFICATE REQUEST-----")
+        );
         // PEM decode must yield the identical DER.
         use der::DecodePem;
         let reparsed = CertReq::from_pem(&pem).expect("pem parse");

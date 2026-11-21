@@ -292,8 +292,8 @@ fn hex_digest(bytes: &[u8]) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sigil_multimodal::perception::channels_to_modal_inputs;
     use sigil_multimodal::ArtifactRef;
+    use sigil_multimodal::perception::channels_to_modal_inputs;
 
     fn encode_png(width: u32, height: u32, rgba: [u8; 4]) -> Vec<u8> {
         let img = image::RgbaImage::from_pixel(width, height, image::Rgba(rgba));
@@ -317,19 +317,25 @@ mod tests {
 
         assert_eq!(report.source_id, "img-1");
         assert_eq!(report.artifact_digest.len(), 96, "SHA-384 hex");
-        assert!(report
-            .properties
-            .iter()
-            .any(|(k, v)| k.ends_with(".width") && v == "4"));
-        assert!(report
-            .properties
-            .iter()
-            .any(|(k, v)| k.ends_with(".height") && v == "3"));
+        assert!(
+            report
+                .properties
+                .iter()
+                .any(|(k, v)| k.ends_with(".width") && v == "4")
+        );
+        assert!(
+            report
+                .properties
+                .iter()
+                .any(|(k, v)| k.ends_with(".height") && v == "3")
+        );
         // No OCR configured: only the metadata channel, no fabricated content.
-        assert!(report
-            .channels
-            .iter()
-            .all(|channel| channel.channel_kind == ChannelKind::Metadata));
+        assert!(
+            report
+                .channels
+                .iter()
+                .all(|channel| channel.channel_kind == ChannelKind::Metadata)
+        );
     }
 
     #[test]

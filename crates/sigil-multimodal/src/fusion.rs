@@ -1,7 +1,7 @@
 use crate::engine::FusionRecord;
 use crate::types::*;
-use sigil_core::types::{Provenance, Severity};
 use sigil_core::TrustLevel;
+use sigil_core::types::{Provenance, Severity};
 
 pub fn audit_fusion(records: &[FusionRecord]) -> FusionAssessment {
     let mut events = Vec::new();

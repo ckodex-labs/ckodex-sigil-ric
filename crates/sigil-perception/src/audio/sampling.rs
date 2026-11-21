@@ -23,11 +23,7 @@ pub(crate) fn metadata_channel(
 ) -> ExtractedChannel {
     let content = format!(
         "sample_rate = {}\nchannels = {}\nbits_per_sample = {}\nsample_format = {:?}\nduration_secs = {:.3}\n",
-        spec.sample_rate,
-        spec.channels,
-        spec.bits_per_sample,
-        spec.sample_format,
-        duration_secs,
+        spec.sample_rate, spec.channels, spec.bits_per_sample, spec.sample_format, duration_secs,
     );
     ExtractedChannel {
         channel_kind: ChannelKind::Metadata,

@@ -224,10 +224,12 @@ fn json_format_errors_emit_envelope() {
     assert!(!out.status.success());
     let err: serde_json::Value =
         serde_json::from_slice(&out.stderr).expect("stderr must be a JSON error envelope");
-    assert!(err["error"]
-        .as_str()
-        .expect("error field")
-        .contains("/nonexistent"));
+    assert!(
+        err["error"]
+            .as_str()
+            .expect("error field")
+            .contains("/nonexistent")
+    );
 }
 
 #[test]

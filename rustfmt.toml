@@ -1,3 +1,0 @@
-# Kept at the 2021 style while the edition moves; the 2024 style pass lands
-# as its own formatting-only commit.
-style_edition = "2021"

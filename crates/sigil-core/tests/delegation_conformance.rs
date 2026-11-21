@@ -4,9 +4,9 @@
 //! and representation integrity envelopes across autonomous agent boundaries.
 
 use sigil_core::delegation::{
-    create_root_lease, delegate, validate_chain, validate_envelope, validate_lease, AgentEnvelope,
-    AuthorityCeiling, Capability, CapabilityLease, DelegationError, DelegationRequest,
-    RevocationRegistry, RootLeaseParams,
+    AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
+    DelegationRequest, RevocationRegistry, RootLeaseParams, create_root_lease, delegate,
+    validate_chain, validate_envelope, validate_lease,
 };
 use sigil_core::signing::{EcdsaP384Signer, ReceiptSignature, ReceiptSigner};
 use sigil_core::types::RepresentationReceipt;

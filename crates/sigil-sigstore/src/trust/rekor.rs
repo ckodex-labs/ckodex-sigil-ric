@@ -1,8 +1,8 @@
-use crate::trust::types::{InclusionProof, RekorEntry, TrustError};
 use crate::SigstoreBundle;
+use crate::trust::types::{InclusionProof, RekorEntry, TrustError};
 use base64::Engine as _;
 use p256::ecdsa::{
-    signature::Verifier as _, Signature as P256Signature, VerifyingKey as P256VerifyingKey,
+    Signature as P256Signature, VerifyingKey as P256VerifyingKey, signature::Verifier as _,
 };
 use sha2::{Digest as _, Sha256};
 pub(crate) fn verify_rekor_set(

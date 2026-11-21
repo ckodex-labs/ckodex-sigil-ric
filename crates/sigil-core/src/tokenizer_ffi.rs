@@ -18,7 +18,7 @@
 use std::{
     collections::HashMap,
     ffi::c_void,
-    ptr::{null_mut, NonNull},
+    ptr::{NonNull, null_mut},
     slice,
     sync::{Arc, Mutex, OnceLock},
 };
@@ -49,7 +49,7 @@ pub struct ZigByteBuffer {
 #[link(name = "zig_tiktoken", kind = "static")]
 unsafe extern "C" {
     fn zig_tiktoken_open(name_ptr: *const u8, name_len: usize, out_handle: *mut *mut c_void)
-        -> i32;
+    -> i32;
     fn zig_tiktoken_close(handle: *mut c_void);
     fn zig_tiktoken_encode_ordinary(
         handle: *mut c_void,

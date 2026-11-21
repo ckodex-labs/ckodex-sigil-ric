@@ -336,11 +336,7 @@ fn st_end(
         i += 1;
     }
     let end = if i < bytes.len() {
-        if bytes[i] == ESC {
-            i + 2
-        } else {
-            i + 1
-        }
+        if bytes[i] == ESC { i + 2 } else { i + 1 }
     } else {
         i
     };

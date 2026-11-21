@@ -3,7 +3,7 @@
 //! in `lib.rs` quarantines them as findings rather than letting them
 //! silently desync the model.
 
-use super::{VirtualWindow, COLS, ROWS};
+use super::{COLS, ROWS, VirtualWindow};
 
 impl VirtualWindow {
     /// Apply a decoded CSI op with raw params; `reset` = `…l` final

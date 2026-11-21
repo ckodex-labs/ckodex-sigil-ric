@@ -65,10 +65,12 @@ fn stream_extract_pipes_audio_and_frames() {
     assert_eq!(frames.len(), 2);
     assert_eq!(frames[0].channel_kind, ChannelKind::OcrText);
     assert_eq!(frames[0].content.trim(), "frame text");
-    assert!(report
-        .channels
-        .iter()
-        .any(|c| c.extractor.name.contains("sigil-perception/audio")));
+    assert!(
+        report
+            .channels
+            .iter()
+            .any(|c| c.extractor.name.contains("sigil-perception/audio"))
+    );
     let captions: Vec<_> = report
         .channels
         .iter()
@@ -77,14 +79,18 @@ fn stream_extract_pipes_audio_and_frames() {
     assert_eq!(captions.len(), 1);
     assert!(captions[0].content.contains("subtitle text"));
     assert!(captions[0].extractor.name.ends_with("/subtitles"));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with("stream.frames") && v == "2"));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, _)| k.ends_with("stream.audio.channels")));
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with("stream.frames") && v == "2")
+    );
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, _)| k.ends_with("stream.audio.channels"))
+    );
     let _ = std::fs::remove_file(ffmpeg);
     let _ = std::fs::remove_file(ocr);
 }
@@ -101,23 +107,31 @@ fn stream_extract_failures_degrade_to_properties() {
     let bytes = fixture();
     let report = adapter.perceive(&artifact(&bytes)).expect("perceive");
 
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with("stream.audio") && v.starts_with("failed:")));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with("stream.frames") && v.starts_with("failed:")));
-    assert!(report
-        .properties
-        .iter()
-        .any(|(k, v)| k.ends_with("stream.subtitles") && v.starts_with("failed:")));
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with("stream.audio") && v.starts_with("failed:"))
+    );
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with("stream.frames") && v.starts_with("failed:"))
+    );
+    assert!(
+        report
+            .properties
+            .iter()
+            .any(|(k, v)| k.ends_with("stream.subtitles") && v.starts_with("failed:"))
+    );
     // Extraction failure never loses the container report itself.
-    assert!(report
-        .channels
-        .iter()
-        .any(|c| c.channel_kind == ChannelKind::Metadata));
+    assert!(
+        report
+            .channels
+            .iter()
+            .any(|c| c.channel_kind == ChannelKind::Metadata)
+    );
     let _ = std::fs::remove_file(ffmpeg);
     let _ = std::fs::remove_file(ocr);
 }

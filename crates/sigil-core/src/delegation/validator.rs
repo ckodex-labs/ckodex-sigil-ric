@@ -1,5 +1,5 @@
 use crate::delegation::types::*;
-use crate::signing::{hex_digest, verify_receipt_signature, ReceiptSignature, ReceiptSigner};
+use crate::signing::{ReceiptSignature, ReceiptSigner, hex_digest, verify_receipt_signature};
 use sha2::{Digest, Sha384};
 
 /// Creates a new root capability lease.
