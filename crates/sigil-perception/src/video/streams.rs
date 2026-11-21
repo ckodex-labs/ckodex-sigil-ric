@@ -1,5 +1,5 @@
 //! Stream extraction for `VideoAdapter` — pinned external demux pipes.
-//! See `mod.rs` for the adapter contract and `StreamExtract` pinning.
+//! See `../video.rs` for the adapter contract and `StreamExtract` pinning.
 
 use super::*;
 

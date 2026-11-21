@@ -150,12 +150,12 @@ def main() -> int:
             "ExternalOcr",
             "PerceptionOutcome",
         ],
-        "crates/sigil-perception/src/audio/mod.rs": [
+        "crates/sigil-perception/src/audio.rs": [
             "AudioAdapter",
             "ExternalTranscript",
             "AudioPerceptionOutcome",
         ],
-        "crates/sigil-perception/src/spectral/mod.rs": [
+        "crates/sigil-perception/src/spectral.rs": [
             "SpectralReport",
             "SpectralConfig",
             "analyze_spectrum",
@@ -186,7 +186,7 @@ def main() -> int:
             "build_bundle",
             "verify_bundle",
         ],
-        "crates/sigil-sigstore/src/trust/mod.rs": [
+        "crates/sigil-sigstore/src/trust.rs": [
             "TrustRoot",
             "verify_bundle_with_trust",
             "fetch_trust_bundle",
