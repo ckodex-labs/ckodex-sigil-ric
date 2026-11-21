@@ -1,0 +1,16 @@
+#!/usr/bin/env python3
+# ASR adapter for sigil-cli perceive: WAV bytes on stdin -> transcript on stdout.
+# argv[1] selects the resample policy the downstream model pipeline uses: "ffmpeg" (low-pass, as Whisper's load_audio) or "naive" (x[::k]).
+import sys, io, subprocess, numpy as np, soundfile as sf, sherpa_onnx, os
+import os; MODELS=os.environ.get("SIGIL_REF_MODELS","models")
+W=MODELS+"/sherpa-onnx-whisper-tiny.en"
+mode=sys.argv[1] if len(sys.argv)>1 else "ffmpeg"
+raw=sys.stdin.buffer.read()
+if mode=="ffmpeg":
+    pcm=subprocess.run(["ffmpeg","-loglevel","error","-i","pipe:0","-f","s16le","-ac","1","-ar","16000","pipe:1"],input=raw,capture_output=True,check=True).stdout
+    x=np.frombuffer(pcm,np.int16).astype(np.float32)/32768
+else:
+    y,sr=sf.read(io.BytesIO(raw),dtype="float32"); y=y if y.ndim==1 else y[:,0]; x=y[::sr//16000]
+rec=sherpa_onnx.OfflineRecognizer.from_whisper(encoder=f"{W}/tiny.en-encoder.onnx",decoder=f"{W}/tiny.en-decoder.onnx",tokens=f"{W}/tiny.en-tokens.txt",num_threads=4)
+s=rec.create_stream(); s.accept_waveform(16000,x); rec.decode_stream(s)
+sys.stdout.write(s.result.text.strip()+"\n")
