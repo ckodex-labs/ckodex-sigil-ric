@@ -18,9 +18,9 @@ use sigil_core::types::Severity;
 /// −6 dB, more when louder); the flatness gate below handles it.
 pub const HIDDEN_ENERGY_FRACTION_MIN: f64 = 0.05;
 
-/// Spectral flatness at or above this is noise-like. Measured on the same
-/// set: attack hidden regions at most 0.012, white noise and generated music
-/// at least 0.77. Aggregated over many FFT windows, white noise approaches 1;
+/// Structure (lowest material sub-band flatness, reported by the adapter) at
+/// or above this is noise-like. Measured on the same set: attack hidden
+/// regions at most 0.24, white-noise beds and generated music at least 0.95. Aggregated over many FFT windows, white noise approaches 1;
 /// band-limited speech shifted into an otherwise quiet band sits orders of
 /// magnitude lower.
 pub const STRUCTURED_FLATNESS_MAX: f64 = 0.5;
@@ -77,12 +77,16 @@ fn number(value: &Value, key: &str) -> Option<f64> {
     value.get(key)?.as_f64()
 }
 
+/// A hidden-content fact counts when it shows enough structured energy, or
+/// when it is present but unreadable: a missing or non-finite value (NaN
+/// samples serialize as null) is not evidence of absence, so it fails closed.
 fn hidden(fraction: Option<f64>, flatness: Option<f64>) -> bool {
-    matches!(
-        (fraction, flatness),
-        (Some(fraction), Some(flatness))
-            if fraction >= HIDDEN_ENERGY_FRACTION_MIN && flatness < STRUCTURED_FLATNESS_MAX
-    )
+    match (fraction, flatness) {
+        (Some(fraction), Some(flatness)) if fraction.is_finite() && flatness.is_finite() => {
+            fraction >= HIDDEN_ENERGY_FRACTION_MIN && flatness < STRUCTURED_FLATNESS_MAX
+        }
+        _ => true,
+    }
 }
 
 fn inaudible_band(report: &Value, severity: Severity) -> Option<MultimodalFinding> {

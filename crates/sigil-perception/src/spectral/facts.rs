@@ -27,9 +27,10 @@ pub struct InaudibleBand {
     pub energy_fraction: f32,
     /// Strongest frequency inside the band.
     pub peak_hz: f32,
-    /// Spectral flatness (geometric / arithmetic mean of bin energies) over
-    /// the band: ≈1 for white noise, far below for structured content such as
-    /// shifted speech.
+    /// Structure of the band (see `structure`): the lowest spectral flatness
+    /// among sub-bands holding at least 10 % of the band's energy. ≈1 for
+    /// white noise, far below for structured content such as shifted speech,
+    /// including when noise is spread over the rest of the band.
     pub flatness: f32,
 }
 
@@ -45,7 +46,7 @@ pub struct AliasPrediction {
     /// `hidden_origin_hz`: content the listener does not hear but the model
     /// will, after unfiltered resampling.
     pub hidden_folding_fraction: f32,
-    /// Spectral flatness of that hidden folding region.
+    /// Structure (lowest material sub-band flatness) of that hidden region.
     pub hidden_flatness: f32,
     /// Baseband range the hidden content lands in after folding (bins holding
     /// at least 1 % of the strongest folding bin's energy).
@@ -97,7 +98,7 @@ pub(super) fn inaudible_band(
         high_hz: nyquist as f32,
         energy_fraction: (energy / spectrum.total) as f32,
         peak_hz: spectrum.freq(peak_bin) as f32,
-        flatness: flatness(band.iter().map(|(_, e)| *e)),
+        flatness: structure(&band.iter().map(|(_, e)| *e).collect::<Vec<_>>()),
     })
 }
 
@@ -135,7 +136,7 @@ fn predict(spectrum: &Spectrum<'_>, target_hz: u32, origin_hz: f64) -> AliasPred
         hidden_origin_hz: origin_hz as f32,
         folding_fraction: (folding / spectrum.total) as f32,
         hidden_folding_fraction: (hidden_energy / spectrum.total) as f32,
-        hidden_flatness: flatness(hidden.iter().map(|(_, e)| *e)),
+        hidden_flatness: structure(&hidden.iter().map(|(_, e)| *e).collect::<Vec<_>>()),
         alias_low_hz: if low.is_finite() { low as f32 } else { 0.0 },
         alias_high_hz: high as f32,
     }
@@ -150,6 +151,28 @@ pub(super) fn fold(freq: f64, rate: f64) -> f64 {
     } else {
         rate - reduced
     }
+}
+
+/// Sub-bands a region is split into for [`structure`].
+const SUBBANDS: usize = 8;
+/// A sub-band joins the structure test when it holds at least this share of
+/// the region's energy; quieter sub-bands carry no content worth testing.
+const SUBBAND_ENERGY_SHARE: f64 = 0.1;
+
+/// Structure of a region: the lowest spectral flatness among its sub-bands
+/// that carry a material share of its energy. Whole-region flatness can be
+/// raised by masking noise spread over the rest of the band; a structured
+/// payload still leaves one low-flatness sub-band. Falls back to whole-region
+/// flatness when no sub-band qualifies.
+pub(super) fn structure(energies: &[f64]) -> f32 {
+    let total: f64 = energies.iter().sum();
+    let width = energies.len().div_ceil(SUBBANDS).max(4);
+    energies
+        .chunks(width)
+        .filter(|chunk| total > 0.0 && chunk.iter().sum::<f64>() >= total * SUBBAND_ENERGY_SHARE)
+        .map(|chunk| flatness(chunk.iter().copied()))
+        .reduce(f32::min)
+        .unwrap_or_else(|| flatness(energies.iter().copied()))
 }
 
 /// Spectral flatness (Wiener entropy) of a set of bin energies; 0 for an

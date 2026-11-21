@@ -96,3 +96,15 @@ fn reports_without_wp2_facts_yield_no_wp2_findings() {
     assert!(kinds(json!({ "subliminal_findings": [], "steganography_findings": [] })).is_empty());
     assert!(kinds(json!("not a report")).is_empty());
 }
+
+#[test]
+fn unreadable_inaudible_facts_fail_closed() {
+    // NaN in the samples poisons the spectrum and serializes as null.
+    let report = json!({ "inaudible_band": {
+        "low_hz": 20000.0, "high_hz": 48000.0, "energy_fraction": null,
+        "peak_hz": 0.0, "flatness": null } });
+    assert!(kinds(report).contains(&MultimodalFindingKind::InaudibleBandEnergy));
+    let alias = json!({ "alias_predictions": [{ "target_rate_hz": 16000,
+        "hidden_folding_fraction": null, "hidden_flatness": 0.1 }] });
+    assert!(kinds(alias).contains(&MultimodalFindingKind::ResamplerAliasing));
+}

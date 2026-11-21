@@ -104,6 +104,22 @@ fn multiple_windows_analyzed_for_long_signal() {
 }
 
 #[test]
+fn a_loud_burst_does_not_dilute_a_sub_audible_segment() {
+    // 0.5 s of strong 5 Hz content, then 0.5 s of a burst 100x louder in
+    // the audible band. A mean-based window floor would drop the 5 Hz
+    // windows; the median-based floor keeps them.
+    let mut samples = sine_wave(5.0, 16000, 1.5);
+    let burst: Vec<f32> = sine_wave(440.0, 16000, 0.5)
+        .iter()
+        .map(|s| s * 100.0)
+        .collect();
+    samples.extend(burst);
+    let report =
+        analyze_spectrum(&samples, 16000, &SpectralConfig::default(), "ii").expect("spectrum");
+    assert!(!report.subliminal_findings.is_empty());
+}
+
+#[test]
 fn subliminal_detected_in_second_window_only() {
     // First second: 440 Hz normal tone. Second second: 5 Hz sub-audible.
     let mut samples = sine_wave(440.0, 16000, 1.0);

@@ -44,7 +44,9 @@ pub(super) fn analyze(
     let windows = window_energies(samples, fft_size, sub_bins, config.window_overlap)?;
     let total: f32 = windows.iter().map(|(e, _)| e).sum();
     let energy: f32 = windows.iter().map(|(_, s)| s).sum();
-    let floor = total / windows.len() as f32 * config.subliminal_min_window_energy_ratio;
+    // Median, not mean: one loud burst must not lift the floor over a real
+    // infrasound window.
+    let floor = median_energy(&windows) * config.subliminal_min_window_energy_ratio;
     let flagged = windows
         .iter()
         .any(|(e, s)| *e >= floor && *s / *e > config.subliminal_energy_fraction);
@@ -87,6 +89,12 @@ fn window_energies(
         }
     }
     (!out.is_empty()).then_some(out)
+}
+
+fn median_energy(windows: &[(f32, f32)]) -> f32 {
+    let mut energies: Vec<f32> = windows.iter().map(|(e, _)| *e).collect();
+    energies.sort_by(f32::total_cmp);
+    energies[energies.len() / 2]
 }
 
 fn prev_power_of_two(n: usize) -> usize {

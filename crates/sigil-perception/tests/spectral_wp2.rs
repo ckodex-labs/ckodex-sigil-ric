@@ -215,7 +215,7 @@ fn cv_ric_024_inaudible_band_fact_and_finding_across_the_family() {
             .as_ref()
             .expect("96 kHz files report the band");
         assert!(
-            band.energy_fraction > 0.2 && band.flatness < 0.01,
+            band.energy_fraction > 0.2 && band.flatness < 0.25,
             "shift {} overlap {}: {band:?}",
             case.shift_hz,
             case.overlap_gain
@@ -294,6 +294,29 @@ fn cv_ric_026_generated_benign_high_rate_controls_do_not_trigger() {
                 "{name} at {rate} Hz: sub-audible false positive"
             );
         }
+    }
+}
+
+#[test]
+fn masking_noise_over_the_hidden_band_does_not_clear_the_finding() {
+    // Hidden speech at +32 kHz plus white noise high-passed above 20 kHz at
+    // several levels: whole-band flatness rises with the noise, the
+    // sub-band structure test must still see the payload.
+    let rate = 96_000;
+    let n = (f64::from(rate) * SECONDS) as usize;
+    let hidden = hidden_payload(rate, 32_000.0, 0);
+    let raw = white_noise(n, 11);
+    let low = low_pass(&raw, rate, 20_000.0);
+    let ultrasonic: Vec<f64> = raw.iter().zip(&low).map(|(x, l)| x - l).collect();
+    for gain in [0.5, 1.0, 2.0] {
+        let report = report(&mix(&[(&hidden, 1.0), (&ultrasonic, gain)]), rate);
+        let kinds = kernel_kinds(&report);
+        assert!(
+            kinds.contains(&MultimodalFindingKind::InaudibleBandEnergy)
+                && kinds.contains(&MultimodalFindingKind::ResamplerAliasing),
+            "noise gain {gain}: {kinds:?} {:?}",
+            report.inaudible_band
+        );
     }
 }
 

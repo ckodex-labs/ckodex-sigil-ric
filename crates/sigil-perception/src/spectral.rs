@@ -129,7 +129,7 @@ pub struct SpectralConfig {
     /// narrowband-peak finding to `frequency_hopping`.
     pub stego_hop_min_bins: usize,
     /// A window joins the per-window subliminal check only if it carries at
-    /// least this share of the mean window energy. Near-silent windows
+    /// least this share of the median window energy. Near-silent windows
     /// (pauses, fades) are dominated by DC and rumble, so their sub-audible
     /// ratio is large while the energy is not; counting them flagged ordinary
     /// recordings. Default 0.1: a short loud sub-audible burst is still well
@@ -385,13 +385,14 @@ fn build_report(
             high_hz: stats.nyquist,
             energy: stats.high_band_energy_sum,
             fraction_of_total: stats.high_band_energy_sum / stats.total_energy,
-            flatness: Some(facts::flatness(
-                stats
+            flatness: Some(facts::structure(
+                &stats
                     .bin_energy_sum
                     .iter()
                     .enumerate()
                     .filter(|(bin, _)| *bin as f32 * stats.bin_hz >= stats.high_band_start_hz)
-                    .map(|(_, energy)| *energy),
+                    .map(|(_, energy)| *energy)
+                    .collect::<Vec<_>>(),
             )),
         });
     }
