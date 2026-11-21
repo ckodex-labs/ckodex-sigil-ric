@@ -47,7 +47,7 @@ pub struct ZigByteBuffer {
 }
 
 #[link(name = "zig_tiktoken", kind = "static")]
-extern "C" {
+unsafe extern "C" {
     fn zig_tiktoken_open(name_ptr: *const u8, name_len: usize, out_handle: *mut *mut c_void)
         -> i32;
     fn zig_tiktoken_close(handle: *mut c_void);

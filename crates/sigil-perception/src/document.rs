@@ -72,13 +72,13 @@ impl PerceptionAdapter for DocumentAdapter {
             }
         };
 
-        if media_type == "application/pdf" {
-            if let Some(compare) = &self.render_compare {
-                let (props, extra) =
-                    self.render_compare_channels(compare, artifact.bytes, &channels, &properties);
-                properties.extend(props);
-                channels.extend(extra);
-            }
+        if media_type == "application/pdf"
+            && let Some(compare) = &self.render_compare
+        {
+            let (props, extra) =
+                self.render_compare_channels(compare, artifact.bytes, &channels, &properties);
+            properties.extend(props);
+            channels.extend(extra);
         }
 
         Ok(PerceptionReport {

@@ -71,23 +71,25 @@ mod tests {
     }
 
     #[test]
-    fn ambient_source_resolves_env_token() {
-        // Unique variable name: never touch a real ambient token in tests.
-        let var = "SIGIL_TEST_OIDC_TOKEN_XYZ";
-        std::env::remove_var(var);
-        let source = resolve_test_source(var);
-        assert!(matches!(source, Err(SigstoreError::MissingOidcToken)));
-        std::env::set_var(var, "test-token");
-        assert!(resolve_test_source(var).is_ok());
-        std::env::remove_var(var);
-    }
-
-    fn resolve_test_source(var: &str) -> Result<String, SigstoreError> {
-        // Same resolution logic as OidcSource::Ambient, parameterized for tests.
-        std::env::var(var)
-            .ok()
-            .filter(|token| !token.is_empty())
-            .ok_or(SigstoreError::MissingOidcToken)
+    fn ambient_source_reads_the_declared_variable_and_rejects_empty() {
+        // Exercises the production resolver with the env lookup injected:
+        // no process-global mutation, no real ambient token touched.
+        let mut asked = None;
+        let token = OidcSource::Ambient.resolve_with(|var| {
+            asked = Some(var.to_string());
+            Some("test-token".to_string())
+        });
+        assert_eq!(token, Ok("test-token".to_string()));
+        assert_eq!(asked.as_deref(), Some(AMBIENT_TOKEN_VAR));
+        assert_eq!(
+            OidcSource::Ambient.resolve_with(|_| None),
+            Err(SigstoreError::MissingOidcToken)
+        );
+        assert_eq!(
+            OidcSource::Ambient.resolve_with(|_| Some(String::new())),
+            Err(SigstoreError::MissingOidcToken),
+            "an empty ambient token is missing, not a credential"
+        );
     }
 
     #[test]

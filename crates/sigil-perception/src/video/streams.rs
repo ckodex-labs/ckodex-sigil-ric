@@ -126,20 +126,20 @@ impl VideoAdapter {
             properties.push((format!("{id}.stream.frames_capped"), MAX_FRAMES.to_string()));
         }
         for (i, png) in frames.iter().take(MAX_FRAMES).enumerate() {
-            if let Ok(text) = frame_ocr.ocr.extract(png) {
-                if !text.trim().is_empty() {
-                    channels.push(ExtractedChannel {
-                        channel_kind: ChannelKind::OcrText,
-                        content: text,
-                        extractor: ExtractorIdentity {
-                            name: format!("{id}/frame-ocr[{i}]"),
-                            version: frame_ocr.ocr.version.clone(),
-                            config_digest: frame_ocr.ocr.binary_digest.clone(),
-                        },
-                        confidence: None,
-                        truncated: false,
-                    });
-                }
+            if let Ok(text) = frame_ocr.ocr.extract(png)
+                && !text.trim().is_empty()
+            {
+                channels.push(ExtractedChannel {
+                    channel_kind: ChannelKind::OcrText,
+                    content: text,
+                    extractor: ExtractorIdentity {
+                        name: format!("{id}/frame-ocr[{i}]"),
+                        version: frame_ocr.ocr.version.clone(),
+                        config_digest: frame_ocr.ocr.binary_digest.clone(),
+                    },
+                    confidence: None,
+                    truncated: false,
+                });
             }
         }
     }

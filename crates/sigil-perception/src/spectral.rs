@@ -302,13 +302,12 @@ fn fold_window(
         .iter()
         .enumerate()
         .max_by(|(_, a), (_, b)| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal))
+        && peak_energy / window_energy > config.stego_peak_fraction
     {
-        if peak_energy / window_energy > config.stego_peak_fraction {
-            stats.narrowband_peak_energy_sum += peak_energy;
-            stats
-                .high_band_peak_bins
-                .push(high_band_start_bin + peak_offset);
-        }
+        stats.narrowband_peak_energy_sum += peak_energy;
+        stats
+            .high_band_peak_bins
+            .push(high_band_start_bin + peak_offset);
     }
 }
 

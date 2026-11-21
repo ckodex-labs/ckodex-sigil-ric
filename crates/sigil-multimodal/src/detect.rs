@@ -59,32 +59,31 @@ pub(crate) fn detect_audio(content: &str, assessment: &InputAssessment) -> Vec<M
     // `steganography_findings` arrays. When non-empty, emit findings with
     // the correct MultimodalFindingKind.
     if let Ok(value) = serde_json::from_str::<serde_json::Value>(content) {
-        if let Some(subliminal) = value.get("subliminal_findings").and_then(|v| v.as_array()) {
-            if !subliminal.is_empty() {
-                findings.push(MultimodalFinding {
-                    kind: MultimodalFindingKind::SubliminalAudio,
-                    severity: Severity::High.max(assessment.max_severity),
-                    detail: format!(
-                        "sub-audible spectral energy detected ({} band(s))",
-                        subliminal.len()
-                    ),
-                });
-            }
+        if let Some(subliminal) = value.get("subliminal_findings").and_then(|v| v.as_array())
+            && !subliminal.is_empty()
+        {
+            findings.push(MultimodalFinding {
+                kind: MultimodalFindingKind::SubliminalAudio,
+                severity: Severity::High.max(assessment.max_severity),
+                detail: format!(
+                    "sub-audible spectral energy detected ({} band(s))",
+                    subliminal.len()
+                ),
+            });
         }
         if let Some(stego) = value
             .get("steganography_findings")
             .and_then(|v| v.as_array())
+            && !stego.is_empty()
         {
-            if !stego.is_empty() {
-                findings.push(MultimodalFinding {
-                    kind: MultimodalFindingKind::AudioSteganography,
-                    severity: Severity::High.max(assessment.max_severity),
-                    detail: format!(
-                        "high-frequency spectral anomaly detected ({} band(s))",
-                        stego.len()
-                    ),
-                });
-            }
+            findings.push(MultimodalFinding {
+                kind: MultimodalFindingKind::AudioSteganography,
+                severity: Severity::High.max(assessment.max_severity),
+                detail: format!(
+                    "high-frequency spectral anomaly detected ({} band(s))",
+                    stego.len()
+                ),
+            });
         }
     }
 

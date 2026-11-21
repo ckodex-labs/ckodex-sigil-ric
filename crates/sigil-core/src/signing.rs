@@ -210,16 +210,16 @@ fn parse_verifying_key(key_input: &str) -> Result<VerifyingKey, SignatureVerifyE
     };
     let trimmed = content.trim();
 
-    if trimmed.contains("-----BEGIN PUBLIC KEY-----") {
-        if let Ok(key) = VerifyingKey::from_public_key_pem(trimmed) {
-            return Ok(key);
-        }
+    if trimmed.contains("-----BEGIN PUBLIC KEY-----")
+        && let Ok(key) = VerifyingKey::from_public_key_pem(trimmed)
+    {
+        return Ok(key);
     }
 
-    if let Some(bytes) = decode_hex(trimmed) {
-        if let Ok(key) = VerifyingKey::from_sec1_bytes(&bytes) {
-            return Ok(key);
-        }
+    if let Some(bytes) = decode_hex(trimmed)
+        && let Ok(key) = VerifyingKey::from_sec1_bytes(&bytes)
+    {
+        return Ok(key);
     }
 
     Err(SignatureVerifyError::InvalidKey)

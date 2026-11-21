@@ -325,10 +325,10 @@ fn collect_findings(output: &SigilOutput) -> Vec<&ScanFinding> {
     // Prefer the evidence bundle's complete finding list; fall back to
     // annotation threats when no bundle was emitted (e.g. Allow verdict
     // under the default evidence policy).
-    if let Some(evidence) = &output.evidence {
-        if !evidence.findings.is_empty() {
-            return evidence.findings.iter().collect();
-        }
+    if let Some(evidence) = &output.evidence
+        && !evidence.findings.is_empty()
+    {
+        return evidence.findings.iter().collect();
     }
     output
         .annotations

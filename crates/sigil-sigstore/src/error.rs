@@ -27,11 +27,22 @@ pub enum OidcSource {
     Token(String),
 }
 
+/// Environment variable read by [`OidcSource::Ambient`].
+pub(crate) const AMBIENT_TOKEN_VAR: &str = "SIGSTORE_ID_TOKEN";
+
 impl OidcSource {
     pub(crate) fn resolve(&self) -> Result<String, SigstoreError> {
+        self.resolve_with(|var| std::env::var(var).ok())
+    }
+
+    /// Resolution with the environment lookup injected, so the ambient path is
+    /// testable without mutating process state.
+    pub(crate) fn resolve_with(
+        &self,
+        lookup: impl FnOnce(&str) -> Option<String>,
+    ) -> Result<String, SigstoreError> {
         match self {
-            OidcSource::Ambient => std::env::var("SIGSTORE_ID_TOKEN")
-                .ok()
+            OidcSource::Ambient => lookup(AMBIENT_TOKEN_VAR)
                 .filter(|token| !token.is_empty())
                 .ok_or(SigstoreError::MissingOidcToken),
             OidcSource::Token(token) if token.is_empty() => Err(SigstoreError::MissingOidcToken),
