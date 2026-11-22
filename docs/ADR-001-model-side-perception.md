@@ -122,8 +122,9 @@ This ADR does not choose. Until a decision, receipts use
 
 - **Layer contract.**
   - `sigil-perception` produces model views, runs OCR or ASR on them, and
-    emits a `Divergence` channel (word coverage < 0.8 per view line, the
-    document adapter's comparison) and a typed `PerceptionReport.consumed`
+    emits a `Divergence` channel (`word-window/2.0`, the document adapter's comparison:
+    word coverage < 0.8 per view line, or the line's words not within one
+    window of the source) and a typed `PerceptionReport.consumed`
     block: profile name and digest, consumed digest, parity, the identity
     digest of the extractor that read the view, and the placeholder count. The
     block is typed rather than a free-form property, because the kernel reads
@@ -163,13 +164,17 @@ This ADR does not choose. Until a decision, receipts use
 
 ## Known limits
 
-- **Word coverage can be gamed.** A view line counts as divergent when fewer
-  than 80 % of its words appear anywhere in the source OCR text. An attacker
-  who also prints the payload's words visibly in the source suppresses the
-  `Divergence` channel. The view OCR text is still scanned as its own
-  channel, so instruction signals still flag. What is lost is the Low-floor
-  divergence finding for content with no instruction signal. Candidate fix:
-  ordered n-gram coverage.
+- **Divergence needs the payload's words placed together.** A view line is
+  divergent when under 80 % of its words appear in the source OCR text, or,
+  for three or more words, when no stretch of `max(2n, n + 4)` source words
+  holds 80 % of them (`word-window/2.0`). This closes the gap `word-coverage/1.0`
+  left: an attacker who prints the payload's words visibly but scattered no
+  longer suppresses the `Divergence` channel. What remains: printing them
+  close together. Then a human sees the payload, and the source OCR channel
+  carries it to the scan. Measured on 6 repository documents rendered with
+  Quick Look (282 view lines), neither rule reported divergence. Those views
+  were near source size, so this says little about OCR noise on downscaled
+  views.
 - **Benign rates are unmeasured on real media.** Five text-free generated
   spectrograms gave no divergence. Real photos, screenshots and charts (D5)
   have not been run.

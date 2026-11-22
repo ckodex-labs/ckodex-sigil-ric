@@ -192,7 +192,7 @@ impl DocumentAdapter {
                 content: divergent.join("\n"),
                 extractor: chain_identity(
                     format!("{}/divergence", self.adapter_id()),
-                    "word-coverage/1.0".to_string(),
+                    DIVERGENCE_VERSION.to_string(),
                     &chain_digest,
                     compare,
                 ),
@@ -224,7 +224,11 @@ fn chain_identity(
     ExtractorIdentity::bound(name, version, chain_digest.to_string(), args, models)
 }
 
-fn normalized_words(text: &str) -> std::collections::HashSet<String> {
+/// Version of the divergence comparison, shared with the model-view
+/// adapter and part of every divergence channel's identity.
+pub(crate) const DIVERGENCE_VERSION: &str = "word-window/2.0";
+
+fn word_sequence(text: &str) -> Vec<String> {
     text.split_whitespace()
         .map(|w| {
             w.to_lowercase()
@@ -235,21 +239,86 @@ fn normalized_words(text: &str) -> std::collections::HashSet<String> {
         .collect()
 }
 
-/// Lines of `extracted` whose normalized words are <80% covered by the
-/// rendered text's word set — content the machine receives that a human
-/// viewing the render does not. Word-set (not line) comparison because OCR
-/// re-wraps and reorders lines freely.
+fn normalized_words(text: &str) -> std::collections::HashSet<String> {
+    word_sequence(text).into_iter().collect()
+}
+
+/// Lines of `extracted` the rendered text does not account for: content the
+/// machine receives that a human viewing the render does not. A line is
+/// divergent when fewer than 80 % of its distinct words appear in the
+/// rendered text, or, for a line of three or more words, when no stretch of
+/// `max(2n, n + 4)` consecutive rendered words holds 80 % of them.
+///
+/// Words, not lines, because OCR re-wraps and reorders freely. The window
+/// keeps that tolerance (reordered or re-wrapped words stay near each other)
+/// but closes the gap word coverage left: payload words printed visibly but
+/// scattered across the source no longer cover a line that only the
+/// model's view shows together.
 pub(crate) fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
-    let rendered_words = normalized_words(rendered);
+    let sequence = word_sequence(rendered);
+    let vocabulary: std::collections::HashSet<&str> = sequence.iter().map(String::as_str).collect();
     extracted
         .lines()
-        .filter(|line| {
-            let words: Vec<String> = normalized_words(line).into_iter().collect();
-            let covered = words.iter().filter(|w| rendered_words.contains(*w)).count() as f32;
-            !words.is_empty() && covered / (words.len() as f32) < 0.8
-        })
+        .filter(|line| line_diverges(line, &sequence, &vocabulary))
         .map(str::to_string)
         .collect()
+}
+
+/// Lines shorter than this are judged on word coverage alone: a window over
+/// one or two words says nothing about placement.
+const WINDOW_MIN_WORDS: usize = 3;
+
+/// The smallest count that is at least 80 % of `n`, in integers.
+fn coverage_needed(n: usize) -> usize {
+    (4 * n).div_ceil(5)
+}
+
+fn line_diverges(
+    line: &str,
+    sequence: &[String],
+    vocabulary: &std::collections::HashSet<&str>,
+) -> bool {
+    let words = normalized_words(line);
+    if words.is_empty() {
+        return false;
+    }
+    let covered = words.iter().filter(|w| vocabulary.contains(w.as_str())).count();
+    if covered < coverage_needed(words.len()) {
+        return true;
+    }
+    words.len() >= WINDOW_MIN_WORDS && !within_window(&words, sequence)
+}
+
+/// True when some stretch of `max(2n, n + 4)` consecutive words of
+/// `sequence` holds at least 80 % of the `n` distinct `words`.
+fn within_window(words: &std::collections::HashSet<String>, sequence: &[String]) -> bool {
+    let n = words.len();
+    let window = (2 * n).max(n + 4);
+    let needed = coverage_needed(n);
+    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+    let mut distinct = 0usize;
+    for (i, word) in sequence.iter().enumerate() {
+        if words.contains(word) {
+            let count = counts.entry(word.as_str()).or_default();
+            if *count == 0 {
+                distinct += 1;
+            }
+            *count += 1;
+        }
+        if i >= window {
+            let leaving = sequence[i - window].as_str();
+            if let Some(count) = counts.get_mut(leaving) {
+                *count -= 1;
+                if *count == 0 {
+                    distinct -= 1;
+                }
+            }
+        }
+        if distinct >= needed {
+            return true;
+        }
+    }
+    false
 }
 
 fn detect_media_type(bytes: &[u8]) -> String {

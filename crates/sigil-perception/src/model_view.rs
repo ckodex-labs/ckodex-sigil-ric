@@ -25,8 +25,7 @@ use std::io::Cursor;
 /// Whole-factor pixel replication adds no content.
 const OCR_MIN_SIDE: usize = 480;
 
-/// Version of the word-coverage comparison shared with the document adapter.
-const DIVERGENCE_VERSION: &str = "word-coverage/1.0";
+use crate::document::DIVERGENCE_VERSION;
 
 /// What a profile produced for one artifact.
 pub(crate) struct ViewExtraction {

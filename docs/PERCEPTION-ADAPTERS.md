@@ -144,8 +144,10 @@ run the same pinned OCR or ASR tool on it. View channels are named
 `view:profile=<digest>` and `view:transform=<…>`, for example
 `nearest-x6`: the 80² view is upscaled by whole-pixel replication until its
 shorter side reaches 480 px, because Tesseract cannot read smaller glyphs.
-View lines that the source extraction covers less than 80 % become a
-`Divergence` channel.
+A view line becomes a `Divergence` channel when the source extraction covers
+less than 80 % of its words, or, for three or more words, when no stretch of
+`max(2n, n + 4)` source words holds 80 % of them (`word-window/2.0`, shared
+with the document adapter's render-compare).
 
 Without a profile, or under an approximate one, `--analyze` caps the
 ceiling of pixel and sound inputs at observe.
