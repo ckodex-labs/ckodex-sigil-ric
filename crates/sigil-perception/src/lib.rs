@@ -7,7 +7,7 @@
 pub mod audio;
 pub mod code;
 pub mod document;
-mod model_view;
+pub mod model_view;
 pub mod pinned;
 pub mod preprocess;
 pub mod spectral;

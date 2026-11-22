@@ -48,7 +48,7 @@ pub struct PerceiveOutcome {
 /// Which modalities each adapter flag applies to. A flag the routed adapter
 /// would silently ignore reads as "configured" to the operator, so it is an
 /// error instead.
-fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'static str]); 11] {
+fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'static str]); 12] {
     const VISUAL: &[&str] = &["image", "video", "document"];
     const SOUND: &[&str] = &["audio", "video"];
     [
@@ -87,6 +87,11 @@ fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'s
         ),
         ("--profile", command.profile.is_some(), &["image", "audio"]),
         ("--vlm-assets", command.vlm_assets.is_some(), &["image"]),
+        (
+            "--resampler-binary",
+            command.resampler_binary.is_some(),
+            &["audio"],
+        ),
     ]
 }
 
@@ -135,6 +140,24 @@ fn load_interpreter(command: &PerceiveCommand) -> Result<Option<Arc<Qwen2VlInter
                 .map_err(|err| anyhow!("--vlm-assets {}: {err}", dir.display()))
         })
         .transpose()
+}
+
+/// Pin ffmpeg for a profile whose resampler is ffmpeg, with the profile's
+/// own arguments. A resampler for any other profile would be ignored, so it
+/// is an error.
+fn pin_resampler(
+    command: &PerceiveCommand,
+    profile: Option<&PreprocessorProfile>,
+) -> Result<Option<sigil_perception::ExternalPipe>> {
+    let Some(binary) = &command.resampler_binary else {
+        return Ok(None);
+    };
+    let args = profile
+        .and_then(sigil_perception::model_view::resampler_args)
+        .ok_or_else(|| anyhow!("--resampler-binary needs an ffmpeg-resampled --profile"))?;
+    sigil_perception::ExternalPipe::pin(binary.clone(), args, "external".to_string())
+        .map(Some)
+        .map_err(|err| anyhow!("pin resampler binary: {err}"))
 }
 
 fn split_args(args: &str) -> Vec<String> {
@@ -262,6 +285,7 @@ fn perceive_routed(
         "audio" => {
             let adapter = sigil_perception::audio::AudioAdapter {
                 transcript: pin_transcript(command)?,
+                resampler: pin_resampler(command, profile.as_ref())?,
                 profile,
             };
             run_adapter(&adapter, artifact, modality)

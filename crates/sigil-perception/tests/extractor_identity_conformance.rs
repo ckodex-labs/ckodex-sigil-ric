@@ -46,6 +46,7 @@ fn wav_bytes() -> Vec<u8> {
 
 fn transcript_identity(tool: ExternalTranscript) -> ExtractorIdentity {
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: Some(tool),
         profile: None,
     };
@@ -167,6 +168,7 @@ fn identical_configuration_gives_an_identical_identity_across_runs() {
 #[test]
 fn in_process_extractors_no_longer_store_the_artifact_digest() {
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };

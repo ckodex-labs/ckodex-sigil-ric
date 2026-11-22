@@ -209,6 +209,7 @@ fn a_wav_declaring_a_zero_sample_rate_fails_closed() {
     wav.extend(4u32.to_le_bytes());
     wav.extend([0, 0, 1, 0]);
     let result = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: Some(builtin("audio/16k-decimate").expect("profile")),
     }
@@ -227,6 +228,7 @@ fn cv_ric_030_decimate_view_binds_the_reference_waveform() {
     // matches the numpy reference, and the audio judgment caps authority.
     let bytes = std::fs::read(fixture("attack_96k.wav")).expect("specimen");
     let report = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: Some(builtin("audio/16k-decimate").expect("profile")),
     }

@@ -77,3 +77,28 @@ fn a_profile_of_the_wrong_modality_is_rejected() {
     let out = perceive("attack_source.png", &["--profile", "audio/16k-decimate"]);
     assert!(!out.status.success(), "an audio profile has no image view");
 }
+
+#[test]
+fn a_resampler_needs_an_ffmpeg_resampled_profile() {
+    let wav = specimen("attack_96k.wav");
+    let out = Command::new(env!("CARGO_BIN_EXE_sigil-cli"))
+        .args([
+            "perceive",
+            "--format",
+            "json",
+            "--modality",
+            "audio",
+            "--input",
+        ])
+        .arg(&wav)
+        .args([
+            "--profile",
+            "audio/16k-decimate",
+            "--resampler-binary",
+            "/bin/echo",
+        ])
+        .output()
+        .expect("spawn sigil-cli");
+    assert!(!out.status.success());
+    assert!(String::from_utf8_lossy(&out.stderr).contains("ffmpeg-resampled"));
+}

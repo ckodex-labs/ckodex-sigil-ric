@@ -80,7 +80,7 @@ order.
 | `qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow` | Pillow 13.0.0 bicubic (a = −0.5, support 2 scaled by the downscale factor, 22-bit fixed point, separable, version-specific pass order) after `smart_resize` (factor 28, min 3136, max 12845056 px) | `Qwen2VLImageProcessor` slow path | `image.views.qwen2vl_644_bicubic_rgb_sha384`: passes |
 | `thumbnail/nearest-80` | Pillow 13.0.0 nearest (pixel-centre sampling, position accumulated by repeated addition) to 80² | `Image.resize((80, 80), NEAREST)` | `image.views.nearest_80_rgb_sha384`: passes |
 | `audio/16k-decimate` | `x[::k]` on channel 0, 16-bit PCM, whole ratios only | numpy slicing | `audio.waveform_16k_sha384.decimate_x6` (sha384 over int16 LE): passes |
-| `whisper/16k-filtered` | ffmpeg swresample defaults | `ffmpeg -ar 16000 -ac 1` | no in-process implementation: perceiving under it fails closed |
+| `whisper/16k-filtered` | ffmpeg swresample defaults, run by a digest-pinned ffmpeg with the reference command (`-f s16le -ac 1 -ar 16000`) | `ffmpeg -ar 16000 -ac 1` | approximate: the view equals the pinned ffmpeg's output, but the specimen's recorded hash (`631d7c57…`, unrecorded ffmpeg version) is not reproduced by ffmpeg 9.0.2. Without `--resampler-binary`, perceiving fails closed |
 
 - **Pillow version is part of the identity** (measured 2026-11-21). Pillow
   12.3.0's `ImagingResampleInner` always runs the horizontal pass first

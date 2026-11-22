@@ -150,6 +150,14 @@ View lines that the source extraction covers less than 80 % become a
 Without a profile, or under an approximate one, `--analyze` caps the
 ceiling of pixel and sound inputs at observe.
 
+`--resampler-binary <ffmpeg>` (audio, with `whisper/16k-filtered`) pins
+ffmpeg as the profile's resampler. SIGIL runs it with the reference command
+(`-loglevel error -i pipe:0 -f s16le -ac 1 -ar 16000 pipe:1`); the caller
+cannot change the arguments. The view's transform tag carries the binary's
+digest (`ffmpeg-s16le:<sha384>`), so an ASR that reads the view binds it. The
+view is approximate, because the specimen's recorded reference hash was not
+reproduced, so the ceiling stays capped.
+
 `--vlm-assets <dir>` (images, with a vision-language profile; RIC-MM-001
 WP6) loads the target model's interpreter from digest-pinned files, today
 `assets/qwen2-vl-2b` (see its PROVENANCE.md). It adds the view's

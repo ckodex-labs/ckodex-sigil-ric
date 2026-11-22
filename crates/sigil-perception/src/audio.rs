@@ -34,6 +34,10 @@ pub struct AudioAdapter {
     pub transcript: Option<ExternalTranscript>,
     /// The target model's preprocessor profile (see `ImageAdapter::profile`).
     pub profile: Option<crate::preprocess::PreprocessorProfile>,
+    /// A pinned ffmpeg for profiles whose resampler is ffmpeg
+    /// (`whisper/16k-filtered`). Pin it with
+    /// [`crate::model_view::resampler_args`] for the profile.
+    pub resampler: Option<crate::ExternalPipe>,
 }
 
 impl PerceptionAdapter for AudioAdapter {
@@ -98,7 +102,13 @@ impl PerceptionAdapter for AudioAdapter {
         let mut consumed = None;
         if let Some(profile) = &self.profile {
             let tool = self.transcript.as_ref().zip(source_text.as_deref());
-            let view = crate::model_view::audio_view(profile, artifact.bytes, tool, adapter_id)?;
+            let view = crate::model_view::audio_view(
+                profile,
+                artifact.bytes,
+                self.resampler.as_ref(),
+                tool,
+                adapter_id,
+            )?;
             channels.extend(view.channels);
             consumed = Some(view.consumed);
         }

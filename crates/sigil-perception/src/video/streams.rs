@@ -86,6 +86,7 @@ impl VideoAdapter {
             }
         };
         let adapter = crate::audio::AudioAdapter {
+            resampler: None,
             transcript: extract.transcript.clone(),
             profile: None,
         };

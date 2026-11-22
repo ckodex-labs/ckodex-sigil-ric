@@ -51,6 +51,11 @@ pub struct PerceiveCommand {
     /// A file that differs from its pin is an error.
     #[arg(long, requires = "profile")]
     pub vlm_assets: Option<PathBuf>,
+    /// ffmpeg binary to pin as the resampler of an ffmpeg-resampled audio
+    /// profile (`whisper/16k-filtered`). SIGIL runs it with the profile's
+    /// reference command and binds its digest in the view's transform.
+    #[arg(long, requires = "profile")]
+    pub resampler_binary: Option<PathBuf>,
     /// External renderer binary to pin for render-vs-extract comparison
     /// (document/PDF, optional — e.g. `pdftoppm`).
     #[arg(long)]

@@ -47,6 +47,7 @@ fn encode_float_wav(sample_rate: u32, freq_hz: f32, duration_secs: f32) -> Vec<u
 fn float_wav_produces_spectral_channel() {
     let bytes = encode_float_wav(16000, 440.0, 0.1);
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -74,6 +75,7 @@ fn float_wav_produces_spectral_channel() {
 fn audio_adapter_decodes_wav_and_reports_structure() {
     let bytes = encode_wav(16000, 1, 16000); // 1 second of silence
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -119,6 +121,7 @@ fn audio_adapter_duration_estimate_is_correct() {
     // 16000 Hz, mono, 16000 samples = 1.0 second.
     let bytes = encode_wav(16000, 1, 16000);
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -147,6 +150,7 @@ fn audio_adapter_stereo_duration_halved_per_channel() {
     // Duration = 16000 frames / 16000 Hz = 1.0 second.
     let bytes = encode_wav(16000, 2, 16000);
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -201,6 +205,7 @@ fn truncated_wav_marks_spectral_channel_truncated() {
     // Header declares 32002 bytes but file only has 32000 → 1 missing i16.
     let bytes = encode_wav_truncated_data(16000, 1, 32000);
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -231,6 +236,7 @@ fn truncated_wav_marks_spectral_channel_truncated() {
 #[test]
 fn undecodable_audio_fails_closed() {
     let adapter = AudioAdapter {
+        resampler: None,
         transcript: None,
         profile: None,
     };
@@ -263,6 +269,7 @@ fn transcript_channel_flows_through_kernel_mapping_as_derived() {
         let transcript =
             ExternalTranscript::pin(fake_asr, vec![], "fake-1.0".to_string()).expect("pin");
         let adapter = AudioAdapter {
+            resampler: None,
             transcript: Some(transcript),
             profile: None,
         };

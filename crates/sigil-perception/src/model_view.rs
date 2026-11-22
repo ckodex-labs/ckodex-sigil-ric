@@ -155,53 +155,38 @@ fn bind_interpreter(
     Ok(())
 }
 
-/// The waveform the model hears (channel 0, 16-bit PCM), ASR on it, and the
+/// The waveform the model hears (16-bit PCM), ASR on it, and the
 /// divergence from the source transcript when one was extracted.
+///
+/// An in-process profile (`audio/16k-decimate`) keeps channel 0. A profile
+/// whose resampler is ffmpeg (`whisper/16k-filtered`) needs `resampler`: a
+/// pinned ffmpeg SIGIL runs with the reference command, built from the
+/// profile ([`resampler_args`]). Its binary digest is part of the view's
+/// transform tag, so any extractor that reads the view binds it.
 ///
 /// # Errors
 ///
-/// `DecodeFailed` for a WAV that is not 16-bit integer PCM; `ExtractorFailed`
-/// when the profile has no in-process view for this input or the ASR fails.
+/// `DecodeFailed` for a WAV that is not 16-bit integer PCM with a non-zero
+/// rate and channel count; `ExtractorFailed` when the profile has no view
+/// for this input, needs a resampler that was not given, or a tool fails.
 pub(crate) fn audio_view(
     profile: &PreprocessorProfile,
     wav: &[u8],
+    resampler: Option<&PinnedTool>,
     transcript: Option<(&PinnedTool, &str)>,
     adapter_id: &str,
 ) -> Result<ViewExtraction, PerceptionError> {
-    let mut reader =
-        hound::WavReader::new(Cursor::new(wav)).map_err(|_| PerceptionError::DecodeFailed)?;
-    let spec = reader.spec();
-    if spec.bits_per_sample != 16
-        || spec.sample_format != hound::SampleFormat::Int
-        || spec.sample_rate == 0
-        || spec.channels == 0
-    {
-        return Err(PerceptionError::DecodeFailed);
-    }
-    let channel0: Vec<i16> = reader
-        .samples::<i16>()
-        .step_by(usize::from(spec.channels.max(1)))
-        .collect::<Result<_, _>>()
-        .map_err(|_| PerceptionError::DecodeFailed)?;
-    let rate = u64::from(spec.sample_rate);
-    let (view, parity) = profile.audio_view(&channel0, rate).ok_or_else(|| {
-        PerceptionError::ExtractorFailed(format!(
-            "profile {} has no in-process audio view for {rate} Hz",
-            profile.name
-        ))
-    })?;
-    let bytes: Vec<u8> = view.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let waveform = waveform_view(profile, wav, resampler)?;
+    let bytes: Vec<u8> = waveform
+        .samples
+        .iter()
+        .flat_map(|s| s.to_le_bytes())
+        .collect();
     let mut consumed = ConsumedView {
         profile: profile.name.clone(),
         profile_digest: profile.digest(),
         digest: sha384_hex(&bytes),
-        // The view keeps channel 0, as the reference does; an engine that
-        // downmixes hears the other channels too. Only mono is covered.
-        parity: if spec.channels == 1 {
-            parity
-        } else {
-            ConsumedParity::Approximate
-        },
+        parity: waveform.parity,
         extractor: None,
         placeholders: None,
         placeholder_stream_digest: None,
@@ -209,17 +194,8 @@ pub(crate) fn audio_view(
     };
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = transcript {
-        let crate::preprocess::ProfileSpec::Audio { target_rate_hz, .. } = profile.spec else {
-            return Err(PerceptionError::ExtractorFailed(format!(
-                "profile {} is not an audio profile",
-                profile.name
-            )));
-        };
-        let target = u32::try_from(target_rate_hz).map_err(|_| {
-            PerceptionError::ExtractorFailed(format!("profile {} rate", profile.name))
-        })?;
-        let run = tool.extract(&encode_wav(&view, target)?)?;
-        let identity = view_identity(tool, TRANSCRIPT_EXTRACTOR, profile, "channel0-pcm16");
+        let run = tool.extract(&encode_wav(&waveform.samples, waveform.rate)?)?;
+        let identity = view_identity(tool, TRANSCRIPT_EXTRACTOR, profile, &waveform.transform);
         consumed.extractor = Some(identity.identity_digest.clone());
         channels.extend(divergence(
             &run.output,
@@ -240,6 +216,146 @@ pub(crate) fn audio_view(
         );
     }
     Ok(ViewExtraction { consumed, channels })
+}
+
+/// The waveform a profile produces, with its parity, rate and the transform
+/// tag that names how it was made.
+struct Waveform {
+    samples: Vec<i16>,
+    parity: ConsumedParity,
+    rate: u32,
+    transform: String,
+}
+
+fn failed(why: String) -> PerceptionError {
+    PerceptionError::ExtractorFailed(why)
+}
+
+/// The ffmpeg arguments for a resampling profile: WAV on stdin, 16-bit
+/// little-endian mono PCM at the profile's rate on stdout. This is the
+/// reference command (`scripts/reference/whisper-stdin`), so the caller
+/// cannot choose a different resampling under the profile's name.
+#[must_use]
+pub fn resampler_args(profile: &PreprocessorProfile) -> Option<Vec<String>> {
+    let crate::preprocess::ProfileSpec::Audio {
+        target_rate_hz,
+        resampler: crate::preprocess::AudioResampler::FfmpegSwrDefault,
+    } = profile.spec
+    else {
+        return None;
+    };
+    let rate = target_rate_hz.to_string();
+    Some(
+        [
+            "-loglevel",
+            "error",
+            "-i",
+            "pipe:0",
+            "-f",
+            "s16le",
+            "-ac",
+            "1",
+            "-ar",
+            &rate,
+            "pipe:1",
+        ]
+        .map(str::to_string)
+        .to_vec(),
+    )
+}
+
+fn waveform_view(
+    profile: &PreprocessorProfile,
+    wav: &[u8],
+    resampler: Option<&PinnedTool>,
+) -> Result<Waveform, PerceptionError> {
+    let mut reader =
+        hound::WavReader::new(Cursor::new(wav)).map_err(|_| PerceptionError::DecodeFailed)?;
+    let spec = reader.spec();
+    if spec.bits_per_sample != 16
+        || spec.sample_format != hound::SampleFormat::Int
+        || spec.sample_rate == 0
+        || spec.channels == 0
+    {
+        return Err(PerceptionError::DecodeFailed);
+    }
+    let crate::preprocess::ProfileSpec::Audio { target_rate_hz, .. } = profile.spec else {
+        return Err(failed(format!(
+            "profile {} is not an audio profile",
+            profile.name
+        )));
+    };
+    let rate = u32::try_from(target_rate_hz)
+        .map_err(|_| failed(format!("profile {} rate", profile.name)))?;
+    if let Some(args) = resampler_args(profile) {
+        return resampled(profile, wav, resampler, &args, rate);
+    }
+    let channel0: Vec<i16> = reader
+        .samples::<i16>()
+        .step_by(usize::from(spec.channels.max(1)))
+        .collect::<Result<_, _>>()
+        .map_err(|_| PerceptionError::DecodeFailed)?;
+    let source_rate = u64::from(spec.sample_rate);
+    let (samples, parity) = profile.audio_view(&channel0, source_rate).ok_or_else(|| {
+        failed(format!(
+            "profile {} has no in-process audio view for {source_rate} Hz",
+            profile.name
+        ))
+    })?;
+    Ok(Waveform {
+        samples,
+        // The view keeps channel 0, as the reference does; an engine that
+        // downmixes hears the other channels too. Only mono is covered.
+        parity: if spec.channels == 1 {
+            parity
+        } else {
+            ConsumedParity::Approximate
+        },
+        rate,
+        transform: "channel0-pcm16".to_string(),
+    })
+}
+
+/// Run the pinned resampler. Its output is ffmpeg's own resampling, but the
+/// specimen's recorded reference hash was not reproduced with ffmpeg 9.0.2
+/// (docs/ADR-001), so the view is approximate.
+fn resampled(
+    profile: &PreprocessorProfile,
+    wav: &[u8],
+    resampler: Option<&PinnedTool>,
+    args: &[String],
+    rate: u32,
+) -> Result<Waveform, PerceptionError> {
+    let tool = resampler.ok_or_else(|| {
+        failed(format!(
+            "profile {} needs a pinned resampler (ffmpeg)",
+            profile.name
+        ))
+    })?;
+    let identity = tool.identity("resampler");
+    if identity.args != args {
+        return Err(failed(format!(
+            "resampler for {} must be pinned with the profile's arguments",
+            profile.name
+        )));
+    }
+    let run = tool.run(wav)?;
+    if run.input_unread || !run.output.len().is_multiple_of(2) {
+        return Err(failed(
+            "resampler output is not whole 16-bit samples".to_string(),
+        ));
+    }
+    let samples = run
+        .output
+        .chunks_exact(2)
+        .map(|pair| i16::from_le_bytes([pair[0], pair[1]]))
+        .collect();
+    Ok(Waveform {
+        samples,
+        parity: ConsumedParity::Approximate,
+        rate,
+        transform: format!("ffmpeg-s16le:{}", identity.config_digest),
+    })
 }
 
 /// Lines only the model's view carries, as a `Divergence` channel bound to
