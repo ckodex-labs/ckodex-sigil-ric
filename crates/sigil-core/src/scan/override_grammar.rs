@@ -15,8 +15,10 @@
 //!   preceded only by imperative lead-ins ("please", "now", "you must",
 //!   "I want you to"). "It is easy to forget how simple the rules were" is
 //!   description, not command;
-//! - a negation just before the verb ("do not ignore the rules") is not an
-//!   override.
+//! - a negator directly before the verb ("do not ignore the rules") is not
+//!   an override; one separated by a comma or dash ("No, ignore the rules",
+//!   "Never — ignore the rules") does not cancel it. Commas and dashes also
+//!   restart the imperative-position check.
 
 use super::types::TextMap;
 use crate::types::{DetectorId, ScanFinding, Severity};
@@ -25,8 +27,6 @@ use std::sync::LazyLock;
 /// Words allowed between the verb and the authority object ("ignore all
 /// previous instructions" has two).
 const MAX_GAP: usize = 4;
-/// Words before the verb checked for a negation.
-const NEGATION_REACH: usize = 2;
 
 /// Override verbs with their inflected forms, written out (English
 /// inflection is irregular: ignore → ignoring, forget → forgot). Verbs with
@@ -95,6 +95,7 @@ const SYSTEM: &str = "system";
 const PROMPT_FORMS: &[&str] = &["prompt", "prompts", "message", "messages"];
 /// Words that may precede an imperative verb in its clause.
 const LEADS: &[&str] = &[
+    "no",
     "please",
     "kindly",
     "now",
@@ -132,6 +133,9 @@ const LEADS: &[&str] = &[
     "required",
     "going",
 ];
+/// Negators that cancel an override only when they directly precede the verb
+/// with no comma or dash between ("do not ignore", "never bypass"). "no" is
+/// not one: "No, ignore all rules" is an override.
 const NEGATIONS: &[&str] = &[
     "not",
     "never",
@@ -142,8 +146,9 @@ const NEGATIONS: &[&str] = &[
     "shouldn't",
     "mustn't",
     "won't",
-    "no",
 ];
+/// Characters that end a phrase (not a clause) inside a sentence.
+const PHRASE_ENDS: &[char] = &[',', '-', '\u{2013}', '\u{2014}'];
 const CLAUSE_ENDS: &[char] = &['.', '!', '?', ';', ':', '\n'];
 
 /// Folds a word for comparison: lowercase, invisible characters removed,
@@ -181,12 +186,13 @@ static LEXICON: LazyLock<Lexicon> = LazyLock::new(|| {
 });
 
 /// One whitespace-separated word: its folded form, its text range, and
-/// whether a clause ends right after it.
+/// whether a clause or a phrase (comma, dash) ends right after it.
 struct Word {
     folded: String,
     start: usize,
     end: usize,
     ends_clause: bool,
+    ends_phrase: bool,
 }
 
 fn words(text: &str) -> Vec<Word> {
@@ -194,18 +200,22 @@ fn words(text: &str) -> Vec<Word> {
     let mut start = None;
     let push = |out: &mut Vec<Word>, s: usize, e: usize| {
         let raw = &text[s..e];
-        let ends_clause = raw
-            .trim_end_matches(['"', '\'', ')', ']'])
-            .ends_with(CLAUSE_ENDS);
+        let tail = raw.trim_end_matches(['"', '\'', ')', ']']);
         let core = raw.trim_matches(|c: char| c.is_ascii_punctuation() && c != '|' && c != '\'');
-        if !core.is_empty() {
-            out.push(Word {
-                folded: fold(core),
-                start: s,
-                end: e,
-                ends_clause,
-            });
+        if core.chars().all(|c| PHRASE_ENDS.contains(&c)) {
+            // A standalone dash ends the phrase of the word before it.
+            if let Some(previous) = out.last_mut() {
+                previous.ends_phrase = true;
+            }
+            return;
         }
+        out.push(Word {
+            folded: fold(core),
+            start: s,
+            end: e,
+            ends_clause: tail.ends_with(CLAUSE_ENDS),
+            ends_phrase: tail.ends_with(PHRASE_ENDS),
+        });
     };
     for (idx, ch) in text.char_indices() {
         if ch.is_whitespace() {
@@ -256,15 +266,15 @@ fn imperative(words: &[Word], verb: usize, lexicon: &Lexicon) -> bool {
     words[..verb]
         .iter()
         .rev()
-        .take_while(|w| !w.ends_clause)
+        .take_while(|w| !w.ends_clause && !w.ends_phrase)
         .all(|w| lexicon.leads.contains(&w.folded) || lexicon.negations.contains(&w.folded))
 }
 
+/// A negator directly before the verb, not separated by a comma or dash.
 fn negated(words: &[Word], verb: usize, lexicon: &Lexicon) -> bool {
-    let from = verb.saturating_sub(NEGATION_REACH);
-    words[from..verb]
-        .iter()
-        .any(|w| !w.ends_clause && lexicon.negations.contains(&w.folded))
+    verb.checked_sub(1)
+        .and_then(|i| words.get(i))
+        .is_some_and(|w| !w.ends_clause && !w.ends_phrase && lexicon.negations.contains(&w.folded))
 }
 
 fn object_after<'w>(words: &'w [Word], verb: usize, lexicon: &Lexicon) -> Option<&'w Word> {
