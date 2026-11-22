@@ -27,7 +27,10 @@ pub fn source(client: &Query) -> Directory {
 
 /// rust:<ver> + rustfmt + llvm-tools-preview + pinned Zig, cargo
 /// caches mounted. Zig is a workspace build dependency — sigil-core's
-/// build.rs compiles libzig_tiktoken.a unconditionally.
+/// build.rs compiles libzig_tiktoken.a unconditionally. Tesseract and
+/// ffmpeg are test dependencies: the model-view vectors run real OCR
+/// (CV-RIC-029) and the whisper/16k-filtered view runs real ffmpeg, and
+/// both fail rather than skip when the tool is missing.
 pub fn rust(client: &Query, version: &str) -> Container {
     let image = format!("rust:{version}-bookworm");
     let target_cache = client.cache_volume(format!("sigil-target-{version}"));
@@ -37,7 +40,8 @@ pub fn rust(client: &Query, version: &str) -> Container {
         .with_exec(sh(
             "rustup component add rustfmt clippy llvm-tools-preview && \
              apt-get update -qq && \
-             apt-get install -y -qq python3 python3-pip xz-utils curl ca-certificates && \
+             apt-get install -y -qq python3 python3-pip xz-utils curl ca-certificates \
+               tesseract-ocr ffmpeg && \
              pip3 install --break-system-packages --quiet tiktoken==0.12.0",
         ))
         .with_exec(sh(ZIG_INSTALL))
