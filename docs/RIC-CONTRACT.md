@@ -28,6 +28,9 @@ An approval of representation `R1` does not confer authority over representation
 | **RIC-R-10** | Delegated authority ceilings must decrease or maintain standing. | `AuthorityCeiling::permits` enforces child ceiling is less than or equal to parent ceiling. |
 | **RIC-R-11** | Delegation depth and validity windows are strictly bounded. | `validate_chain` enforces child depth does not exceed max depth and child expiration does not exceed parent expiration. |
 | **RIC-R-12** | Agent task envelopes bind the active capability lease to the admitted representation receipt. | `validate_envelope` enforces exact match between lease representation digest and receipt canonical digest. |
+| **RIC-RET-1** | A retriever or embedding filter is an interpreter: its model identity and the representation it consumed are bound. | `sigil_core::retrieval::RetrievalReceipt` (`sigil-retrieval-v1`): model weights, tokenizer, pooling, dimensions, admitted and consumed digests, dropped bytes, score. |
+| **RIC-RET-2** | Retrieval never upgrades source authority. | `assess_retrieval`: trust is the minimum of the source's trust and `Provenance::Retrieval`'s, and the ceiling is the minimum of the source's and the content's; the multimodal engine feeds that trust to fusion. |
+| **RIC-RET-3** | A similarity score never raises a ceiling; an unresolved retrieval interpreter caps at observe. | `assess_retrieval` never reads the score. The multimodal engine caps every `Provenance::Retrieval` input without an in-process assessment for its exact admitted text. |
 
 ## 3. Known deviations tracked and open
 

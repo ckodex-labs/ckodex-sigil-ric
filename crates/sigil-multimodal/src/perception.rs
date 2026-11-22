@@ -133,6 +133,7 @@ pub fn channels_to_modal_inputs(report: &PerceptionReport, modality: Modality) -
             derived_from: Some(report.source_id.clone()),
             channel: Some(channel.channel_kind),
             consumed: report.consumed.clone(),
+            retrieval: None,
         })
         .collect();
     // An artifact with no extracted text still reaches the model as pixels
@@ -147,6 +148,7 @@ pub fn channels_to_modal_inputs(report: &PerceptionReport, modality: Modality) -
             derived_from: Some(report.source_id.clone()),
             channel: None,
             consumed: report.consumed.clone(),
+            retrieval: None,
         });
     }
     inputs

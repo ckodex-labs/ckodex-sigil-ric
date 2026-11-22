@@ -38,6 +38,7 @@ fn channel(
         derived_from: Some("artifact".to_string()),
         channel: Some(kind),
         consumed: parity.map(|parity| view(parity, Some("ocr-identity"))),
+        retrieval: None,
     }
 }
 

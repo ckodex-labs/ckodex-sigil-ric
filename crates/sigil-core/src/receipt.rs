@@ -96,6 +96,8 @@ pub enum ReceiptVerifyError {
     UnsupportedVersion(u32),
     #[error("a v2 receipt cannot carry a consumed block: v2 does not sign it")]
     UnsignedConsumedBlock,
+    #[error("the recorded model identity is not the model's own digest")]
+    InconsistentModelIdentity,
     #[error(transparent)]
     Signature(#[from] SignatureVerifyError),
 }
@@ -185,11 +187,11 @@ pub(crate) fn legacy_receipt_version() -> u32 {
     LEGACY_RECEIPT_VERSION
 }
 
-fn put_u64(out: &mut Vec<u8>, value: u64) {
+pub(crate) fn put_u64(out: &mut Vec<u8>, value: u64) {
     out.extend_from_slice(&value.to_be_bytes());
 }
 
-fn put_str(out: &mut Vec<u8>, value: &str) {
+pub(crate) fn put_str(out: &mut Vec<u8>, value: &str) {
     put_u64(out, value.len() as u64);
     out.extend_from_slice(value.as_bytes());
 }

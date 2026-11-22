@@ -37,6 +37,44 @@ pub struct ModalInput {
     /// wire: a caller cannot assert a view SIGIL did not produce.
     #[serde(skip)]
     pub consumed: Option<ConsumedView>,
+    /// The retrieval boundary's judgment, when this input is a retrieved
+    /// chunk SIGIL assessed in process (RIC-SPEC §4.3). Never read from the
+    /// wire: a retrieval-provenance input without it is capped at observe.
+    #[serde(skip)]
+    pub retrieval: Option<BoundRetrieval>,
+}
+
+/// A retrieved chunk's assessment, bound to the text it was made for.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BoundRetrieval {
+    /// Canonical digest of the admitted chunk text the assessment is for.
+    pub chunk_digest: String,
+    pub assessment: sigil_core::retrieval::RetrievalAssessment,
+}
+
+impl ModalInput {
+    /// A retrieved chunk as a text input: retrieval provenance, derived from
+    /// its source, with the retrieval boundary's assessment attached.
+    #[must_use]
+    pub fn retrieved(content: String, chunk: &sigil_core::retrieval::RetrievedChunk) -> Self {
+        let assessment = sigil_core::retrieval::assess_retrieval(
+            chunk,
+            sigil_core::delegation::AuthorityCeiling::Act,
+        );
+        Self {
+            modality: Modality::Text,
+            content,
+            provenance: Provenance::Retrieval,
+            source_id: Some(format!("{}:retrieved", chunk.source_id)),
+            derived_from: Some(chunk.source_id.clone()),
+            channel: None,
+            consumed: None,
+            retrieval: Some(BoundRetrieval {
+                chunk_digest: chunk.receipt.canonical_digest.clone(),
+                assessment,
+            }),
+        }
+    }
 }
 
 pub use sigil_core::receipt::{ConsumedParity, ConsumedView};

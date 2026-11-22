@@ -63,7 +63,10 @@ mod tests {
                 .iter()
                 .any(|event| event.kind == FusionRiskKind::CrossTrustFusion)
         );
-        assert_eq!(assessment.authority_ceiling, AuthorityCeiling::Draft);
+        // Cross-trust fusion alone gives Draft; the retrieved document has no
+        // in-process retrieval assessment, so RIC-SPEC §4.3 (RIC-RET-3) caps
+        // it at Observe (RIC-MM-001 WP7).
+        assert_eq!(assessment.authority_ceiling, AuthorityCeiling::Observe);
     }
 
     #[test]
@@ -110,6 +113,7 @@ mod tests {
                 derived_from: Some("image-1".to_string()),
                 channel: None,
                 consumed: None,
+                retrieval: None,
             }])
             .expect("analysis");
 
@@ -150,6 +154,7 @@ mod tests {
                 derived_from: Some("audio-1".to_string()),
                 channel: None,
                 consumed: None,
+                retrieval: None,
             }])
             .expect("analysis");
 
@@ -189,6 +194,7 @@ mod tests {
                 derived_from: Some("audio-2".to_string()),
                 channel: None,
                 consumed: None,
+                retrieval: None,
             }])
             .expect("analysis");
 
@@ -229,6 +235,7 @@ mod tests {
                 derived_from: Some("audio-3".to_string()),
                 channel: None,
                 consumed: None,
+                retrieval: None,
             }])
             .expect("analysis");
 

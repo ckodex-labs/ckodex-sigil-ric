@@ -50,6 +50,7 @@ fn inspect_multimodal_analyzes_text_channel() {
             derived_from: None,
             channel: None,
             consumed: None,
+            retrieval: None,
         }])
         .expect("multimodal");
     assert!(assessment.text.is_some());

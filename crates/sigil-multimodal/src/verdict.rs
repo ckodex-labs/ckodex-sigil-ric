@@ -33,6 +33,29 @@ pub(crate) fn authority_ceiling(verdict: &Verdict, fusion: &FusionAssessment) ->
 /// RIC-R-8: a pixel or sound input whose consumed representation SIGIL did
 /// not produce under a reference-matched profile leaves the model's
 /// interpreter unresolved. Uncertainty degrades authority, never raises it.
+/// The retrieval boundary's cap on a retrieval-provenance input (RIC-SPEC
+/// §4.3): observe without an in-process assessment, or when the assessment
+/// was made for text other than what the engine admitted (`admitted`, the
+/// canonical digest of this input's receipt); otherwise its own ceiling.
+pub(crate) fn retrieval_cap(input: &ModalInput, admitted: &str) -> Option<AuthorityCeiling> {
+    if input.provenance != sigil_core::types::Provenance::Retrieval {
+        return None;
+    }
+    Some(match &input.retrieval {
+        Some(bound) if bound.chunk_digest == admitted => bound.assessment.ceiling,
+        _ => AuthorityCeiling::Observe,
+    })
+}
+
+/// The trust a fused input carries: never above a retrieved chunk's source.
+pub(crate) fn input_trust(input: &ModalInput) -> sigil_core::TrustLevel {
+    let trust = input.provenance.default_trust();
+    match &input.retrieval {
+        Some(bound) => trust.min(bound.assessment.trust),
+        None => trust,
+    }
+}
+
 pub(crate) fn interpreter_unresolved(input: &ModalInput) -> bool {
     matches!(
         input.modality,

@@ -23,7 +23,7 @@ pub use perception::{
     ExtractedChannel, ExtractorIdentity, PerceptionAdapter, PerceptionError, PerceptionReport,
 };
 pub use types::{
-    AuthorityCeiling, ConsumedParity, CrossModalAssessment, CrossModalCorrelation,
+    AuthorityCeiling, BoundRetrieval, ConsumedParity, CrossModalAssessment, CrossModalCorrelation,
     FusionAssessment, FusionEvent, FusionRiskKind, ModalInput, Modality, ModalityAssessment,
     MultimodalAssessment, MultimodalFinding, MultimodalFindingKind,
 };

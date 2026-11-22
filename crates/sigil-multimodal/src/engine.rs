@@ -44,6 +44,7 @@ impl MultimodalEngine {
         let mut correlations = Vec::new();
         let mut modality_severities = Vec::new();
         let mut fusion_records: Vec<FusionRecord> = Vec::new();
+        let mut retrieval_caps: Vec<AuthorityCeiling> = Vec::new();
 
         for (idx, input) in inputs.iter().enumerate() {
             let output = self.sigil.process_text_segments_bound(
@@ -54,6 +55,7 @@ impl MultimodalEngine {
                 input.consumed.clone(),
             )?;
             let assessment = output.assessment.clone();
+            retrieval_caps.extend(retrieval_cap(input, &output.receipt.canonical_digest));
             let (mut findings, _cross_modal_taint) = match input.modality {
                 Modality::Text => {
                     text = Some(output.clone());
@@ -99,7 +101,7 @@ impl MultimodalEngine {
                     .clone()
                     .unwrap_or_else(|| format!("{:?}[{}]", input.modality, idx)),
                 provenance: input.provenance,
-                trust: input.provenance.default_trust(),
+                trust: input_trust(input),
                 derived: input.derived_from.is_some(),
                 instruction_signal: has_instruction_signal(&output),
             });
@@ -153,6 +155,9 @@ impl MultimodalEngine {
         let mut ceiling = authority_ceiling(&final_verdict, &fusion);
         if inputs.iter().any(interpreter_unresolved) {
             ceiling = ceiling.min(AuthorityCeiling::Observe);
+        }
+        for cap in retrieval_caps {
+            ceiling = ceiling.min(cap);
         }
 
         Ok(MultimodalAssessment {

@@ -12,6 +12,7 @@ pub mod parallel;
 pub mod perplexity;
 pub mod policy;
 pub mod receipt;
+pub mod retrieval;
 pub mod scan;
 pub mod signing;
 pub mod sink;
