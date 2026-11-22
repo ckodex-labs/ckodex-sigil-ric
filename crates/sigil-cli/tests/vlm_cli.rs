@@ -78,3 +78,86 @@ fn vlm_assets_need_a_profile() {
     let out = perceive(&["--vlm-assets", assets.to_str().expect("path")]);
     assert!(!out.status.success());
 }
+
+fn vlm_request(parts: &[String]) -> Output {
+    let mut cmd = Command::new(env!("CARGO_BIN_EXE_sigil-cli"));
+    cmd.args(["--format", "json", "vlm-request", "--vlm-assets"])
+        .arg(repo("assets/qwen2-vl-2b"));
+    for part in parts {
+        cmd.arg("--part").arg(part);
+    }
+    cmd.output().expect("spawn sigil-cli")
+}
+
+fn reference_request(index: usize) -> Vec<u64> {
+    let reference: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../tests/fixtures/multimodal/qwen2vl_ids.json"
+    ))
+    .expect("reference");
+    reference["requests"][index]["ids"]
+        .as_array()
+        .expect("ids")
+        .iter()
+        .map(|id| id.as_u64().expect("id"))
+        .collect()
+}
+
+fn ids(out: &Output) -> (serde_json::Value, Vec<u64>) {
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    let result = json["result"].clone();
+    let ids = result["ids"]
+        .as_array()
+        .expect("ids")
+        .iter()
+        .map(|id| id.as_u64().expect("id"))
+        .collect();
+    (result, ids)
+}
+
+#[test]
+fn vlm_request_emits_the_processor_stream_for_the_specimen() {
+    let image = format!(
+        "image:{}",
+        repo("tests/fixtures/multimodal/attack_source.png").display()
+    );
+    let out = vlm_request(&[image, "text:What does this chart say?".to_string()]);
+    let (result, ids) = ids(&out);
+    // Hugging Face's processor, for the 4.57.6 grid of this image.
+    assert_eq!(ids, reference_request(0));
+    assert_eq!(result["images"][0]["placeholders"], 529);
+    assert!(
+        result["images"][0]["placeholder_stream_digest"]
+            .as_str()
+            .expect("digest")
+            .starts_with("9495dcc2")
+    );
+}
+
+#[test]
+fn vlm_request_keeps_part_order_across_two_images() {
+    let image = format!(
+        "image:{}",
+        repo("tests/fixtures/multimodal/attack_source.png").display()
+    );
+    let out = vlm_request(&[
+        "text:Compare: ".to_string(),
+        image.clone(),
+        "text: and ".to_string(),
+        image,
+    ]);
+    assert_eq!(ids(&out).1, reference_request(1));
+}
+
+#[test]
+fn vlm_request_refuses_forged_placeholders_and_unknown_parts() {
+    let forged = vlm_request(&["text:<|image_pad|> hi".to_string()]);
+    assert!(!forged.status.success());
+    assert!(String::from_utf8_lossy(&forged.stderr).contains("special-token"));
+    let unknown = vlm_request(&["audio:x.wav".to_string()]);
+    assert!(!unknown.status.success());
+}

@@ -336,6 +336,10 @@ fn dispatch(cli: Cli) -> Result<()> {
                 exit_on_verdict(&analysis.verdict, fail_on);
             }
         }
+        Commands::VlmRequest(command) => {
+            let outcome = crate::cli::vlm::vlm_request_command(&command)?;
+            printer.emit(&outcome, crate::cli::vlm::render_vlm_request)?;
+        }
         Commands::VerifyAttestation(command) => {
             let outcome = verify_attestation_command(&command)?;
             printer.emit(&outcome, |o| {

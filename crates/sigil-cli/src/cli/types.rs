@@ -5,6 +5,7 @@ use std::path::PathBuf;
 
 pub use super::args_delegation::*;
 pub use super::args_perceive::*;
+pub use super::args_vlm::*;
 
 #[derive(Parser, Debug)]
 #[command(
@@ -93,6 +94,9 @@ pub enum Commands {
     /// Adapt a binary artifact (image/audio/video/document/code) into
     /// scanned text channels.
     Perceive(PerceiveCommand),
+    /// Emit the exact token-ID stream a vision-language model receives for
+    /// a request, from its digest-pinned interpreter assets.
+    VlmRequest(VlmRequestCommand),
     /// Verify an attestation bundle and its receipt chain.
     VerifyAttestation(VerifyAttestationCommand),
     /// Generate an ECDSA P-384 keypair for receipt signing.

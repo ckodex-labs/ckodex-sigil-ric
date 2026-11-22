@@ -76,6 +76,10 @@ pub enum InterpreterError {
     Grid([u64; 3]),
     #[error("request text exceeds {MAX_REQUEST_TEXT_BYTES} bytes")]
     TooLarge,
+    #[error("cannot read the image's dimensions")]
+    ImageDecode,
+    #[error("profile {0} does not resize and patch as the interpreter's processor config")]
+    ProfileMismatch(String),
 }
 
 /// One part of a request, in template order.
@@ -295,6 +299,36 @@ impl Qwen2VlInterpreter {
             && patching.merge_size == p.merge_size
             && patching.image_mean == p.image_mean
             && patching.image_std == p.image_std
+    }
+
+    /// The grid of an image under a profile: its view size from the
+    /// profile's resize rule, then `[1, h/p, w/p]`. The profile must patch
+    /// exactly as this interpreter's processor config declares.
+    ///
+    /// # Errors
+    /// `ProfileMismatch`, `ImageDecode`, or `Grid` when the profile has
+    /// no view of this size.
+    pub fn image_grid(
+        &self,
+        profile: &PreprocessorProfile,
+        image: &[u8],
+    ) -> Result<[u64; 3], InterpreterError> {
+        if !self.matches_profile(profile) {
+            return Err(InterpreterError::ProfileMismatch(profile.name.clone()));
+        }
+        let (width, height) = image::ImageReader::new(std::io::Cursor::new(image))
+            .with_guessed_format()
+            .ok()
+            .and_then(|reader| reader.into_dimensions().ok())
+            .ok_or(InterpreterError::ImageDecode)?;
+        let (view_width, view_height) = profile
+            .output_size(u64::from(width), u64::from(height))
+            .ok_or(InterpreterError::Grid([
+                0,
+                u64::from(height),
+                u64::from(width),
+            ]))?;
+        Ok(self.grid_for_view(view_width, view_height))
     }
 
     /// The still-image grid `[1, h/p, w/p]` for a view of this size.

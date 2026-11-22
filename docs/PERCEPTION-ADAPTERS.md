@@ -166,6 +166,11 @@ interpreter must patch exactly as the profile does, or perception fails. The
 library (`sigil_perception::vlm`) also emits a whole request's ID stream. It
 refuses text that contains a special-token literal such as `<|image_pad|>`,
 which Hugging Face's tokenizer would turn into a real placeholder ID.
+`sigil-cli vlm-request --vlm-assets <dir> --part image:<png> --part text:<text>`
+emits that stream from the CLI. It prints the interpreter identity, the IDs,
+their SHA-384, and per image the grid, placeholder count and placeholder-stream
+digest. An engine that accepts token IDs (SGLang `input_ids`) can consume it
+as is.
 
 ## 4. What adapters must never do (conformance rules)
 
