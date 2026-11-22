@@ -295,6 +295,11 @@ pub fn perceive_command(
             command.profile.is_some(),
             ["image", "audio"].as_slice(),
         ),
+        (
+            "--vlm-assets",
+            command.vlm_assets.is_some(),
+            ["image"].as_slice(),
+        ),
     ] {
         if present && !allowed.contains(&effective_modality) {
             return Err(anyhow!(
@@ -314,6 +319,18 @@ pub fn perceive_command(
                     sigil_perception::preprocess::BUILTIN_PROFILES.join(", ")
                 )
             })
+        })
+        .transpose()?;
+    let interpreter = command
+        .vlm_assets
+        .as_deref()
+        .map(|dir| {
+            sigil_perception::vlm::Qwen2VlInterpreter::load(
+                dir,
+                &sigil_perception::vlm::QWEN2_VL_2B,
+            )
+            .map(std::sync::Arc::new)
+            .map_err(|err| anyhow!("--vlm-assets {}: {err}", dir.display()))
         })
         .transpose()?;
 
@@ -477,7 +494,11 @@ pub fn perceive_command(
                 ),
                 None => None,
             };
-            let adapter = ImageAdapter { ocr, profile };
+            let adapter = ImageAdapter {
+                ocr,
+                profile,
+                interpreter,
+            };
             (
                 adapter.adapter_id().to_string(),
                 adapter

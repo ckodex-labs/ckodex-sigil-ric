@@ -2208,6 +2208,7 @@ dependencies = [
 name = "sigil-perception"
 version = "0.3.2"
 dependencies = [
+ "fancy-regex",
  "hound",
  "image",
  "kamadak-exif",
@@ -2221,6 +2222,8 @@ dependencies = [
  "sigil-core",
  "sigil-multimodal",
  "tempfile",
+ "thiserror",
+ "unicode-normalization",
 ]
 
 [[package]]

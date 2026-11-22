@@ -8,7 +8,7 @@
   "token_count": 5,
   "signature": {
     "algorithm": "ecdsa-p384-sha384",
-    "key_id": "030e2a50f70a468f",
-    "signature": "84f3d8da84e74c8c98793347af43d9aff81eaf039d59c50b62c1209381ce173668ca20114f228f6bca1238c7e60dc2f9fbec995bb7ffcdd5056243ed1e6f6681c8aa9329c2f02104ba353cc38373c833b35f6b68b2dacd1ae40cd345de9ae3f1"
+    "key_id": "1d8c997d5d8ee476",
+    "signature": "362fa5cfb2989dde48465b2243e9d7567f240b648a66bf8daec118a392968fff4761d1f17fd5cf85761a3f5508718f5a073fdab68c856ee6740b70e073290b3c1b8b5eb6b440e7faa27a77909e427ba3dee82909ccdf1b686d17c3d0e8e296dd"
   }
 }

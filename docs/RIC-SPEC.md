@@ -127,7 +127,8 @@ enforces the rules or honestly declares non-coverage.
     "parity":         "reference-matched | approximate",
     "extractor":      "<hex identity digest of the extractor that read the view>",
     "placeholders":   <u64>,
-    "placeholder_stream_digest": "<hex SHA-384 over the placeholder token IDs>"
+    "placeholder_stream_digest": "<hex SHA-384 over the placeholder token IDs>",
+    "interpreter":    "<hex identity digest of the model interpreter>"
   },
   "signature": {
     "algorithm":  "ecdsa-p384-sha384",
@@ -144,12 +145,14 @@ mislabeled receipt fails signature verification.
 
 `consumed` is present when the receipt's text was read from a media artifact
 under a preprocessor profile: it binds the representation the model receives,
-not only the text extracted from it. `extractor`, `placeholders` and
-`placeholder_stream_digest` are optional; an absent value is signed as
-absent. A consumed view no extractor read (`extractor` absent) or one that is
+not only the text extracted from it. `extractor`, `placeholders`,
+`placeholder_stream_digest` and `interpreter` are optional; an absent value
+is signed as absent. `placeholder_stream_digest` is SHA-384 over one image's
+token IDs (vision start, the placeholders, vision end) as little-endian
+`u32`. `interpreter` identifies the digest-pinned tokenizer, chat template,
+processor config and model config that stream was computed with. A consumed view no extractor read (`extractor` absent) or one that is
 `approximate` does not resolve the interpreter, and RIC-R-8 caps authority at
-`observe`. `placeholder_stream_digest` stays absent until a pinned model
-tokenizer supplies the placeholder IDs.
+`observe`.
 
 `receipt_version` selects the signing message. A receipt without the field is
 version 2. Version 3 is reserved and not defined by this document.
@@ -174,7 +177,8 @@ message       = str("sigil-receipt-v4")
              || str(normalization) || str(vocab) || u64be(token_count)
              || opt(str(profile) || str(profile_digest) || str(digest)
                     || str(parity) || opt(str(extractor))
-                    || opt(u64be(placeholders)) || opt(str(placeholder_stream_digest)))
+                    || opt(u64be(placeholders)) || opt(str(placeholder_stream_digest))
+                    || opt(str(interpreter)))
 ```
 
 ### 5.2 Capability lease schema
@@ -300,7 +304,7 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
 | Section 4.3 retrieval boundary | specified |
 | Section 4.4 agent-to-agent boundary: capability leases, attenuation, representation binding, revocation | implemented in SIGIL v0.3.1+, CV-RIC-009 through CV-RIC-014 |
 | Section 4.5 human-approval boundary | specified |
-| Multimodal perception: pixels, waveforms, temporal spans | partial (RIC-MM-001, in progress). SIGIL produces and binds the consumed view for images (`qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow`, `thumbnail/nearest-80`) and audio (`audio/16k-decimate`), signs it in receipt v4, and caps unresolved media at `observe`: CV-RIC-029 to CV-RIC-035. Not implemented: filtered audio resampling, the placeholder ID stream, temporal spans, and transcript divergence (no ASR is installed). |
+| Multimodal perception: pixels, waveforms, temporal spans | partial (RIC-MM-001, in progress). SIGIL produces and binds the consumed view for images (`qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow`, `thumbnail/nearest-80`) and audio (`audio/16k-decimate`), signs it in receipt v4, and caps unresolved media at `observe`. For Qwen2-VL it emits the exact request ID stream from digest-pinned assets and binds the placeholder stream and interpreter identity: CV-RIC-029 to CV-RIC-037. Not implemented: filtered audio resampling, other model families, temporal spans, and transcript divergence (no ASR is installed). |
 
 ## 9. Versioning policy
 
@@ -317,8 +321,9 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
 
 - §5.1: receipt version 4. A `consumed` block binds the media representation
   the model receives: profile and profile digest, consumed digest, parity,
-  extractor identity, placeholder count and placeholder-stream digest. The
-  version 4 signing message is length-prefixed and domain-separated.
+  extractor identity, placeholder count, placeholder-stream digest and
+  interpreter identity (the interpreter was added in WP6, before v4 left the
+  mission branch). The version 4 signing message is length-prefixed and domain-separated.
   Version 2 receipts keep verifying, and a version 2 receipt carrying
   `consumed` is rejected. Why: a media admission decision was made on the
   file while the model consumed a resized or resampled sibling

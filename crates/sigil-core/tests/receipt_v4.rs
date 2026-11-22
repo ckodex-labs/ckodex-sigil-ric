@@ -17,6 +17,7 @@ use sigil_core::types::{Provenance, RepresentationReceipt, TextSegment};
 use sigil_core::{ConsumedParity, ConsumedView, RECEIPT_VERSION, Sigil, Vocab};
 
 const FIXTURE_KEY: &str = include_str!("../../../tests/fixtures/receipts/signer.pub.hex");
+const V2_KEY: &str = include_str!("../../../tests/fixtures/receipts/v2_signer.pub.hex");
 const V2_TOKENIZE: &str = include_str!("../../../tests/fixtures/receipts/v2_tokenize.json");
 const V4_TOKENIZE: &str = include_str!("../../../tests/fixtures/receipts/v4_tokenize.json");
 const V4_PERCEIVE: &str = include_str!("../../../tests/fixtures/receipts/v4_perceive_qwen.json");
@@ -34,6 +35,7 @@ fn view() -> ConsumedView {
         extractor: Some("c3".repeat(48)),
         placeholders: Some(529),
         placeholder_stream_digest: None,
+        interpreter: None,
     }
 }
 
@@ -81,7 +83,7 @@ fn cv_ric_034_a_receipt_signed_before_v4_still_verifies() {
     );
     assert_eq!(receipt.receipt_version, 2);
     assert_eq!(receipt.consumed, None);
-    assert!(verify_receipt(&receipt, FIXTURE_KEY).is_ok());
+    assert!(verify_receipt(&receipt, V2_KEY).is_ok());
 }
 
 #[test]
@@ -103,7 +105,7 @@ fn cv_ric_034_receipts_the_binary_signed_as_v4_verify() {
 fn cv_ric_034_relabelling_the_version_fails() {
     let mut v2_as_v4 = fixture(V2_TOKENIZE);
     v2_as_v4.receipt_version = 4;
-    assert_mismatch(&v2_as_v4, FIXTURE_KEY);
+    assert_mismatch(&v2_as_v4, V2_KEY);
 
     let mut v4_as_v2 = fixture(V4_TOKENIZE);
     v4_as_v2.receipt_version = 2;
@@ -155,6 +157,9 @@ fn cv_ric_035_tampering_with_any_consumed_field_fails() {
         ("placeholder stream added", |v| {
             v.placeholder_stream_digest = Some("d5".repeat(48));
         }),
+        ("interpreter added", |v| {
+            v.interpreter = Some("e6".repeat(48))
+        }),
         // A byte moved across a field boundary: the length prefixes see it.
         ("boundary shift", |v| {
             let moved = v.profile.pop().expect("non-empty");
@@ -179,6 +184,25 @@ fn cv_ric_035_removing_or_adding_the_consumed_block_fails() {
     let mut text = fixture(V4_TOKENIZE);
     text.consumed = Some(view());
     assert_mismatch(&text, FIXTURE_KEY);
+}
+
+#[test]
+fn cv_ric_035_changing_the_bound_interpreter_or_stream_fails() {
+    let receipt = fixture(V4_PERCEIVE);
+    let mut other_interpreter = receipt.clone();
+    other_interpreter
+        .consumed
+        .as_mut()
+        .expect("consumed")
+        .interpreter = Some("f7".repeat(48));
+    assert_mismatch(&other_interpreter, FIXTURE_KEY);
+    let mut no_stream = receipt;
+    no_stream
+        .consumed
+        .as_mut()
+        .expect("consumed")
+        .placeholder_stream_digest = None;
+    assert_mismatch(&no_stream, FIXTURE_KEY);
 }
 
 #[test]

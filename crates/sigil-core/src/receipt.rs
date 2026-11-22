@@ -66,10 +66,16 @@ pub struct ConsumedView {
     /// Vision-language placeholder tokens the view expands to.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholders: Option<u64>,
-    /// SHA-384 over the placeholder token-ID stream. `None` until a pinned
-    /// model tokenizer supplies the IDs (RIC-MM-001 WP6).
+    /// SHA-384 over the placeholder token-ID stream (vision start, the
+    /// placeholders, vision end) as little-endian `u32`. `None` without a
+    /// pinned model interpreter.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub placeholder_stream_digest: Option<String>,
+    /// Identity digest of the model interpreter (tokenizer, chat template,
+    /// processor and model config, each digest-pinned) the placeholder
+    /// stream was computed with (RIC-MM-001 WP6).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub interpreter: Option<String>,
 }
 
 impl ConsumedView {
@@ -151,6 +157,7 @@ pub fn v4_message(receipt: &RepresentationReceipt) -> Vec<u8> {
                 }
             }
             put_opt_str(&mut out, view.placeholder_stream_digest.as_deref());
+            put_opt_str(&mut out, view.interpreter.as_deref());
         }
     }
     out

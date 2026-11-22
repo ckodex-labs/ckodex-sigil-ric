@@ -50,6 +50,7 @@ fn view(parity: ConsumedParity, extractor: Option<&str>) -> ConsumedView {
         extractor: extractor.map(str::to_string),
         placeholders: None,
         placeholder_stream_digest: None,
+        interpreter: None,
     }
 }
 

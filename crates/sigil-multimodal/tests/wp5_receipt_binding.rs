@@ -50,6 +50,7 @@ fn cv_ric_033_the_kernel_signs_the_consumed_block_it_judged() {
         extractor: Some("e3".to_string()),
         placeholders: None,
         placeholder_stream_digest: None,
+        interpreter: None,
     };
     let signer = Arc::new(EcdsaP384Signer::from_private_key_bytes(&[42u8; 48]).expect("key"));
     let key = signer.verification_key_hex();

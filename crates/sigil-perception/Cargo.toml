@@ -6,6 +6,7 @@ rust-version.workspace = true
 license-file.workspace = true
 
 [dependencies]
+fancy-regex = "0.13"
 hound = "3.5"
 image = { version = "0.25", default-features = false, features = ["png", "jpeg"] }
 kamadak-exif = "0.6"
@@ -18,6 +19,8 @@ serde_json.workspace = true
 sha2 = "0.10.9"
 sigil-core = { path = "../sigil-core" }
 sigil-multimodal = { path = "../sigil-multimodal" }
+thiserror.workspace = true
+unicode-normalization.workspace = true
 
 [dev-dependencies]
 tempfile = "3"

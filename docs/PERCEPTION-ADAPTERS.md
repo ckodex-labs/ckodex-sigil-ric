@@ -150,6 +150,15 @@ View lines that the source extraction covers less than 80 % become a
 Without a profile, or under an approximate one, `--analyze` caps the
 ceiling of pixel and sound inputs at observe.
 
+`--vlm-assets <dir>` (images, with a vision-language profile; RIC-MM-001
+WP6) loads the target model's interpreter from digest-pinned files, today
+`assets/qwen2-vl-2b` (see its PROVENANCE.md). It adds the view's
+placeholder-stream digest and the interpreter identity to `consumed`. The
+interpreter must patch exactly as the profile does, or perception fails. The
+library (`sigil_perception::vlm`) also emits a whole request's ID stream. It
+refuses text that contains a special-token literal such as `<|image_pad|>`,
+which Hugging Face's tokenizer would turn into a real placeholder ID.
+
 ## 4. What adapters must never do (conformance rules)
 
 1. Produce channels with `System`/`User` provenance (authority fabrication).

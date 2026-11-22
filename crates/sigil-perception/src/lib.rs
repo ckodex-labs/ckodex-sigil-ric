@@ -12,6 +12,7 @@ pub mod pinned;
 pub mod preprocess;
 pub mod spectral;
 pub mod video;
+pub mod vlm;
 
 use image::ImageReader;
 use serde::{Deserialize, Serialize};
@@ -35,6 +36,10 @@ pub struct ImageAdapter {
     /// model's view, binds it in the report's `consumed` block and OCRs it
     /// too (P-MM-1). When unset the kernel caps authority (RIC-R-8).
     pub profile: Option<preprocess::PreprocessorProfile>,
+    /// The target model's pinned interpreter. With a vision-language profile
+    /// it binds the view's placeholder stream and the interpreter identity in
+    /// the `consumed` block (RIC-MM-001 WP6).
+    pub interpreter: Option<std::sync::Arc<vlm::Qwen2VlInterpreter>>,
 }
 
 /// OCR extractor: a [`PinnedTool`] whose stdout is the recognised text.
@@ -133,8 +138,14 @@ impl PerceptionAdapter for ImageAdapter {
                 data: rgb.into_raw(),
             };
             let ocr = self.ocr.as_ref().zip(source_text.as_deref());
-            let view =
-                model_view::image_view(profile, &image, decode_covered, ocr, self.adapter_id())?;
+            let view = model_view::image_view(
+                profile,
+                &image,
+                decode_covered,
+                ocr,
+                self.interpreter.as_deref(),
+                self.adapter_id(),
+            )?;
             channels.extend(view.channels);
             consumed = Some(view.consumed);
         }
@@ -223,6 +234,7 @@ mod tests {
     fn image_adapter_decodes_and_reports_structure() {
         let bytes = encode_png(4, 3, [10, 20, 30, 255]);
         let adapter = ImageAdapter {
+            interpreter: None,
             ocr: None,
             profile: None,
         };
@@ -260,6 +272,7 @@ mod tests {
     #[test]
     fn undecodable_artifact_fails_closed() {
         let adapter = ImageAdapter {
+            interpreter: None,
             ocr: None,
             profile: None,
         };
@@ -297,6 +310,7 @@ mod tests {
 
             let ocr = ExternalOcr::pin(fake_ocr, vec![], "fake-1.0".to_string()).expect("pin");
             let adapter = ImageAdapter {
+                interpreter: None,
                 ocr: Some(ocr),
                 profile: None,
             };

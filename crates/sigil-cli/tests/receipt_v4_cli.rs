@@ -16,15 +16,28 @@ fn sigil() -> Command {
 }
 
 fn verify(receipt: &Path) -> serde_json::Value {
+    verify_with(receipt, "signer.pub.hex")
+}
+
+fn verify_with(receipt: &Path, key: &str) -> serde_json::Value {
     let out = sigil()
         .args(["--format", "json", "verify-receipt", "--receipt"])
         .arg(receipt)
         .arg("--key")
-        .arg(fixture("signer.pub.hex"))
+        .arg(fixture(key))
         .output()
         .expect("spawn sigil-cli");
     let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
     json["result"].clone()
+}
+
+/// The public key that signed a fixture (tests/fixtures/receipts/README.md).
+fn signer_of(fixture_name: &str) -> &'static str {
+    if fixture_name.starts_with("v2_") {
+        "v2_signer.pub.hex"
+    } else {
+        "signer.pub.hex"
+    }
 }
 
 #[test]
@@ -34,7 +47,7 @@ fn cv_ric_034_receipts_signed_before_and_after_v4_verify() {
         "v4_tokenize.json",
         "v4_perceive_qwen.json",
     ] {
-        let outcome = verify(&fixture(name));
+        let outcome = verify_with(&fixture(name), signer_of(name));
         assert_eq!(outcome["valid"], true, "{name}: {outcome}");
     }
 }

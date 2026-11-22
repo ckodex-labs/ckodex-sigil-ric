@@ -11,6 +11,7 @@
 //! render chain. Tagged entries are not argv.
 
 use crate::preprocess::{PreprocessorProfile, Rgb8};
+use crate::vlm::Qwen2VlInterpreter;
 use crate::{OCR_EXTRACTOR, PinnedTool, TRANSCRIPT_EXTRACTOR, in_process_identity};
 use sha2::{Digest, Sha384};
 use sigil_multimodal::{
@@ -33,13 +34,6 @@ pub(crate) struct ViewExtraction {
     pub channels: Vec<ExtractedChannel>,
 }
 
-/// The image the model sees, OCR on it, and the divergence from the source
-/// OCR text when one was extracted.
-///
-/// # Errors
-///
-/// `ExtractorFailed` when the profile has no image view for this input (an
-/// audio profile, or a size the resize rule rejects) or the OCR run fails.
 /// Source pixels a profile will convert to RGB8 and resample: larger inputs
 /// are rejected rather than allocated (3 bytes per pixel, 192 MiB).
 pub(crate) const MAX_SOURCE_PIXELS: u64 = 64 * 1024 * 1024;
@@ -49,14 +43,26 @@ pub(crate) fn within_source_budget(width: u32, height: u32) -> bool {
     u64::from(width) * u64::from(height) <= MAX_SOURCE_PIXELS
 }
 
+/// The image the model sees, OCR on it, and the divergence from the source
+/// OCR text when one was extracted.
+///
 /// `decode_covered`: the artifact was decoded on a path a parity vector
 /// covers (8-bit RGB PNG). Any other decode (JPEG, 16-bit, palette, alpha,
 /// grey) may differ from the reference's, so the view is approximate.
+/// `interpreter`: the target model's pinned interpreter; when given, the
+/// placeholder stream and the interpreter identity are bound too.
+///
+/// # Errors
+///
+/// `ExtractorFailed` when the profile has no image view for this input (an
+/// audio profile, or a size the resize rule rejects), when the interpreter's
+/// processor config disagrees with the profile, or when the OCR run fails.
 pub(crate) fn image_view(
     profile: &PreprocessorProfile,
     image: &Rgb8,
     decode_covered: bool,
     ocr: Option<(&PinnedTool, &str)>,
+    interpreter: Option<&Qwen2VlInterpreter>,
     adapter_id: &str,
 ) -> Result<ViewExtraction, PerceptionError> {
     let view = profile.model_view(image).ok_or_else(|| {
@@ -78,7 +84,11 @@ pub(crate) fn image_view(
         extractor: None,
         placeholders: profile.placeholder_count(width, height),
         placeholder_stream_digest: None,
+        interpreter: None,
     };
+    if let Some(interpreter) = interpreter {
+        bind_interpreter(&mut consumed, profile, interpreter, width, height)?;
+    }
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = ocr {
         let factor = OCR_MIN_SIDE
@@ -107,6 +117,42 @@ pub(crate) fn image_view(
         );
     }
     Ok(ViewExtraction { consumed, channels })
+}
+
+/// Bind the placeholder stream the interpreter derives from the view size.
+/// The interpreter must patch exactly as the profile does, and its count must
+/// equal the profile's: anything else would bind a stream the model never
+/// receives.
+fn bind_interpreter(
+    consumed: &mut ConsumedView,
+    profile: &PreprocessorProfile,
+    interpreter: &Qwen2VlInterpreter,
+    width: u64,
+    height: u64,
+) -> Result<(), PerceptionError> {
+    let failed = |why: String| PerceptionError::ExtractorFailed(why);
+    if !interpreter.matches_profile(profile) {
+        return Err(failed(format!(
+            "interpreter processor config does not match profile {}",
+            profile.name
+        )));
+    }
+    let grid = interpreter.grid_for_view(width, height);
+    let count = interpreter
+        .placeholders(grid)
+        .map_err(|e| failed(e.to_string()))?;
+    if Some(count) != consumed.placeholders {
+        return Err(failed(format!(
+            "interpreter expands the view to {count} placeholders, the profile to {:?}",
+            consumed.placeholders
+        )));
+    }
+    let digest = interpreter
+        .placeholder_stream_digest(grid)
+        .map_err(|e| failed(e.to_string()))?;
+    consumed.placeholder_stream_digest = Some(digest);
+    consumed.interpreter = Some(interpreter.identity().to_string());
+    Ok(())
 }
 
 /// The waveform the model hears (channel 0, 16-bit PCM), ASR on it, and the
@@ -159,6 +205,7 @@ pub(crate) fn audio_view(
         extractor: None,
         placeholders: None,
         placeholder_stream_digest: None,
+        interpreter: None,
     };
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = transcript {

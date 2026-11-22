@@ -406,6 +406,13 @@ pub struct PerceiveCommand {
     /// and sound inputs at observe (RIC-R-8).
     #[arg(long)]
     pub profile: Option<String>,
+    /// Directory holding the target model's digest-pinned interpreter assets
+    /// (tokenizer, chat template, processor and model config), e.g.
+    /// `assets/qwen2-vl-2b`. With a vision-language `--profile` it binds the
+    /// view's placeholder stream and the interpreter identity in `consumed`.
+    /// A file that differs from its pin is an error.
+    #[arg(long, requires = "profile")]
+    pub vlm_assets: Option<PathBuf>,
     /// External renderer binary to pin for render-vs-extract comparison
     /// (document/PDF, optional — e.g. `pdftoppm`).
     #[arg(long)]

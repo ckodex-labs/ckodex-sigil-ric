@@ -45,6 +45,7 @@ fn tesseract() -> ExternalOcr {
 fn perceive_image(profile: &str) -> PerceptionReport {
     let bytes = std::fs::read(fixture("attack_source.png")).expect("specimen");
     ImageAdapter {
+        interpreter: None,
         ocr: Some(tesseract()),
         profile: Some(builtin(profile).expect("profile")),
     }
@@ -148,6 +149,7 @@ fn cv_ric_032_a_view_nothing_read_does_not_lift_the_cap() {
         .write_to(&mut png, image::ImageFormat::Png)
         .expect("png");
     let report = ImageAdapter {
+        interpreter: None,
         ocr: None,
         profile: Some(builtin("thumbnail/nearest-80").expect("profile")),
     }
@@ -173,6 +175,7 @@ fn cv_ric_031_decodes_no_vector_covers_are_approximate() {
         .write_to(&mut png, image::ImageFormat::Png)
         .expect("png");
     let report = ImageAdapter {
+        interpreter: None,
         ocr: None,
         profile: Some(builtin("thumbnail/nearest-80").expect("profile")),
     }
@@ -246,6 +249,7 @@ fn cv_ric_030_decimate_view_binds_the_reference_waveform() {
 fn a_profile_of_the_wrong_modality_fails_closed() {
     let bytes = std::fs::read(fixture("attack_source.png")).expect("specimen");
     let result = ImageAdapter {
+        interpreter: None,
         ocr: None,
         profile: Some(builtin("audio/16k-decimate").expect("profile")),
     }
