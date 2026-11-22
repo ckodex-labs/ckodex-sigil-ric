@@ -111,33 +111,17 @@ pub struct AttestationVerificationOutcome {
 }
 
 pub fn attest_command(command: &AttestCommand) -> Result<sigil_core::attestation::DsseEnvelope> {
-    use sigil_core::attestation::attest_receipt;
+    use sigil_core::attestation::attest_representation;
 
     let signer = load_signing_key(Some(&command.signing_key))?
         .ok_or_else(|| anyhow!("signing key required for attestation"))?;
     let receipt = load_receipt(&command.receipt)?;
-    let signature = receipt
-        .signature
-        .ok_or_else(|| anyhow!("receipt is unsigned — attest a signed receipt"))?;
-    // The in-toto predicate (ric/receipt/v2) has no consumed field: attesting
-    // a media receipt would silently drop what the model was shown.
-    if receipt.consumed.is_some() {
-        return Err(anyhow!(
-            "the attestation predicate cannot carry the receipt's consumed block yet"
-        ));
+    if receipt.signature.is_none() {
+        return Err(anyhow!("receipt is unsigned — attest a signed receipt"));
     }
-    let envelope = attest_receipt(
-        &receipt.raw_digest,
-        &receipt.canonical_digest,
-        &receipt.digest_algorithm,
-        &receipt.normalization,
-        &receipt.vocab,
-        receipt.token_count,
-        signer.as_ref(),
-    )
-    .map_err(|e| anyhow!("{e}"))?;
-    let _ = signature; // receipt signature attests provenance; DSSE covers the statement
-    Ok(envelope)
+    // A receipt with a consumed block is attested under the v4 predicate,
+    // which carries the block; others keep the v2 predicate.
+    attest_representation(&receipt, signer.as_ref()).map_err(|e| anyhow!("{e}"))
 }
 
 pub fn verify_attestation_command(

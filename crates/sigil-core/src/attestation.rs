@@ -30,6 +30,9 @@ use crate::signing::{ReceiptSigner, SignatureVerifyError, hex_digest, verify_rec
 
 pub const STATEMENT_TYPE: &str = "https://in-toto.io/Statement/v1";
 pub const PREDICATE_TYPE: &str = "https://sigil.dev/ric/receipt/v2";
+/// Predicate for a receipt that binds a consumed media representation
+/// (receipt v4 with `consumed`, RIC-SPEC §5.1).
+pub const PREDICATE_TYPE_V4: &str = "https://sigil.dev/ric/receipt/v4";
 pub const PAYLOAD_TYPE: &str = "application/vnd.in-toto+json";
 
 /// In-toto Statement v1 carrying the receipt as its predicate. The subject
@@ -129,7 +132,63 @@ pub fn attest_receipt(
         vocab,
         token_count,
     );
-    let payload = serde_json::to_vec(&statement).map_err(|_| AttestationError::Serialization)?;
+    sign_statement(&statement, signer)
+}
+
+/// The in-toto statement for a receipt. A receipt without a consumed block
+/// gets the v2 statement, byte for byte as [`statement_json`] builds it. A
+/// receipt with one gets the v4 predicate: the receipt version and the full
+/// consumed block, plus a second subject, `sigil:consumed`, naming the
+/// consumed representation by its SHA-384.
+#[must_use]
+pub fn receipt_statement(receipt: &crate::types::RepresentationReceipt) -> serde_json::Value {
+    let Some(consumed) = &receipt.consumed else {
+        return statement_json(
+            &receipt.raw_digest,
+            &receipt.canonical_digest,
+            &receipt.digest_algorithm,
+            &receipt.normalization,
+            &receipt.vocab,
+            receipt.token_count,
+        );
+    };
+    serde_json::json!({
+        "_type": STATEMENT_TYPE,
+        "subject": [
+            { "name": "sigil:admission", "digest": { "sha384": receipt.canonical_digest } },
+            { "name": "sigil:consumed", "digest": { "sha384": consumed.digest } }
+        ],
+        "predicateType": PREDICATE_TYPE_V4,
+        "predicate": {
+            "receipt_version": receipt.receipt_version,
+            "raw_digest": receipt.raw_digest,
+            "canonical_digest": receipt.canonical_digest,
+            "digest_algorithm": receipt.digest_algorithm,
+            "normalization": receipt.normalization,
+            "vocab": receipt.vocab,
+            "token_count": receipt.token_count,
+            "consumed": consumed,
+        }
+    })
+}
+
+/// Sign a receipt's in-toto statement ([`receipt_statement`]) in a DSSE
+/// envelope.
+///
+/// # Errors
+/// `Serialization` if the statement cannot be encoded.
+pub fn attest_representation(
+    receipt: &crate::types::RepresentationReceipt,
+    signer: &dyn ReceiptSigner,
+) -> Result<DsseEnvelope, AttestationError> {
+    sign_statement(&receipt_statement(receipt), signer)
+}
+
+fn sign_statement(
+    statement: &serde_json::Value,
+    signer: &dyn ReceiptSigner,
+) -> Result<DsseEnvelope, AttestationError> {
+    let payload = serde_json::to_vec(statement).map_err(|_| AttestationError::Serialization)?;
     let payload_type = PAYLOAD_TYPE.to_string();
     let pae = pae(&payload_type, &payload);
     let signature = signer.sign(&pae);

@@ -75,31 +75,39 @@ fn cv_ric_035_a_changed_consumed_digest_fails_at_the_cli() {
 }
 
 #[test]
-fn attesting_a_media_receipt_is_refused_until_the_predicate_carries_consumed() {
+fn a_media_receipt_attests_under_the_v4_predicate_and_verifies() {
     let dir = tempfile::tempdir().expect("tempdir");
     let key = dir.path().join("attest.key.pem");
-    let status = sigil()
-        .args(["keygen", "--out-private"])
+    let public = dir.path().join("attest.pub.pem");
+    let keygen = sigil()
+        .args(["--format", "json", "keygen", "--out-private"])
         .arg(&key)
         .arg("--out-public")
-        .arg(dir.path().join("attest.pub.pem"))
-        .status()
+        .arg(&public)
+        .output()
         .expect("keygen");
-    assert!(status.success());
-    let attest = |receipt: &str| {
-        sigil()
-            .args(["--format", "json", "attest", "--receipt"])
-            .arg(fixture(receipt))
-            .arg("--signing-key")
-            .arg(&key)
-            .output()
-            .expect("attest")
-    };
-    let media = attest("v4_perceive_qwen.json");
-    assert!(!media.status.success());
-    assert!(String::from_utf8_lossy(&media.stderr).contains("consumed block"));
+    assert!(keygen.status.success());
+    let attest = sigil()
+        .args(["--format", "json", "attest", "--receipt"])
+        .arg(fixture("v4_perceive_qwen.json"))
+        .arg("--signing-key")
+        .arg(&key)
+        .output()
+        .expect("attest");
     assert!(
-        attest("v4_tokenize.json").status.success(),
-        "text receipts still attest"
+        attest.status.success(),
+        "{}",
+        String::from_utf8_lossy(&attest.stderr)
     );
+    let envelope = dir.path().join("envelope.json");
+    std::fs::write(&envelope, &attest.stdout).expect("write envelope");
+    let verify = sigil()
+        .args(["--format", "json", "verify-attestation", "--attestation"])
+        .arg(&envelope)
+        .arg("--key")
+        .arg(&public)
+        .output()
+        .expect("verify-attestation");
+    let outcome: serde_json::Value = serde_json::from_slice(&verify.stdout).expect("json");
+    assert_eq!(outcome["result"]["valid"], true, "{outcome}");
 }

@@ -22,7 +22,7 @@ pub mod tokenizer_ffi;
 pub mod types;
 pub mod vocab;
 
-pub use attestation::{DsseEnvelope, attest_receipt, verify_attestation};
+pub use attestation::{DsseEnvelope, attest_receipt, attest_representation, verify_attestation};
 pub use delegation::{
     AgentEnvelope, AuthorityCeiling, Capability, CapabilityLease, DelegationError,
     DelegationRequest, RevocationRegistry, RootLeaseParams, create_root_lease, delegate,
