@@ -51,7 +51,7 @@ impl MultimodalEngine {
                 provenance: input.provenance,
             }])?;
             let assessment = output.assessment.clone();
-            let (findings, _cross_modal_taint) = match input.modality {
+            let (mut findings, _cross_modal_taint) = match input.modality {
                 Modality::Text => {
                     text = Some(output.clone());
                     (Vec::new(), assessment.max_severity)
@@ -78,6 +78,9 @@ impl MultimodalEngine {
                 }
             };
 
+            if input.channel == Some(crate::perception::ChannelKind::Divergence) {
+                findings.push(divergence_finding(&output));
+            }
             let verdict = compose_modality_verdict(assessment.max_severity, &findings);
             let modality_assessment = ModalityAssessment {
                 modality: input.modality,
@@ -100,9 +103,9 @@ impl MultimodalEngine {
 
             modality_severities.push(assessment.max_severity);
             match input.modality {
-                Modality::Vision => vision = Some(modality_assessment),
-                Modality::Audio => audio = Some(modality_assessment),
-                Modality::Code => code = Some(modality_assessment),
+                Modality::Vision => merge_modality(&mut vision, modality_assessment),
+                Modality::Audio => merge_modality(&mut audio, modality_assessment),
+                Modality::Code => merge_modality(&mut code, modality_assessment),
                 Modality::Text | Modality::Video | Modality::Document => {
                     // These are represented through the cross-modal set and the text channel.
                     if matches!(input.modality, Modality::Video | Modality::Document) {
@@ -144,7 +147,10 @@ impl MultimodalEngine {
             code.as_ref(),
             &cross_modal_verdict,
         );
-        let ceiling = authority_ceiling(&final_verdict, &fusion);
+        let mut ceiling = authority_ceiling(&final_verdict, &fusion);
+        if inputs.iter().any(interpreter_unresolved) {
+            ceiling = ceiling.min(AuthorityCeiling::Observe);
+        }
 
         Ok(MultimodalAssessment {
             text,

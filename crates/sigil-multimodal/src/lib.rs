@@ -19,13 +19,13 @@ mod verdict;
 
 pub use engine::MultimodalEngine;
 pub use perception::{
-    ArtifactRef, ChannelKind, EXTRACTOR_IDENTITY_V1, EXTRACTOR_IDENTITY_V2, ExtractedChannel,
-    ExtractorIdentity, PerceptionAdapter, PerceptionError, PerceptionReport,
+    ArtifactRef, ChannelKind, ConsumedView, EXTRACTOR_IDENTITY_V1, EXTRACTOR_IDENTITY_V2,
+    ExtractedChannel, ExtractorIdentity, PerceptionAdapter, PerceptionError, PerceptionReport,
 };
 pub use types::{
-    AuthorityCeiling, CrossModalAssessment, CrossModalCorrelation, FusionAssessment, FusionEvent,
-    FusionRiskKind, ModalInput, Modality, ModalityAssessment, MultimodalAssessment,
-    MultimodalFinding, MultimodalFindingKind,
+    AuthorityCeiling, ConsumedParity, CrossModalAssessment, CrossModalCorrelation,
+    FusionAssessment, FusionEvent, FusionRiskKind, ModalInput, Modality, ModalityAssessment,
+    MultimodalAssessment, MultimodalFinding, MultimodalFindingKind,
 };
 
 #[cfg(test)]

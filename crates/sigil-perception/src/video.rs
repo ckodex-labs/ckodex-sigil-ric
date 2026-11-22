@@ -258,6 +258,7 @@ impl PerceptionAdapter for VideoAdapter {
                 .unwrap_or_else(|| "video/mp4".to_string()),
             properties,
             channels,
+            consumed: None,
         })
     }
 }

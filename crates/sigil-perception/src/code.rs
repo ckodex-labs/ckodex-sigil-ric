@@ -213,6 +213,7 @@ impl PerceptionAdapter for CodeAdapter {
                 .unwrap_or_else(|| "text/x-source".to_string()),
             properties: Vec::new(),
             channels,
+            consumed: None,
         })
     }
 }

@@ -1,7 +1,25 @@
 mod spectral;
 
 use crate::types::*;
-use sigil_core::types::{InputAssessment, Severity};
+use crate::verdict::has_instruction_signal;
+use sigil_core::types::{InputAssessment, Severity, SigilOutput};
+
+/// A divergence channel is a finding in itself. Its severity follows what the
+/// divergent-only text carries: an instruction signal is at least High, any
+/// other content at least Low, and the scan severity when that is higher.
+pub(crate) fn divergence_finding(output: &SigilOutput) -> MultimodalFinding {
+    let floor = if has_instruction_signal(output) {
+        Severity::High
+    } else {
+        Severity::Low
+    };
+    MultimodalFinding {
+        kind: MultimodalFindingKind::RepresentationDivergence,
+        severity: floor.max(output.assessment.max_severity),
+        detail: "content present in one representation of the artifact and absent from another"
+            .to_string(),
+    }
+}
 
 pub fn detect_vision(content: &str, assessment: &InputAssessment) -> Vec<MultimodalFinding> {
     detect_keywords(

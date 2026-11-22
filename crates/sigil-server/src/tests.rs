@@ -48,6 +48,8 @@ fn inspect_multimodal_analyzes_text_channel() {
             provenance: Default::default(),
             source_id: None,
             derived_from: None,
+            channel: None,
+            consumed_parity: None,
         }])
         .expect("multimodal");
     assert!(assessment.text.is_some());

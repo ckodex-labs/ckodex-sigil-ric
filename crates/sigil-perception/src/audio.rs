@@ -32,6 +32,8 @@ pub use transcript::ExternalTranscript;
 /// argument — the argument-injection surface is closed by construction.
 pub struct AudioAdapter {
     pub transcript: Option<ExternalTranscript>,
+    /// The target model's preprocessor profile (see `ImageAdapter::profile`).
+    pub profile: Option<crate::preprocess::PreprocessorProfile>,
 }
 
 impl PerceptionAdapter for AudioAdapter {
@@ -87,8 +89,18 @@ impl PerceptionAdapter for AudioAdapter {
         }
 
         // Transcript channel via the pinned external ASR binary, when configured.
+        let mut source_text = None;
         if let Some(transcript) = &self.transcript {
-            channels.push(transcript_channel(transcript, artifact.bytes)?);
+            let channel = transcript_channel(transcript, artifact.bytes)?;
+            source_text = Some(channel.content.clone());
+            channels.push(channel);
+        }
+        let mut consumed = None;
+        if let Some(profile) = &self.profile {
+            let tool = self.transcript.as_ref().zip(source_text.as_deref());
+            let view = crate::model_view::audio_view(profile, artifact.bytes, tool, adapter_id)?;
+            channels.extend(view.channels);
+            consumed = Some(view.consumed);
         }
 
         Ok(PerceptionReport {
@@ -100,6 +112,7 @@ impl PerceptionAdapter for AudioAdapter {
                 .unwrap_or_else(|| "audio/wav".to_string()),
             properties,
             channels,
+            consumed,
         })
     }
 }

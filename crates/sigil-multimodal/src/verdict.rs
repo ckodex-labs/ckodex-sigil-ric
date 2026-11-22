@@ -30,6 +30,41 @@ pub(crate) fn authority_ceiling(verdict: &Verdict, fusion: &FusionAssessment) ->
     }
 }
 
+/// RIC-R-8: a pixel or sound input whose consumed representation SIGIL did
+/// not produce under a reference-matched profile leaves the model's
+/// interpreter unresolved. Uncertainty degrades authority, never raises it.
+pub(crate) fn interpreter_unresolved(input: &ModalInput) -> bool {
+    matches!(
+        input.modality,
+        Modality::Vision | Modality::Audio | Modality::Video
+    ) && input.consumed_parity != Some(ConsumedParity::ReferenceMatched)
+}
+
+fn verdict_rank(verdict: &Verdict) -> u8 {
+    match verdict {
+        Verdict::Allow => 0,
+        Verdict::Flag { .. } => 1,
+        Verdict::Deny { .. } => 2,
+    }
+}
+
+/// Folds another channel's assessment into the modality's slot: the most
+/// severe verdict and output lead, and every channel's findings are kept.
+pub(crate) fn merge_modality(slot: &mut Option<ModalityAssessment>, next: ModalityAssessment) {
+    let Some(current) = slot.take() else {
+        *slot = Some(next);
+        return;
+    };
+    let key = |a: &ModalityAssessment| (verdict_rank(&a.verdict), a.cross_modal_taint);
+    let (mut lead, other) = if key(&next) > key(&current) {
+        (next, current)
+    } else {
+        (current, next)
+    };
+    lead.findings.extend(other.findings);
+    *slot = Some(lead);
+}
+
 pub(crate) fn compose_modality_verdict(
     severity: Severity,
     findings: &[MultimodalFinding],

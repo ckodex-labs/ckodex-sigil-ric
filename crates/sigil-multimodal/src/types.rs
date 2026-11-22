@@ -1,3 +1,4 @@
+use crate::perception::ChannelKind;
 use serde::{Deserialize, Serialize};
 use sigil_core::types::{Provenance, Severity, SigilOutput, Verdict};
 
@@ -26,6 +27,28 @@ pub struct ModalInput {
     /// inherit first-party authority (RIC-R-7).
     #[serde(default)]
     pub derived_from: Option<String>,
+    /// The perception channel this input was mapped from. Set in process by
+    /// `channels_to_modal_inputs`; never read from the wire.
+    #[serde(skip)]
+    pub channel: Option<ChannelKind>,
+    /// Parity of the representation SIGIL produced for the model from this
+    /// input's artifact; `None` when no preprocessor profile was declared.
+    /// Never read from the wire: a caller cannot assert parity SIGIL did not
+    /// show (RIC-R-8).
+    #[serde(skip)]
+    pub consumed_parity: Option<ConsumedParity>,
+}
+
+/// What is known about a consumed representation's fidelity to the
+/// reference implementation of the model's preprocessor (docs/ADR-001).
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum ConsumedParity {
+    /// A parity vector against the real reference passes bit for bit, and
+    /// this input lies where the reference's behaviour is known.
+    ReferenceMatched,
+    /// Parity not shown for this input: authority is capped at observe.
+    Approximate,
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -62,6 +85,9 @@ pub enum MultimodalFindingKind {
     /// it resamples without an anti-alias filter: the file says different
     /// things depending on the resampler.
     ResamplerAliasing,
+    /// Content one representation of an artifact carries and another does
+    /// not (e.g. text only the model's resized view shows).
+    RepresentationDivergence,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]

@@ -87,6 +87,7 @@ impl VideoAdapter {
         };
         let adapter = crate::audio::AudioAdapter {
             transcript: extract.transcript.clone(),
+            profile: None,
         };
         let sub = sigil_multimodal::ArtifactRef {
             source_id: format!("{}:audio", artifact.source_id),

@@ -304,6 +304,11 @@ pub fn perceive_command(
             command.ffmpeg_binary.is_some(),
             ["video"].as_slice(),
         ),
+        (
+            "--profile",
+            command.profile.is_some(),
+            ["image", "audio"].as_slice(),
+        ),
     ] {
         if present && !allowed.contains(&effective_modality) {
             return Err(anyhow!(
@@ -312,6 +317,19 @@ pub fn perceive_command(
             ));
         }
     }
+
+    let profile = command
+        .profile
+        .as_deref()
+        .map(|name| {
+            sigil_perception::preprocess::builtin(name).ok_or_else(|| {
+                anyhow!(
+                    "unknown --profile `{name}`; built-in: {}",
+                    sigil_perception::preprocess::BUILTIN_PROFILES.join(", ")
+                )
+            })
+        })
+        .transpose()?;
 
     let (adapter_id, mut report, modality) = match effective_modality {
         "audio" => {
@@ -335,7 +353,10 @@ pub fn perceive_command(
                 ),
                 None => None,
             };
-            let adapter = sigil_perception::audio::AudioAdapter { transcript };
+            let adapter = sigil_perception::audio::AudioAdapter {
+                transcript,
+                profile: profile.clone(),
+            };
             (
                 adapter.adapter_id().to_string(),
                 adapter
@@ -470,7 +491,7 @@ pub fn perceive_command(
                 ),
                 None => None,
             };
-            let adapter = ImageAdapter { ocr };
+            let adapter = ImageAdapter { ocr, profile };
             (
                 adapter.adapter_id().to_string(),
                 adapter

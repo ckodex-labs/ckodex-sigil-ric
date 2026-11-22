@@ -398,6 +398,14 @@ pub struct PerceiveCommand {
     /// Repeatable; pinned and bound like --ocr-model.
     #[arg(long = "transcript-model")]
     pub transcript_model: Vec<PathBuf>,
+    /// Target model's preprocessor profile (image or audio), e.g.
+    /// `qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow`,
+    /// `thumbnail/nearest-80`, `audio/16k-decimate`. SIGIL produces the
+    /// model's view under it, binds it in the report's `consumed` block and
+    /// extracts from it. Without one, `--analyze` caps the ceiling of pixel
+    /// and sound inputs at observe (RIC-R-8).
+    #[arg(long)]
+    pub profile: Option<String>,
     /// External renderer binary to pin for render-vs-extract comparison
     /// (document/PDF, optional — e.g. `pdftoppm`).
     #[arg(long)]

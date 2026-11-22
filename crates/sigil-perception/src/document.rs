@@ -85,6 +85,7 @@ impl PerceptionAdapter for DocumentAdapter {
             media_type,
             properties,
             channels,
+            consumed: None,
         })
     }
 }
@@ -238,7 +239,7 @@ fn normalized_words(text: &str) -> std::collections::HashSet<String> {
 /// rendered text's word set — content the machine receives that a human
 /// viewing the render does not. Word-set (not line) comparison because OCR
 /// re-wraps and reorders lines freely.
-fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
+pub(crate) fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
     let rendered_words = normalized_words(rendered);
     extracted
         .lines()

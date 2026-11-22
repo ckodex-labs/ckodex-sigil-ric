@@ -1,0 +1,302 @@
+//! The model's view (RIC-MM-001 WP4, P-MM-1, docs/ADR-001).
+//!
+//! Under a preprocessor profile, SIGIL produces the representation the target
+//! model consumes, extracts text from it with the same pinned tool it ran on
+//! the source, and reports what only the view carries as a `Divergence`
+//! channel. These are facts; the kernel judges them.
+//!
+//! Extractor identities for view channels carry the tool's pinned arguments
+//! followed by `view:`-tagged entries (profile digest, transformation to the
+//! tool's input), the role-tagging convention of the document adapter's
+//! render chain. Tagged entries are not argv.
+
+use crate::preprocess::{PreprocessorProfile, Rgb8};
+use crate::{OCR_EXTRACTOR, PinnedTool, TRANSCRIPT_EXTRACTOR, in_process_identity};
+use sha2::{Digest, Sha384};
+use sigil_multimodal::{
+    ChannelKind, ConsumedParity, ConsumedView, ExtractedChannel, ExtractorIdentity, PerceptionError,
+};
+use std::io::Cursor;
+
+/// The specimen measurement read the 80² view after a ×6 nearest upscale:
+/// Tesseract needs glyphs of some minimum size. The view is upscaled by the
+/// smallest whole factor that brings its shorter side to this many pixels.
+/// Whole-factor pixel replication adds no content.
+const OCR_MIN_SIDE: usize = 480;
+
+/// Version of the word-coverage comparison shared with the document adapter.
+const DIVERGENCE_VERSION: &str = "word-coverage/1.0";
+
+/// What a profile produced for one artifact.
+pub(crate) struct ViewExtraction {
+    pub consumed: ConsumedView,
+    pub channels: Vec<ExtractedChannel>,
+}
+
+/// The image the model sees, OCR on it, and the divergence from the source
+/// OCR text when one was extracted.
+///
+/// # Errors
+///
+/// `ExtractorFailed` when the profile has no image view for this input (an
+/// audio profile, or a size the resize rule rejects) or the OCR run fails.
+/// Source pixels a profile will convert to RGB8 and resample: larger inputs
+/// are rejected rather than allocated (3 bytes per pixel, 192 MiB).
+pub(crate) const MAX_SOURCE_PIXELS: u64 = 64 * 1024 * 1024;
+
+/// True when a source of `width` × `height` fits [`MAX_SOURCE_PIXELS`].
+pub(crate) fn within_source_budget(width: u32, height: u32) -> bool {
+    u64::from(width) * u64::from(height) <= MAX_SOURCE_PIXELS
+}
+
+/// `decode_covered`: the artifact was decoded on a path a parity vector
+/// covers (8-bit RGB PNG). Any other decode (JPEG, 16-bit, palette, alpha,
+/// grey) may differ from the reference's, so the view is approximate.
+pub(crate) fn image_view(
+    profile: &PreprocessorProfile,
+    image: &Rgb8,
+    decode_covered: bool,
+    ocr: Option<(&PinnedTool, &str)>,
+    adapter_id: &str,
+) -> Result<ViewExtraction, PerceptionError> {
+    let view = profile.model_view(image).ok_or_else(|| {
+        PerceptionError::ExtractorFailed(format!(
+            "profile {} has no image view for a {}x{} image",
+            profile.name, image.width, image.height
+        ))
+    })?;
+    let (width, height) = (view.image.width as u64, view.image.height as u64);
+    let mut consumed = ConsumedView {
+        profile: profile.name.clone(),
+        profile_digest: profile.digest(),
+        digest: sha384_hex(&view.image.data),
+        parity: if decode_covered {
+            view.parity
+        } else {
+            ConsumedParity::Approximate
+        },
+        extractor: None,
+        placeholders: profile.placeholder_count(width, height),
+    };
+    let mut channels = Vec::new();
+    if let Some((tool, source_text)) = ocr {
+        let factor = OCR_MIN_SIDE
+            .div_ceil(view.image.width.min(view.image.height).max(1))
+            .max(1);
+        let png = encode_png(&replicate(&view.image, factor))?;
+        let run = tool.extract(&png)?;
+        let identity = view_identity(tool, OCR_EXTRACTOR, profile, &format!("nearest-x{factor}"));
+        consumed.extractor = Some(identity.identity_digest.clone());
+        channels.extend(divergence(
+            &run.output,
+            source_text,
+            &tool.identity(OCR_EXTRACTOR),
+            &identity,
+            adapter_id,
+        ));
+        channels.insert(
+            0,
+            ExtractedChannel {
+                channel_kind: ChannelKind::OcrText,
+                content: run.output,
+                extractor: identity,
+                confidence: None,
+                truncated: run.input_unread,
+            },
+        );
+    }
+    Ok(ViewExtraction { consumed, channels })
+}
+
+/// The waveform the model hears (channel 0, 16-bit PCM), ASR on it, and the
+/// divergence from the source transcript when one was extracted.
+///
+/// # Errors
+///
+/// `DecodeFailed` for a WAV that is not 16-bit integer PCM; `ExtractorFailed`
+/// when the profile has no in-process view for this input or the ASR fails.
+pub(crate) fn audio_view(
+    profile: &PreprocessorProfile,
+    wav: &[u8],
+    transcript: Option<(&PinnedTool, &str)>,
+    adapter_id: &str,
+) -> Result<ViewExtraction, PerceptionError> {
+    let mut reader =
+        hound::WavReader::new(Cursor::new(wav)).map_err(|_| PerceptionError::DecodeFailed)?;
+    let spec = reader.spec();
+    if spec.bits_per_sample != 16
+        || spec.sample_format != hound::SampleFormat::Int
+        || spec.sample_rate == 0
+        || spec.channels == 0
+    {
+        return Err(PerceptionError::DecodeFailed);
+    }
+    let channel0: Vec<i16> = reader
+        .samples::<i16>()
+        .step_by(usize::from(spec.channels.max(1)))
+        .collect::<Result<_, _>>()
+        .map_err(|_| PerceptionError::DecodeFailed)?;
+    let rate = u64::from(spec.sample_rate);
+    let (view, parity) = profile.audio_view(&channel0, rate).ok_or_else(|| {
+        PerceptionError::ExtractorFailed(format!(
+            "profile {} has no in-process audio view for {rate} Hz",
+            profile.name
+        ))
+    })?;
+    let bytes: Vec<u8> = view.iter().flat_map(|s| s.to_le_bytes()).collect();
+    let mut consumed = ConsumedView {
+        profile: profile.name.clone(),
+        profile_digest: profile.digest(),
+        digest: sha384_hex(&bytes),
+        // The view keeps channel 0, as the reference does; an engine that
+        // downmixes hears the other channels too. Only mono is covered.
+        parity: if spec.channels == 1 {
+            parity
+        } else {
+            ConsumedParity::Approximate
+        },
+        extractor: None,
+        placeholders: None,
+    };
+    let mut channels = Vec::new();
+    if let Some((tool, source_text)) = transcript {
+        let crate::preprocess::ProfileSpec::Audio { target_rate_hz, .. } = profile.spec else {
+            return Err(PerceptionError::ExtractorFailed(format!(
+                "profile {} is not an audio profile",
+                profile.name
+            )));
+        };
+        let target = u32::try_from(target_rate_hz).map_err(|_| {
+            PerceptionError::ExtractorFailed(format!("profile {} rate", profile.name))
+        })?;
+        let run = tool.extract(&encode_wav(&view, target)?)?;
+        let identity = view_identity(tool, TRANSCRIPT_EXTRACTOR, profile, "channel0-pcm16");
+        consumed.extractor = Some(identity.identity_digest.clone());
+        channels.extend(divergence(
+            &run.output,
+            source_text,
+            &tool.identity(TRANSCRIPT_EXTRACTOR),
+            &identity,
+            adapter_id,
+        ));
+        channels.insert(
+            0,
+            ExtractedChannel {
+                channel_kind: ChannelKind::Transcript,
+                content: run.output,
+                extractor: identity,
+                confidence: None,
+                truncated: run.input_unread,
+            },
+        );
+    }
+    Ok(ViewExtraction { consumed, channels })
+}
+
+/// Lines only the model's view carries, as a `Divergence` channel bound to
+/// both extractions. `None` when every view line is covered by the source.
+fn divergence(
+    view_text: &str,
+    source_text: &str,
+    source: &ExtractorIdentity,
+    view: &ExtractorIdentity,
+    adapter_id: &str,
+) -> Option<ExtractedChannel> {
+    let lines = crate::document::divergent_lines(view_text, source_text);
+    (!lines.is_empty()).then(|| ExtractedChannel {
+        channel_kind: ChannelKind::Divergence,
+        content: lines.join("\n"),
+        extractor: in_process_identity(
+            format!("{adapter_id}/model-view-divergence"),
+            DIVERGENCE_VERSION,
+            &[
+                ("source", source.identity_digest.clone()),
+                ("view", view.identity_digest.clone()),
+            ],
+        ),
+        confidence: None,
+        truncated: false,
+    })
+}
+
+fn view_identity(
+    tool: &PinnedTool,
+    name: &str,
+    profile: &PreprocessorProfile,
+    transform: &str,
+) -> ExtractorIdentity {
+    let mut args = tool.args.clone();
+    args.push(format!("view:profile={}", profile.digest()));
+    args.push(format!("view:transform={transform}"));
+    ExtractorIdentity::bound(
+        format!("{name}/model-view"),
+        tool.version.clone(),
+        tool.binary_digest.clone(),
+        args,
+        tool.model_digests.clone(),
+    )
+}
+
+fn replicate(image: &Rgb8, factor: usize) -> Rgb8 {
+    let (width, height) = (image.width * factor, image.height * factor);
+    let mut data = Vec::with_capacity(width * height * 3);
+    for y in 0..height {
+        for x in 0..width {
+            let i = ((y / factor) * image.width + x / factor) * 3;
+            data.extend_from_slice(&image.data[i..i + 3]);
+        }
+    }
+    Rgb8 {
+        width,
+        height,
+        data,
+    }
+}
+
+fn encode_png(image: &Rgb8) -> Result<Vec<u8>, PerceptionError> {
+    let failed = || PerceptionError::ExtractorFailed("encode model view".to_string());
+    let width = u32::try_from(image.width).map_err(|_| failed())?;
+    let height = u32::try_from(image.height).map_err(|_| failed())?;
+    let buffer = image::RgbImage::from_raw(width, height, image.data.clone()).ok_or_else(failed)?;
+    let mut out = Cursor::new(Vec::new());
+    buffer
+        .write_to(&mut out, image::ImageFormat::Png)
+        .map_err(|_| failed())?;
+    Ok(out.into_inner())
+}
+
+fn encode_wav(samples: &[i16], rate: u32) -> Result<Vec<u8>, PerceptionError> {
+    let failed = || PerceptionError::ExtractorFailed("encode model view".to_string());
+    let spec = hound::WavSpec {
+        channels: 1,
+        sample_rate: rate,
+        bits_per_sample: 16,
+        sample_format: hound::SampleFormat::Int,
+    };
+    let mut out = Cursor::new(Vec::new());
+    let mut writer = hound::WavWriter::new(&mut out, spec).map_err(|_| failed())?;
+    for sample in samples {
+        writer.write_sample(*sample).map_err(|_| failed())?;
+    }
+    writer.finalize().map_err(|_| failed())?;
+    Ok(out.into_inner())
+}
+
+fn sha384_hex(bytes: &[u8]) -> String {
+    Sha384::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_source_budget_rejects_huge_images_before_conversion() {
+        assert!(within_source_budget(8_192, 8_192));
+        assert!(!within_source_budget(23_170, 23_170), "the 1.5 GiB L8 case");
+        assert!(!within_source_budget(u32::MAX, u32::MAX), "no overflow");
+    }
+}

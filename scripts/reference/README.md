@@ -10,7 +10,7 @@ Pinned environment used on 2026-11-21:
 | Component | Version / source |
 |---|---|
 | Python | 3.13 |
-| Pillow | as installed with transformers 4.57.6 |
+| Pillow | 13.0.0 (the reference hashes were made with it; 12.x orders bicubic passes differently, see docs/ADR-001) |
 | transformers | 4.57.6 (`Qwen2VLImageProcessor`, slow PIL path). 5.x needs torchvision and uses a different (fast) resize path: measure it separately, do not assume parity |
 | Qwen2-VL settings | `Qwen/Qwen2-VL-7B-Instruct` `preprocessor_config.json`: min_pixels 3136, max_pixels 12845056, patch 14, temporal 2, merge 2 |
 | sherpa-onnx | 1.12.40 (2.0.x dropped the espeak frontend used by Piper VITS) |
@@ -31,4 +31,5 @@ Run from the repository root.
 | `tts.py`, `make_audio_specimen.py` | benign + hidden speech; hidden band-limited to 7.5 kHz and SSB-shifted +32 kHz into a 96 kHz WAV |
 | `whisper-stdin` | ASR adapter for `sigil-cli perceive --transcript-binary`; argv[1] = `ffmpeg` or `naive` resample path |
 | `whisper_logmel.py` | spectrograms and Whisper 80-bin log-mel (same maths as `whisper/audio.py`) |
+| `pillow_parity.py` | `pillow_parity.json`: Pillow 13.0.0 bicubic and nearest hashes over 21 sizes, for the Rust resampler |
 | `embeddings.py` | Whisper tiny.en decoder embedding rows, GloVe mean-pooled filter scores |

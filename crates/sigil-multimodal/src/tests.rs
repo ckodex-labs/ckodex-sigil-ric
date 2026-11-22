@@ -108,6 +108,8 @@ mod tests {
                 provenance: Provenance::User,
                 source_id: Some("ocr-1".to_string()),
                 derived_from: Some("image-1".to_string()),
+                channel: None,
+                consumed_parity: None,
             }])
             .expect("analysis");
 
@@ -146,6 +148,8 @@ mod tests {
                 provenance: Provenance::McpTool,
                 source_id: Some("audio-spectral".to_string()),
                 derived_from: Some("audio-1".to_string()),
+                channel: None,
+                consumed_parity: None,
             }])
             .expect("analysis");
 
@@ -183,6 +187,8 @@ mod tests {
                 provenance: Provenance::McpTool,
                 source_id: Some("audio-spectral".to_string()),
                 derived_from: Some("audio-2".to_string()),
+                channel: None,
+                consumed_parity: None,
             }])
             .expect("analysis");
 
@@ -221,6 +227,8 @@ mod tests {
                 provenance: Provenance::McpTool,
                 source_id: Some("audio-clean".to_string()),
                 derived_from: Some("audio-3".to_string()),
+                channel: None,
+                consumed_parity: None,
             }])
             .expect("analysis");
 

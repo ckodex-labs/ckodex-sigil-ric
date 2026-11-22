@@ -7,7 +7,9 @@
 pub mod audio;
 pub mod code;
 pub mod document;
+mod model_view;
 pub mod pinned;
+pub mod preprocess;
 pub mod spectral;
 pub mod video;
 
@@ -29,6 +31,10 @@ use std::io::Cursor;
 /// the argument-injection surface is closed by construction.
 pub struct ImageAdapter {
     pub ocr: Option<ExternalOcr>,
+    /// The target model's preprocessor profile. When set, SIGIL produces the
+    /// model's view, binds it in the report's `consumed` block and OCRs it
+    /// too (P-MM-1). When unset the kernel caps authority (RIC-R-8).
+    pub profile: Option<preprocess::PreprocessorProfile>,
 }
 
 /// OCR extractor: a [`PinnedTool`] whose stdout is the recognised text.
@@ -94,8 +100,10 @@ impl PerceptionAdapter for ImageAdapter {
         }
 
         // OCR channel via the pinned external binary, when configured.
+        let mut source_text = None;
         if let Some(ocr) = &self.ocr {
             let run = ocr.extract(artifact.bytes)?;
+            source_text = Some(run.output.clone());
             channels.push(ExtractedChannel {
                 channel_kind: ChannelKind::OcrText,
                 content: run.output,
@@ -108,6 +116,29 @@ impl PerceptionAdapter for ImageAdapter {
             });
         }
 
+        let mut consumed = None;
+        if let Some(profile) = &self.profile {
+            if !model_view::within_source_budget(width, height) {
+                return Err(PerceptionError::ExtractorFailed(format!(
+                    "a {width}x{height} image exceeds the model-view budget of {} pixels",
+                    model_view::MAX_SOURCE_PIXELS
+                )));
+            }
+            let decode_covered = decoded.color() == image::ColorType::Rgb8
+                && image::guess_format(artifact.bytes).ok() == Some(image::ImageFormat::Png);
+            let rgb = decoded.to_rgb8();
+            let image = preprocess::Rgb8 {
+                width: rgb.width() as usize,
+                height: rgb.height() as usize,
+                data: rgb.into_raw(),
+            };
+            let ocr = self.ocr.as_ref().zip(source_text.as_deref());
+            let view =
+                model_view::image_view(profile, &image, decode_covered, ocr, self.adapter_id())?;
+            channels.extend(view.channels);
+            consumed = Some(view.consumed);
+        }
+
         Ok(PerceptionReport {
             source_id: artifact.source_id.clone(),
             artifact_digest,
@@ -117,6 +148,7 @@ impl PerceptionAdapter for ImageAdapter {
                 .unwrap_or_else(|| "image/*".to_string()),
             properties,
             channels,
+            consumed,
         })
     }
 }
@@ -190,7 +222,10 @@ mod tests {
     #[test]
     fn image_adapter_decodes_and_reports_structure() {
         let bytes = encode_png(4, 3, [10, 20, 30, 255]);
-        let adapter = ImageAdapter { ocr: None };
+        let adapter = ImageAdapter {
+            ocr: None,
+            profile: None,
+        };
         let report = adapter
             .perceive(&ArtifactRef {
                 source_id: "img-1".to_string(),
@@ -224,7 +259,10 @@ mod tests {
 
     #[test]
     fn undecodable_artifact_fails_closed() {
-        let adapter = ImageAdapter { ocr: None };
+        let adapter = ImageAdapter {
+            ocr: None,
+            profile: None,
+        };
         let err = adapter
             .perceive(&ArtifactRef {
                 source_id: "bad-1".to_string(),
@@ -258,7 +296,10 @@ mod tests {
             }
 
             let ocr = ExternalOcr::pin(fake_ocr, vec![], "fake-1.0".to_string()).expect("pin");
-            let adapter = ImageAdapter { ocr: Some(ocr) };
+            let adapter = ImageAdapter {
+                ocr: Some(ocr),
+                profile: None,
+            };
 
             let png = encode_png(1, 1, [255, 0, 0, 255]);
             let report = adapter

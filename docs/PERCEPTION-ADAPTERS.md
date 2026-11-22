@@ -134,6 +134,22 @@ not bound unless declared with a model flag. Declaring every weight file the
 adapter loads (encoder, decoder, tokens) closes the weight part. The
 interpreter part stays open.
 
+### Model views (RIC-MM-001 WP4, docs/ADR-001)
+
+`--profile <name>` on `perceive` (image or audio) makes the adapter produce
+the representation the target model consumes, bind it in the report's typed
+`consumed` block (profile digest, consumed digest, parity, placeholders), and
+run the same pinned OCR or ASR tool on it. View channels are named
+`<tool>/model-view`. Their identity carries the tool's arguments followed by
+`view:profile=<digest>` and `view:transform=<…>`, for example
+`nearest-x6`: the 80² view is upscaled by whole-pixel replication until its
+shorter side reaches 480 px, because Tesseract cannot read smaller glyphs.
+View lines that the source extraction covers less than 80 % become a
+`Divergence` channel.
+
+Without a profile, or under an approximate one, `--analyze` caps the
+ceiling of pixel and sound inputs at observe.
+
 ## 4. What adapters must never do (conformance rules)
 
 1. Produce channels with `System`/`User` provenance (authority fabrication).
