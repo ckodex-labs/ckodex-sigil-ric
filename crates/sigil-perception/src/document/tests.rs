@@ -366,6 +366,49 @@ fn divergent_lines_tolerates_reflow_within_the_window() {
 }
 
 #[test]
+fn an_exhausted_window_budget_fails_closed() {
+    // Coverage passes, the window cannot be checked: report, do not pass.
+    let line = "revenue grew in the north";
+    assert_eq!(divergent_lines_within(line, line, 0), vec![line]);
+    // Short lines need no window, so no budget.
+    assert!(divergent_lines_within("email rules", "email rules", 0).is_empty());
+}
+
+#[test]
+fn divergence_cost_is_bounded_on_adversarial_sizes() {
+    // 200k source words of a few common words, 5k extracted lines of them:
+    // a per-line scan of the source would be 10^9 steps.
+    let common = ["the", "of", "and", "to", "in", "a", "is", "that"];
+    let rendered: String = (0..200_000)
+        .map(|i| common[i % common.len()])
+        .collect::<Vec<_>>()
+        .join(" ");
+    let extracted: String = (0..5_000)
+        .map(|i| {
+            format!(
+                "{} {} {} {}",
+                common[i % 8],
+                common[(i + 3) % 8],
+                common[(i + 5) % 8],
+                common[(i + 7) % 8]
+            )
+        })
+        .collect::<Vec<_>>()
+        .join("\n");
+    let started = std::time::Instant::now();
+    let divergent = divergent_lines(&extracted, &rendered);
+    assert!(
+        started.elapsed() < std::time::Duration::from_secs(20),
+        "{:?}",
+        started.elapsed()
+    );
+    // Every 8-word stretch of the cyclic source holds all eight words, so no
+    // line diverges, and an empty result also shows the budget held (an
+    // exhausted budget would report lines).
+    assert!(divergent.is_empty(), "{} lines reported", divergent.len());
+}
+
+#[test]
 fn divergence_channel_uses_divergence_kind() {
     // ChannelKind::Divergence serializes distinctly and keeps untrusted
     // provenance (kernel judgment — RIC-R-7).

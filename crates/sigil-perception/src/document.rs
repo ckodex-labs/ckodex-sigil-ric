@@ -13,6 +13,7 @@
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
 use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
+use std::collections::HashMap;
 
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
 
@@ -255,11 +256,24 @@ fn normalized_words(text: &str) -> std::collections::HashSet<String> {
 /// scattered across the source no longer cover a line that only the
 /// model's view shows together.
 pub(crate) fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
+    divergent_lines_within(extracted, rendered, WINDOW_BUDGET)
+}
+
+/// [`divergent_lines`] with an explicit window-check budget.
+pub(crate) fn divergent_lines_within(
+    extracted: &str,
+    rendered: &str,
+    budget: usize,
+) -> Vec<String> {
     let sequence = word_sequence(rendered);
-    let vocabulary: std::collections::HashSet<&str> = sequence.iter().map(String::as_str).collect();
+    let mut index: HashMap<&str, Vec<usize>> = HashMap::new();
+    for (position, word) in sequence.iter().enumerate() {
+        index.entry(word.as_str()).or_default().push(position);
+    }
+    let mut budget = budget;
     extracted
         .lines()
-        .filter(|line| line_diverges(line, &sequence, &vocabulary))
+        .filter(|line| line_diverges(line, &index, &mut budget))
         .map(str::to_string)
         .collect()
 }
@@ -268,51 +282,97 @@ pub(crate) fn divergent_lines(extracted: &str, rendered: &str) -> Vec<String> {
 /// one or two words says nothing about placement.
 const WINDOW_MIN_WORDS: usize = 3;
 
+/// Work allowed for the window checks of one comparison, in index steps.
+/// Each comparison's cost is bounded by this, whatever the text sizes; a
+/// line not checked within it is reported divergent (unchecked content is
+/// uncertainty, and uncertainty degrades).
+const WINDOW_BUDGET: usize = 16_000_000;
+
 /// The smallest count that is at least 80 % of `n`, in integers.
 fn coverage_needed(n: usize) -> usize {
     (4 * n).div_ceil(5)
 }
 
-fn line_diverges(
-    line: &str,
-    sequence: &[String],
-    vocabulary: &std::collections::HashSet<&str>,
-) -> bool {
-    let words = normalized_words(line);
+fn line_diverges(line: &str, index: &HashMap<&str, Vec<usize>>, budget: &mut usize) -> bool {
+    let mut words: Vec<String> = normalized_words(line).into_iter().collect();
     if words.is_empty() {
         return false;
     }
-    let covered = words.iter().filter(|w| vocabulary.contains(w.as_str())).count();
-    if covered < coverage_needed(words.len()) {
+    words.sort_unstable();
+    let present: Vec<&[usize]> = words
+        .iter()
+        .filter_map(|w| index.get(w.as_str()).map(Vec::as_slice))
+        .collect();
+    let needed = coverage_needed(words.len());
+    if present.len() < needed {
         return true;
     }
-    words.len() >= WINDOW_MIN_WORDS && !within_window(&words, sequence)
+    words.len() >= WINDOW_MIN_WORDS && !within_window(present, words.len(), budget)
 }
 
-/// True when some stretch of `max(2n, n + 4)` consecutive words of
-/// `sequence` holds at least 80 % of the `n` distinct `words`.
-fn within_window(words: &std::collections::HashSet<String>, sequence: &[String]) -> bool {
-    let n = words.len();
+/// True when some stretch of `max(2n, n + 4)` consecutive source words holds
+/// at least 80 % of the line's `n` distinct words. `occurrences` holds the
+/// sorted source positions of each line word that occurs in the source.
+///
+/// A satisfying window misses at most `n - needed` of the words, so it holds
+/// an occurrence of one of the `n - needed + 1` rarest. Each such occurrence
+/// is an anchor; only the words' occurrences within one window length of it
+/// are examined.
+fn within_window(mut occurrences: Vec<&[usize]>, n: usize, budget: &mut usize) -> bool {
     let window = (2 * n).max(n + 4);
     let needed = coverage_needed(n);
-    let mut counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
-    let mut distinct = 0usize;
-    for (i, word) in sequence.iter().enumerate() {
-        if words.contains(word) {
-            let count = counts.entry(word.as_str()).or_default();
-            if *count == 0 {
-                distinct += 1;
+    occurrences.sort_by_key(|positions| positions.len());
+    let anchors = n - needed + 1;
+    for rare in occurrences.iter().take(anchors) {
+        for &anchor in *rare {
+            let cost = occurrences.len() + 2 * window;
+            if *budget < cost {
+                return false;
             }
-            *count += 1;
+            *budget -= cost;
+            if anchored_window_holds(&occurrences, anchor, window, needed) {
+                return true;
+            }
         }
-        if i >= window {
-            let leaving = sequence[i - window].as_str();
-            if let Some(count) = counts.get_mut(leaving) {
-                *count -= 1;
-                if *count == 0 {
-                    distinct -= 1;
-                }
+    }
+    false
+}
+
+/// Whether a window of `window` positions containing `anchor` holds
+/// `needed` distinct words.
+fn anchored_window_holds(
+    occurrences: &[&[usize]],
+    anchor: usize,
+    window: usize,
+    needed: usize,
+) -> bool {
+    let low = anchor.saturating_sub(window - 1);
+    let high = anchor + window;
+    let mut events: Vec<(usize, usize)> = Vec::new();
+    for (word, positions) in occurrences.iter().enumerate() {
+        let start = positions.partition_point(|&p| p < low);
+        events.extend(
+            positions[start..]
+                .iter()
+                .take_while(|&&p| p < high)
+                .map(|&p| (p, word)),
+        );
+    }
+    events.sort_unstable();
+    let mut counts = vec![0usize; occurrences.len()];
+    let (mut distinct, mut tail) = (0usize, 0usize);
+    for &(position, word) in &events {
+        if counts[word] == 0 {
+            distinct += 1;
+        }
+        counts[word] += 1;
+        while events[tail].0 + window <= position {
+            let leaving = events[tail].1;
+            counts[leaving] -= 1;
+            if counts[leaving] == 0 {
+                distinct -= 1;
             }
+            tail += 1;
         }
         if distinct >= needed {
             return true;
