@@ -78,7 +78,7 @@ pub struct ReceiptVerificationOutcome {
 pub fn verify_receipt_command(
     command: &VerifyReceiptCommand,
 ) -> Result<ReceiptVerificationOutcome> {
-    use sigil_core::signing::{receipt_message, verify_receipt_signature};
+    use sigil_core::receipt::{ReceiptVerifyError, verify_receipt};
 
     let contents = fs::read_to_string(&command.receipt)?;
     let mut value: serde_json::Value = serde_json::from_str(&contents)?;
@@ -90,39 +90,18 @@ pub fn verify_receipt_command(
     let receipt_value = value.get("receipt").unwrap_or(&value);
     let receipt: sigil_core::RepresentationReceipt = serde_json::from_value(receipt_value.clone())?;
 
-    let Some(signature) = &receipt.signature else {
-        return Ok(ReceiptVerificationOutcome {
-            valid: false,
-            algorithm: None,
-            key_id: None,
-            error: Some("receipt is unsigned".to_string()),
-        });
-    };
-
-    let message = receipt_message(
-        &receipt.raw_digest,
-        &receipt.canonical_digest,
-        &receipt.digest_algorithm,
-        &receipt.normalization,
-        &receipt.vocab,
-        receipt.token_count,
-    );
-
-    let outcome = match verify_receipt_signature(&message, signature, &command.key) {
-        Ok(()) => ReceiptVerificationOutcome {
-            valid: true,
-            algorithm: Some(signature.algorithm.clone()),
-            key_id: Some(signature.key_id.clone()),
-            error: None,
-        },
-        Err(err) => ReceiptVerificationOutcome {
-            valid: false,
-            algorithm: Some(signature.algorithm.clone()),
-            key_id: Some(signature.key_id.clone()),
-            error: Some(err.to_string()),
-        },
-    };
-    Ok(outcome)
+    // The message is chosen by receipt_version: v2 receipts keep verifying,
+    // v4 receipts also bind their consumed block.
+    let error = verify_receipt(&receipt, &command.key)
+        .err()
+        .map(|err: ReceiptVerifyError| err.to_string());
+    let signature = receipt.signature.as_ref();
+    Ok(ReceiptVerificationOutcome {
+        valid: error.is_none(),
+        algorithm: signature.map(|s| s.algorithm.clone()),
+        key_id: signature.map(|s| s.key_id.clone()),
+        error,
+    })
 }
 
 /// Outcome of `sigil-cli verify-attestation`.
@@ -143,6 +122,13 @@ pub fn attest_command(command: &AttestCommand) -> Result<sigil_core::attestation
     let signature = receipt
         .signature
         .ok_or_else(|| anyhow!("receipt is unsigned — attest a signed receipt"))?;
+    // The in-toto predicate (ric/receipt/v2) has no consumed field: attesting
+    // a media receipt would silently drop what the model was shown.
+    if receipt.consumed.is_some() {
+        return Err(anyhow!(
+            "the attestation predicate cannot carry the receipt's consumed block yet"
+        ));
+    }
     let envelope = attest_receipt(
         &receipt.raw_digest,
         &receipt.canonical_digest,

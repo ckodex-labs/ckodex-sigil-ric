@@ -324,6 +324,8 @@ fn cv_ric_013_representation_binding_divergence_denied() {
     );
 
     let matching_receipt = RepresentationReceipt {
+        receipt_version: sigil_core::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw_384".to_string(),
         canonical_digest: "canonical_digest_task_approved".to_string(),
         digest_algorithm: "sha384".to_string(),
@@ -347,6 +349,8 @@ fn cv_ric_013_representation_binding_divergence_denied() {
     );
 
     let tampered_receipt = RepresentationReceipt {
+        receipt_version: sigil_core::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw_384".to_string(),
         canonical_digest: "canonical_digest_injected_exploit".to_string(),
         digest_algorithm: "sha384".to_string(),
@@ -459,6 +463,8 @@ fn sec_audit_crit_01_payload_malleability_rejected() {
     );
 
     let receipt = RepresentationReceipt {
+        receipt_version: sigil_core::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw_384".to_string(),
         canonical_digest: "task_rep_digest_384".to_string(),
         digest_algorithm: "sha384".to_string(),
@@ -524,6 +530,8 @@ fn sec_audit_crit_02_unsigned_envelope_rejected() {
     );
 
     let receipt = RepresentationReceipt {
+        receipt_version: sigil_core::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw_384".to_string(),
         canonical_digest: "task_rep_digest_384".to_string(),
         digest_algorithm: "sha384".to_string(),

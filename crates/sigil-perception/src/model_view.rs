@@ -77,6 +77,7 @@ pub(crate) fn image_view(
         },
         extractor: None,
         placeholders: profile.placeholder_count(width, height),
+        placeholder_stream_digest: None,
     };
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = ocr {
@@ -157,6 +158,7 @@ pub(crate) fn audio_view(
         },
         extractor: None,
         placeholders: None,
+        placeholder_stream_digest: None,
     };
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = transcript {

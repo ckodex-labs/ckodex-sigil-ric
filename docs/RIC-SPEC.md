@@ -1,10 +1,10 @@
 # RIC: Representation integrity specification
 
-**Version:** 0.2.0 DRAFT
+**Version:** 0.4.0 DRAFT
 **Status:** Normative for SIGIL v0.3.x, proposed as a CKODEX-wide admission primitive
-**Reference implementation:** SIGIL in `crates/sigil-core`, conformance vectors CV-RIC-001 through CV-RIC-014
+**Reference implementation:** SIGIL in `crates/sigil-core`, conformance vectors CV-RIC-001 through CV-RIC-014 and CV-RIC-022 onward (CV-RIC-015 to 021 are reserved for the remediation line)
 **Companion documents:** [RIC-CONTRACT.md](./RIC-CONTRACT.md) for SIGIL mapping, [TRAJECTORY.md](./TRAJECTORY.md) for state
-**Date:** 2026-10-16
+**Date:** 2026-11-21
 
 ---
 
@@ -60,10 +60,10 @@ each rule to its SIGIL enforcement point (the reference implementation).
 
 | Rule | Normative statement (system-agnostic) | SIGIL enforcement |
 |---|---|---|
-| **RIC-R-1** | Raw input is hashed exactly as received, before any transformation. | `RepresentationReceipt.raw_digest` (SHA-256 over raw segment bytes) |
-| **RIC-R-2** | The canonical representation actually consumed is hashed as consumed. | `RepresentationReceipt.canonical_digest` (SHA-256 over the normalized stream) |
-| **RIC-R-3** | Every transformation between raw and canonical is named and versioned. | `RepresentationReceipt.normalization` (profile id); per-cluster normalization in intake |
-| **RIC-R-4** | The interpreter identity is bound to the admission decision. | `RepresentationReceipt.vocab` (tokenizer identity) |
+| **RIC-R-1** | Raw input is hashed exactly as received, before any transformation. | `RepresentationReceipt.raw_digest` (SHA-384 over raw segment bytes) |
+| **RIC-R-2** | The canonical representation actually consumed is hashed as consumed. | `RepresentationReceipt.canonical_digest` (SHA-384 over the normalized stream); for text read from media, `consumed.digest` (SHA-384 over the pixels or samples the model receives) |
+| **RIC-R-3** | Every transformation between raw and canonical is named and versioned. | `RepresentationReceipt.normalization` (profile id); per-cluster normalization in intake; for media, `consumed.profile` and `consumed.profile_digest` |
+| **RIC-R-4** | The interpreter identity is bound to the admission decision. | `RepresentationReceipt.vocab` (tokenizer identity); for media, `consumed.extractor` (identity of the extractor that read the consumed view) |
 | **RIC-R-5** | Composition must not merge across provenance boundaries; every crossing or suppression is recorded. | `security_aware_merge` + `MergeBoundary` findings (High when crossings are policy-permitted) |
 | **RIC-R-6** | Fusing multiple sources is itself a security event: cross-trust and cross-role composition is audited even when each artifact is individually clean. | `audit_fusion` — `CrossTrustFusion`, `CrossRoleFusion`, `CrossSourceInstructionFormation` |
 | **RIC-R-7** | A derived artifact never inherits more authority than its source. | `derived_from` lineage + `DerivedAuthorityEscalation` |
@@ -113,12 +113,22 @@ enforces the rules or honestly declares non-coverage.
 
 ```json
 {
+  "receipt_version":  4,
   "raw_digest":       "<hex SHA-384 over raw input bytes as received>",
   "canonical_digest": "<hex SHA-384 over the canonical stream as consumed>",
   "digest_algorithm": "sha384",
   "normalization":    "<profile id, e.g. nfc>",
   "vocab":            "<interpreter identity>",
   "token_count":      <usize>,
+  "consumed": {
+    "profile":        "<preprocessor profile name, a label>",
+    "profile_digest": "<hex SHA-384 profile identity>",
+    "digest":         "<hex SHA-384 over the consumed pixels or samples>",
+    "parity":         "reference-matched | approximate",
+    "extractor":      "<hex identity digest of the extractor that read the view>",
+    "placeholders":   <u64>,
+    "placeholder_stream_digest": "<hex SHA-384 over the placeholder token IDs>"
+  },
   "signature": {
     "algorithm":  "ecdsa-p384-sha384",
     "key_id":     "<hex, derived from the verification key>",
@@ -132,10 +142,39 @@ Digest mandate: **SHA-384** (aligned with the ECDSA P-384 signature mandate at
 **signed** — a verifier can recompute digests without assumptions, and a
 mislabeled receipt fails signature verification.
 
-Signing message (versioned, deterministic):
+`consumed` is present when the receipt's text was read from a media artifact
+under a preprocessor profile: it binds the representation the model receives,
+not only the text extracted from it. `extractor`, `placeholders` and
+`placeholder_stream_digest` are optional; an absent value is signed as
+absent. A consumed view no extractor read (`extractor` absent) or one that is
+`approximate` does not resolve the interpreter, and RIC-R-8 caps authority at
+`observe`. `placeholder_stream_digest` stays absent until a pinned model
+tokenizer supplies the placeholder IDs.
+
+`receipt_version` selects the signing message. A receipt without the field is
+version 2. Version 3 is reserved and not defined by this document.
+
+Version 2 signing message (frozen):
 
 ```
 sigil-receipt-v2|raw=<raw_digest>|canonical=<canonical_digest>|digest=<digest_algorithm>|norm=<normalization>|vocab=<vocab>|tokens=<token_count>
+```
+
+A version 2 receipt cannot carry `consumed`; a verifier rejects one that does,
+because its message does not cover the block.
+
+Version 4 signing message, length-prefixed so no field value can move a field
+boundary, and domain-separated so no v4 message equals a v2 message:
+
+```
+str(s)        = u64be(len(s)) || s
+opt(x)        = 0x00 | 0x01 || x
+message       = str("sigil-receipt-v4")
+             || str(raw_digest) || str(canonical_digest) || str(digest_algorithm)
+             || str(normalization) || str(vocab) || u64be(token_count)
+             || opt(str(profile) || str(profile_digest) || str(digest)
+                    || str(parity) || opt(str(extractor))
+                    || opt(u64be(placeholders)) || opt(str(placeholder_stream_digest)))
 ```
 
 ### 5.2 Capability lease schema
@@ -261,14 +300,36 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
 | Section 4.3 retrieval boundary | specified |
 | Section 4.4 agent-to-agent boundary: capability leases, attenuation, representation binding, revocation | implemented in SIGIL v0.3.1+, CV-RIC-009 through CV-RIC-014 |
 | Section 4.5 human-approval boundary | specified |
-| Multimodal perception: pixels, waveforms, temporal spans | not implemented, text-extracted channels only |
+| Multimodal perception: pixels, waveforms, temporal spans | partial (RIC-MM-001, in progress). SIGIL produces and binds the consumed view for images (`qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow`, `thumbnail/nearest-80`) and audio (`audio/16k-decimate`), signs it in receipt v4, and caps unresolved media at `observe`: CV-RIC-029 to CV-RIC-035. Not implemented: filtered audio resampling, the placeholder ID stream, temporal spans, and transcript divergence (no ASR is installed). |
 
 ## 9. Versioning policy
 
-- The representation schemas and signing messages are versioned: `sigil-receipt-v2`, `sigil-lease-v1`, and `sigil-envelope-v1`.
+- The representation schemas and signing messages are versioned: `sigil-receipt-v4` (with `sigil-receipt-v2` still verifying), `sigil-lease-v1`, and `sigil-envelope-v1`.
 - Additive fields are compatible; changing or removing fields requires a major
   version bump of this specification and a new message version string.
 - Conformance is claimable only against the executable vectors; a system that
   cannot run CV-RIC-001 through CV-RIC-014 or their equivalents may not claim RIC
   conformance.
 
+## 10. Changelog
+
+### 0.4.0 (2026-11-21, RIC-MM-001 WP5)
+
+- §5.1: receipt version 4. A `consumed` block binds the media representation
+  the model receives: profile and profile digest, consumed digest, parity,
+  extractor identity, placeholder count and placeholder-stream digest. The
+  version 4 signing message is length-prefixed and domain-separated.
+  Version 2 receipts keep verifying, and a version 2 receipt carrying
+  `consumed` is rejected. Why: a media admission decision was made on the
+  file while the model consumed a resized or resampled sibling
+  (`tests/fixtures/multimodal/specimens.json`), and the receipt did not say
+  which.
+- §3: RIC-R-1 and RIC-R-2 said SHA-256, but the implementation and §5.1 have
+  used SHA-384 since the digest mandate. The rule text now matches. RIC-R-2,
+  R-3 and R-4 name the consumed block as their media enforcement point. The
+  rules themselves are unchanged.
+- §8: the multimodal row recorded "text-extracted channels only". It now
+  states what RIC-MM-001 has implemented and what it has not.
+- 0.3.0 and receipt version 3 are reserved for the remediation line
+  (remediation/2026-11-21). This repository does not contain that line, so
+  this document moves from 0.2.0 to 0.4.0.

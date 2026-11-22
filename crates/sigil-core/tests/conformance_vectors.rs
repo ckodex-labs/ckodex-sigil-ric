@@ -294,7 +294,8 @@ fn cv_ric_007_evidence_mode_gates_always_on_attestation() {
 /// breaks it.
 #[test]
 fn cv_ric_008_receipts_are_signed_and_verifiable() {
-    use sigil_core::signing::{EcdsaP384Signer, receipt_message};
+    use sigil_core::receipt::verify_receipt;
+    use sigil_core::signing::EcdsaP384Signer;
     use std::sync::Arc;
 
     let signer =
@@ -316,39 +317,17 @@ fn cv_ric_008_receipts_are_signed_and_verifiable() {
         .expect("signer attached: receipt must be signed");
     assert_eq!(signature.algorithm, "ecdsa-p384-sha384");
 
-    let message = receipt_message(
-        &output.receipt.raw_digest,
-        &output.receipt.canonical_digest,
-        &output.receipt.digest_algorithm,
-        &output.receipt.normalization,
-        &output.receipt.vocab,
-        output.receipt.token_count,
-    );
     assert_eq!(output.receipt.digest_algorithm, "sha384");
+    assert_eq!(output.receipt.receipt_version, sigil_core::RECEIPT_VERSION);
     assert_eq!(
-        sigil_core::signing::verify_receipt_signature(&message, signature, &verification_key),
-        Ok(())
+        verify_receipt(&output.receipt, &verification_key),
+        Ok(signature)
     );
 
     // Tampering with any receipt field invalidates the signature.
     let mut tampered = output.receipt.clone();
     tampered.token_count += 1;
-    let tampered_message = receipt_message(
-        &tampered.raw_digest,
-        &tampered.canonical_digest,
-        &tampered.digest_algorithm,
-        &tampered.normalization,
-        &tampered.vocab,
-        tampered.token_count,
-    );
-    assert_ne!(
-        sigil_core::signing::verify_receipt_signature(
-            &tampered_message,
-            signature,
-            &verification_key
-        ),
-        Ok(())
-    );
+    assert!(verify_receipt(&tampered, &verification_key).is_err());
 
     // Engines without a signer emit unsigned receipts.
     let unsigned_engine = Sigil::new(

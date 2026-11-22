@@ -315,6 +315,8 @@ fn envelope_representation_mismatch_denied() {
 
     // Receipt with matching digest
     let good_receipt = RepresentationReceipt {
+        receipt_version: crate::receipt::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw123".to_string(),
         canonical_digest: "admitted_digest_abc".to_string(),
         digest_algorithm: "sha384".to_string(),
@@ -336,6 +338,8 @@ fn envelope_representation_mismatch_denied() {
 
     // Receipt with tampered/divergent digest
     let bad_receipt = RepresentationReceipt {
+        receipt_version: crate::receipt::RECEIPT_VERSION,
+        consumed: None,
         raw_digest: "raw123".to_string(),
         canonical_digest: "tampered_digest_xyz".to_string(),
         digest_algorithm: "sha384".to_string(),

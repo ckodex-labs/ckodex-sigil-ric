@@ -37,7 +37,10 @@ pub(crate) fn interpreter_unresolved(input: &ModalInput) -> bool {
     matches!(
         input.modality,
         Modality::Vision | Modality::Audio | Modality::Video
-    ) && input.consumed_parity != Some(ConsumedParity::ReferenceMatched)
+    ) && !input
+        .consumed
+        .as_ref()
+        .is_some_and(ConsumedView::resolves_interpreter)
 }
 
 fn verdict_rank(verdict: &Verdict) -> u8 {

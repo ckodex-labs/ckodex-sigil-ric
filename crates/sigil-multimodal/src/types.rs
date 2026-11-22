@@ -31,25 +31,15 @@ pub struct ModalInput {
     /// `channels_to_modal_inputs`; never read from the wire.
     #[serde(skip)]
     pub channel: Option<ChannelKind>,
-    /// Parity of the representation SIGIL produced for the model from this
-    /// input's artifact; `None` when no preprocessor profile was declared.
-    /// Never read from the wire: a caller cannot assert parity SIGIL did not
-    /// show (RIC-R-8).
+    /// The representation SIGIL produced for the model from this input's
+    /// artifact; `None` when no preprocessor profile was declared. Bound into
+    /// the input's receipt, and read by the RIC-R-8 cap. Never read from the
+    /// wire: a caller cannot assert a view SIGIL did not produce.
     #[serde(skip)]
-    pub consumed_parity: Option<ConsumedParity>,
+    pub consumed: Option<ConsumedView>,
 }
 
-/// What is known about a consumed representation's fidelity to the
-/// reference implementation of the model's preprocessor (docs/ADR-001).
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "kebab-case")]
-pub enum ConsumedParity {
-    /// A parity vector against the real reference passes bit for bit, and
-    /// this input lies where the reference's behaviour is known.
-    ReferenceMatched,
-    /// Parity not shown for this input: authority is capped at observe.
-    Approximate,
-}
+pub use sigil_core::receipt::{ConsumedParity, ConsumedView};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MultimodalFinding {

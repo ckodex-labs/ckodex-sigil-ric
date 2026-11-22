@@ -8,7 +8,8 @@
 use serde::{Deserialize, Serialize};
 use sigil_core::types::{ByteRange, Provenance};
 
-use crate::{ConsumedParity, ModalInput, Modality};
+pub use crate::types::ConsumedView;
+use crate::{ModalInput, Modality};
 
 /// Reference to an artifact handed to an adapter. Adapters receive bytes and
 /// metadata; they never fetch, never execute model calls, never touch IO
@@ -80,27 +81,6 @@ pub struct PerceptionReport {
     pub consumed: Option<ConsumedView>,
 }
 
-/// The consumed representation: what the model receives, produced by SIGIL.
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ConsumedView {
-    /// Profile name (a label).
-    pub profile: String,
-    /// The profile's SHA-384 identity.
-    pub profile_digest: String,
-    /// SHA-384 over the consumed bytes: row-major RGB8 for images.
-    pub digest: String,
-    /// Parity of the consumed bytes with the reference preprocessor.
-    pub parity: ConsumedParity,
-    /// Identity digest of the extractor that read this view. `None`: nothing
-    /// scanned it, and an unscanned view resolves nothing (P-MM-1 binds what
-    /// SIGIL scanned), so the kernel treats it as no profile at all.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub extractor: Option<String>,
-    /// Vision-language placeholder tokens the view expands to.
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub placeholders: Option<u64>,
-}
-
 /// The perception port. Implementations decompose artifacts into channels.
 pub trait PerceptionAdapter: Send + Sync {
     fn modality(&self) -> Modality;
@@ -138,11 +118,6 @@ pub fn channel_provenance(kind: ChannelKind) -> Provenance {
 /// Map a perception report into kernel channels for fusion auditing. Every
 /// channel becomes a derived `ModalInput` with explicit lineage.
 pub fn channels_to_modal_inputs(report: &PerceptionReport, modality: Modality) -> Vec<ModalInput> {
-    let consumed_parity = report
-        .consumed
-        .as_ref()
-        .filter(|view| view.extractor.is_some())
-        .map(|view| view.parity);
     let mut inputs: Vec<ModalInput> = report
         .channels
         .iter()
@@ -157,7 +132,7 @@ pub fn channels_to_modal_inputs(report: &PerceptionReport, modality: Modality) -
             )),
             derived_from: Some(report.source_id.clone()),
             channel: Some(channel.channel_kind),
-            consumed_parity,
+            consumed: report.consumed.clone(),
         })
         .collect();
     // An artifact with no extracted text still reaches the model as pixels
@@ -171,7 +146,7 @@ pub fn channels_to_modal_inputs(report: &PerceptionReport, modality: Modality) -
             source_id: Some(format!("{}:artifact", report.source_id)),
             derived_from: Some(report.source_id.clone()),
             channel: None,
-            consumed_parity,
+            consumed: report.consumed.clone(),
         });
     }
     inputs

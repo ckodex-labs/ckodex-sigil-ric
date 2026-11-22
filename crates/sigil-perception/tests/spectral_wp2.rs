@@ -144,7 +144,7 @@ fn kernel_kinds(report: &SpectralReport) -> Vec<MultimodalFindingKind> {
             source_id: Some("wp2:spectral".to_string()),
             derived_from: Some("wp2".to_string()),
             channel: None,
-            consumed_parity: None,
+            consumed: None,
         }])
         .expect("analyze");
     assessment

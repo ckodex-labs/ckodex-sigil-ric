@@ -1,0 +1,22 @@
+{
+  "receipt_version": 4,
+  "raw_digest": "470792eee098f22d1fc87f7afb6e439aa8269d9de54dcd3ca009e7ff48d2e28ea500e8345141dd5f2a214ddd7a3b4e5c",
+  "canonical_digest": "470792eee098f22d1fc87f7afb6e439aa8269d9de54dcd3ca009e7ff48d2e28ea500e8345141dd5f2a214ddd7a3b4e5c",
+  "digest_algorithm": "sha384",
+  "normalization": "nfc",
+  "vocab": "cl100k_base",
+  "token_count": 6,
+  "consumed": {
+    "profile": "qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow",
+    "profile_digest": "228c375c6d4925fce57113f79837dfeac440a1983b28976b589fc6ea67a70b8b98371d0ccaddd8c3cfe9dab6a8eb1662",
+    "digest": "94c72b7ad6e83e31c70b30adb90e3ae40559123b247ae39bd1fba0823ba919d2f302925e8971eb12379c93368f0f540d",
+    "parity": "reference-matched",
+    "extractor": "e31f5570c9ddcd26f44522f61a5a89b1385cf330145a6da24aba3da0896d4884828b5474656e7de21d2e38d42d74da38",
+    "placeholders": 529
+  },
+  "signature": {
+    "algorithm": "ecdsa-p384-sha384",
+    "key_id": "030e2a50f70a468f",
+    "signature": "c665a9b3c19eab74f3b7f4ea8b0b74ff61f54edfa6987f6e840dea6de502d8f08238e83678daafec7a49fc04ed63c2e45a9878821b6172090206b56f23ead41e68a2f3b20105dbcdc3bb678eb40ba0ce8331773b4f0ab36877266c301777fb1d"
+  }
+}

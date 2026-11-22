@@ -1,0 +1,13 @@
+{
+  "raw_digest": "c079263a21e5caa682d96708e5864d45dc5235856ba9992a884bbc894279385f0daff04ac0ffe18ea80a72aeec3f824d",
+  "canonical_digest": "c079263a21e5caa682d96708e5864d45dc5235856ba9992a884bbc894279385f0daff04ac0ffe18ea80a72aeec3f824d",
+  "digest_algorithm": "sha384",
+  "normalization": "nfc",
+  "vocab": "cl100k_base",
+  "token_count": 5,
+  "signature": {
+    "algorithm": "ecdsa-p384-sha384",
+    "key_id": "030e2a50f70a468f",
+    "signature": "1772acaf18a7a81befeb4ec5215981709dab93cd2ca06f77bbe27bc99d01e9d7d15bf0b4104315b3ead248038a1a93451497c6af6a806970bcbbadfcb664c6e904919bde2a70df81248530936c5e610c47e15ed86f3d80202a23b156a36958f3"
+  }
+}

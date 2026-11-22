@@ -11,6 +11,7 @@ pub mod merge;
 pub mod parallel;
 pub mod perplexity;
 pub mod policy;
+pub mod receipt;
 pub mod scan;
 pub mod signing;
 pub mod sink;
@@ -30,6 +31,7 @@ pub use engine::Sigil;
 pub use error::{Result, SigilError};
 pub use parallel::TokenizerActor;
 pub use policy::Policy;
+pub use receipt::{ConsumedParity, ConsumedView, RECEIPT_VERSION, ReceiptVerifyError};
 pub use signing::{EcdsaP384Signer, ReceiptSignature, ReceiptSigner, SignatureVerifyError};
 pub use sink::{EvidenceSink, JsonlEvidenceSink};
 pub use types::{

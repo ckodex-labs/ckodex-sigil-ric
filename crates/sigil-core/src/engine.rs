@@ -4,8 +4,9 @@ use crate::{
     intake::{intake_bytes_segment, intake_text_segment},
     merge::security_aware_merge,
     policy::Policy,
+    receipt::{ConsumedView, RECEIPT_VERSION, v4_message},
     scan::run_scan_with_engines,
-    signing::{ReceiptSignature, ReceiptSigner, receipt_message},
+    signing::{ReceiptSignature, ReceiptSigner},
     sink::EvidenceSink,
     taint::apply_provenance,
     types::{
@@ -103,6 +104,16 @@ impl Sigil {
     }
 
     pub fn process_text_segments(&self, segments: &[TextSegment<'_>]) -> Result<SigilOutput> {
+        self.process_text_segments_bound(segments, None)
+    }
+
+    /// Process text read from a media artifact, binding the representation
+    /// SIGIL produced for the model (`consumed`) into the signed receipt.
+    pub fn process_text_segments_bound(
+        &self,
+        segments: &[TextSegment<'_>],
+        consumed: Option<ConsumedView>,
+    ) -> Result<SigilOutput> {
         let mut base_offset = 0usize;
         let mut raw_hasher = Sha384::new();
         let mut graphemes = Vec::new();
@@ -114,7 +125,7 @@ impl Sigil {
             base_offset += segment.text.len();
         }
 
-        self.process_graphemes(graphemes, raw_hasher)
+        self.process_graphemes(graphemes, raw_hasher, consumed)
     }
 
     pub fn process_bytes_segments(&self, segments: &[ByteSegment<'_>]) -> Result<SigilOutput> {
@@ -129,7 +140,7 @@ impl Sigil {
             base_offset += segment.bytes.len();
         }
 
-        self.process_graphemes(graphemes, raw_hasher)
+        self.process_graphemes(graphemes, raw_hasher, None)
     }
 
     pub fn scan_text(&self, text: &str) -> Result<SigilOutput> {
@@ -143,6 +154,7 @@ impl Sigil {
         &self,
         mut graphemes: Vec<crate::types::TaintedGrapheme>,
         raw_hasher: Sha384,
+        consumed: Option<ConsumedView>,
     ) -> Result<SigilOutput> {
         let mut report = run_scan_with_engines(
             &self.policy,
@@ -169,23 +181,18 @@ impl Sigil {
             canonical_hasher.update(grapheme.grapheme.text.as_bytes());
         }
         let mut receipt = RepresentationReceipt {
+            receipt_version: RECEIPT_VERSION,
             raw_digest: hex_digest(&raw_hasher.finalize()),
             canonical_digest: hex_digest(&canonical_hasher.finalize()),
             digest_algorithm: "sha384".to_string(),
             normalization: self.policy.intake.normalization.to_string(),
             vocab: self.vocab.name.clone(),
             token_count: merged.len(),
+            consumed,
             signature: None,
         };
         if let Some(signer) = &self.receipt_signer {
-            let message = receipt_message(
-                &receipt.raw_digest,
-                &receipt.canonical_digest,
-                &receipt.digest_algorithm,
-                &receipt.normalization,
-                &receipt.vocab,
-                receipt.token_count,
-            );
+            let message = v4_message(&receipt);
             receipt.signature = Some(ReceiptSignature {
                 algorithm: signer.algorithm(),
                 key_id: signer.key_id(),

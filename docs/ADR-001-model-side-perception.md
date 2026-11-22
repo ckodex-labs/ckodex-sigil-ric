@@ -145,6 +145,10 @@ This ADR does not choose. Until a decision, receipts use
     `#[serde(skip)]`. Only in-process perception sets them, so a caller cannot
     assert parity over the wire. Server and API media inputs are therefore
     always capped. SIGIL did not produce their representation.
+  - Receipt v4 (WP5) signs the same `ConsumedView` into every receipt the
+    engine produces for the artifact's inputs, so the kernel's cap and the
+    receipt read one object. `ConsumedView` and `ConsumedParity` live in
+    `sigil-core::receipt`; `sigil-multimodal` re-exports them.
   - Document inputs are not capped. No document profile exists yet. This is
     a derogation that needs a human decision: a PDF rendered for a
     vision-language model reaches it as pixels. Re-evaluate when a document

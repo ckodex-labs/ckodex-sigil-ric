@@ -46,10 +46,13 @@ impl MultimodalEngine {
         let mut fusion_records: Vec<FusionRecord> = Vec::new();
 
         for (idx, input) in inputs.iter().enumerate() {
-            let output = self.sigil.process_text_segments(&[TextSegment {
-                text: &input.content,
-                provenance: input.provenance,
-            }])?;
+            let output = self.sigil.process_text_segments_bound(
+                &[TextSegment {
+                    text: &input.content,
+                    provenance: input.provenance,
+                }],
+                input.consumed.clone(),
+            )?;
             let assessment = output.assessment.clone();
             let (mut findings, _cross_modal_taint) = match input.modality {
                 Modality::Text => {

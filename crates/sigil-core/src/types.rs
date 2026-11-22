@@ -343,6 +343,10 @@ pub struct EvidenceBundle {
 /// object (docs/RIC-CONTRACT.md, RIC-R-1..R-4).
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct RepresentationReceipt {
+    /// Which signing message covers this receipt (`crate::receipt`). A
+    /// receipt without the field is v2, the format before it existed.
+    #[serde(default = "crate::receipt::legacy_receipt_version")]
+    pub receipt_version: u32,
     /// SHA-384 (hex) over the raw input bytes as received, pre-normalization.
     pub raw_digest: String,
     /// SHA-384 (hex) over the canonical grapheme stream as tokenized.
@@ -356,6 +360,11 @@ pub struct RepresentationReceipt {
     /// Tokenizer identity the canonical stream was encoded against.
     pub vocab: String,
     pub token_count: usize,
+    /// The media representation SIGIL produced for the model, when this
+    /// receipt's text was read from a media artifact under a preprocessor
+    /// profile (v4 only; signed).
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub consumed: Option<crate::receipt::ConsumedView>,
     /// Signature over the receipt content, present when a signer is
     /// attached to the engine (docs/RIC-CONTRACT.md DEV-3).
     #[serde(default, skip_serializing_if = "Option::is_none")]

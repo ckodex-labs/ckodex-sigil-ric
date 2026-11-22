@@ -13,8 +13,8 @@ use sigil_core::policy::Policy;
 use sigil_core::types::{Provenance, Severity, Verdict};
 use sigil_multimodal::perception::channels_to_modal_inputs;
 use sigil_multimodal::{
-    AuthorityCeiling, ChannelKind, ConsumedParity, ModalInput, Modality, MultimodalAssessment,
-    MultimodalEngine, MultimodalFindingKind, PerceptionReport,
+    AuthorityCeiling, ChannelKind, ConsumedParity, ConsumedView, ModalInput, Modality,
+    MultimodalAssessment, MultimodalEngine, MultimodalFindingKind, PerceptionReport,
 };
 
 fn analyze(inputs: &[ModalInput]) -> MultimodalAssessment {
@@ -37,7 +37,19 @@ fn channel(
         source_id: Some(format!("artifact:{kind:?}")),
         derived_from: Some("artifact".to_string()),
         channel: Some(kind),
-        consumed_parity: parity,
+        consumed: parity.map(|parity| view(parity, Some("ocr-identity"))),
+    }
+}
+
+fn view(parity: ConsumedParity, extractor: Option<&str>) -> ConsumedView {
+    ConsumedView {
+        profile: "thumbnail/nearest-80".to_string(),
+        profile_digest: "11".repeat(48),
+        digest: "22".repeat(48),
+        parity,
+        extractor: extractor.map(str::to_string),
+        placeholders: None,
+        placeholder_stream_digest: None,
     }
 }
 
@@ -86,6 +98,16 @@ fn cv_ric_032_only_a_reference_matched_view_keeps_the_ceiling() {
 }
 
 #[test]
+fn cv_ric_032_a_view_no_extractor_read_does_not_lift_the_cap() {
+    let mut unread = channel(Modality::Vision, ChannelKind::OcrText, BENIGN, None);
+    unread.consumed = Some(view(ConsumedParity::ReferenceMatched, None));
+    assert_eq!(
+        analyze(&[unread]).authority_ceiling,
+        AuthorityCeiling::Observe
+    );
+}
+
+#[test]
 fn cv_ric_032_text_is_not_capped() {
     let text = ModalInput {
         modality: Modality::Text,
@@ -99,9 +121,11 @@ fn cv_ric_032_text_is_not_capped() {
 #[test]
 fn cv_ric_032_parity_cannot_be_asserted_over_the_wire() {
     let wire = r#"{"modality":"vision","content":"Q3 revenue by region",
-        "consumed_parity":"reference-matched","channel":"divergence"}"#;
+        "consumed_parity":"reference-matched","channel":"divergence",
+        "consumed":{"profile":"p","profile_digest":"00","digest":"00",
+        "parity":"reference-matched","extractor":"x"}}"#;
     let input: ModalInput = serde_json::from_str(wire).expect("deserialize");
-    assert_eq!(input.consumed_parity, None);
+    assert_eq!(input.consumed, None);
     assert_eq!(input.channel, None);
     assert_eq!(
         analyze(&[input]).authority_ceiling,
