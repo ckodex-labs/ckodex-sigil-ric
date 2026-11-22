@@ -113,6 +113,8 @@ def main() -> int:
             "ReceiptVerificationOutcome",
             "KeygenOutcome",
             "AttestationVerificationOutcome",
+        ],
+        "crates/sigil-cli/src/cli/delegation.rs": [
             "LeaseVerificationOutcome",
             "EnvelopeVerificationOutcome",
         ],
