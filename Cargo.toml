@@ -32,6 +32,8 @@ unsafe_op_in_unsafe_fn = "deny"
 [workspace.lints.clippy]
 undocumented_unsafe_blocks = "deny"
 mod_module_files = "deny"
+# 50 lines per function (clippy.toml sets the threshold).
+too_many_lines = "deny"
 
 [workspace.dependencies]
 anyhow = "1"
