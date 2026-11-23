@@ -20,6 +20,32 @@ pub fn render_sigil(
     color: bool,
 ) -> String {
     let mut out = String::new();
+    push_summary(&mut out, output, color);
+    push_intake(&mut out, input, explain, color);
+    push_scan(&mut out, output, input, explain, color);
+
+    // ── MERGE / TOKENS ────────────────────────────────────────────
+    if explain {
+        out.push_str(&paint(
+            color,
+            style::CYAN,
+            "  MERGE    BPE merges over the canonical stream — boundaries are\n           provenance-aware; unsafe cross-boundary merges are refused\n",
+        ));
+    }
+    out.push_str(&render_tokens(output, input, color));
+
+    push_receipt(&mut out, output, explain, color);
+    out.push_str(rule());
+    out.push_str(&paint(
+        color,
+        style::DIM,
+        "  the kernel owns this verdict — this view explains it; full detail: --format json\n",
+    ));
+    out
+}
+
+/// Verdict banner plus the severity / perplexity / terminal summary lines.
+fn push_summary(out: &mut String, output: &SigilOutput, color: bool) {
     let a = &output.assessment;
 
     // ── verdict banner ────────────────────────────────────────────
@@ -38,8 +64,10 @@ pub fn render_sigil(
         out.push_str(&format!("  terminal   {}\n", terminal_line(report)));
     }
     out.push_str(rule());
+}
 
-    // ── INTAKE ────────────────────────────────────────────────────
+/// INTAKE stage: the explain narration and the raw input line.
+fn push_intake(out: &mut String, input: Option<&str>, explain: bool, color: bool) {
     if explain {
         out.push_str(&paint(
             color,
@@ -60,8 +88,16 @@ pub fn render_sigil(
             text.chars().count()
         ));
     }
+}
 
-    // ── SCAN ──────────────────────────────────────────────────────
+/// SCAN stage: the explain narration and one block per finding.
+fn push_scan(
+    out: &mut String,
+    output: &SigilOutput,
+    input: Option<&str>,
+    explain: bool,
+    color: bool,
+) {
     let findings = collect_findings(output);
     if explain {
         out.push_str(&paint(
@@ -78,17 +114,10 @@ pub fn render_sigil(
             out.push_str(&render_finding(finding, input, color));
         }
     }
+}
 
-    // ── MERGE / TOKENS ────────────────────────────────────────────
-    if explain {
-        out.push_str(&paint(
-            color,
-            style::CYAN,
-            "  MERGE    BPE merges over the canonical stream — boundaries are\n           provenance-aware; unsafe cross-boundary merges are refused\n",
-        ));
-    }
-    out.push_str(&render_tokens(output, input, color));
-
+/// EMIT stage: receipt binding raw → canonical, its signature, the evidence bundle.
+fn push_receipt(out: &mut String, output: &SigilOutput, explain: bool, color: bool) {
     // ── EMIT / RECEIPT / EVIDENCE ─────────────────────────────────
     if explain {
         out.push_str(&paint(
@@ -122,13 +151,6 @@ pub fn render_sigil(
             ev.persisted
         ));
     }
-    out.push_str(rule());
-    out.push_str(&paint(
-        color,
-        style::DIM,
-        "  the kernel owns this verdict — this view explains it; full detail: --format json\n",
-    ));
-    out
 }
 
 fn verdict_banner(verdict: &Verdict, color: bool) -> String {

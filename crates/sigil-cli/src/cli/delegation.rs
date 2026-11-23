@@ -91,86 +91,124 @@ fn load_revocation_registry_from_path(
     Ok(registry)
 }
 
+/// Seconds since the Unix epoch, or 0 when the clock is before it.
+fn unix_now_secs() -> u64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0)
+}
+
+/// Writes `value` as pretty JSON to `path`.
+fn write_pretty_json<T: Serialize>(path: &std::path::Path, value: &T) -> Result<()> {
+    let json = serde_json::to_string_pretty(value)?;
+    fs::write(path, json).with_context(|| format!("write {}", path.display()))
+}
+
 /// Creates a new root or delegated capability lease.
 pub fn lease_create_command(
     command: &LeaseCreateCommand,
     signer: Option<&dyn ReceiptSigner>,
 ) -> Result<sigil_core::CapabilityLease> {
-    use sigil_core::{
-        Capability, CapabilityLease, DelegationRequest, RootLeaseParams, create_root_lease,
-        delegate,
-    };
+    use sigil_core::{Capability, CapabilityLease};
     use std::collections::BTreeSet;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    let representation_digest = if let Some(ref receipt_path) = command.receipt {
-        let receipt = load_receipt_from_path(receipt_path)?;
-        receipt.canonical_digest
-    } else if let Some(ref digest) = command.representation_digest {
-        digest.clone()
-    } else {
-        return Err(anyhow!(
-            "either --receipt or --representation-digest must be provided"
-        ));
-    };
-
+    let representation_digest = lease_representation_digest(command)?;
     let capabilities: BTreeSet<Capability> = command.capabilities.iter().cloned().collect();
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
+    let now = unix_now_secs();
 
     let lease: CapabilityLease = if let Some(ref parent_path) = command.parent {
         let parent_lease = load_lease_from_path(parent_path)?;
-        let request = DelegationRequest {
-            delegatee: command.delegatee.clone(),
-            capabilities,
-            authority_ceiling: command.ceiling,
-            representation_digest,
-            validity_seconds: command.validity,
-        };
-        delegate(
+        delegate_lease(
+            command,
             &parent_lease,
-            &request,
+            capabilities,
+            representation_digest,
             now,
-            parent_lease.revocation_epoch,
             signer,
-        )
-        .map_err(|e| anyhow!("delegation failed: {e}"))?
+        )?
     } else {
-        let principal = command
-            .principal
-            .clone()
-            .unwrap_or_else(|| "agent://root".to_string());
-        let mut params = RootLeaseParams::new(principal, &command.delegatee, representation_digest);
-        params.capabilities = capabilities;
-        params.authority_ceiling = command.ceiling;
-        params.max_depth = command.max_depth;
-        params.validity_seconds = command.validity;
-        params.issued_at = now;
-        params.revocation_epoch = 1;
-        create_root_lease(params, signer)
+        issue_root_lease(command, capabilities, representation_digest, now, signer)
     };
 
     if let Some(ref out_path) = command.out {
-        let json = serde_json::to_string_pretty(&lease)?;
-        fs::write(out_path, json).with_context(|| format!("write {}", out_path.display()))?;
+        write_pretty_json(out_path, &lease)?;
     }
 
     Ok(lease)
 }
 
+/// The digest a new lease binds to: from `--receipt` when given, else `--representation-digest`.
+fn lease_representation_digest(command: &LeaseCreateCommand) -> Result<String> {
+    if let Some(ref receipt_path) = command.receipt {
+        let receipt = load_receipt_from_path(receipt_path)?;
+        Ok(receipt.canonical_digest)
+    } else if let Some(ref digest) = command.representation_digest {
+        Ok(digest.clone())
+    } else {
+        Err(anyhow!(
+            "either --receipt or --representation-digest must be provided"
+        ))
+    }
+}
+
+fn delegate_lease(
+    command: &LeaseCreateCommand,
+    parent_lease: &sigil_core::CapabilityLease,
+    capabilities: std::collections::BTreeSet<sigil_core::Capability>,
+    representation_digest: String,
+    now: u64,
+    signer: Option<&dyn ReceiptSigner>,
+) -> Result<sigil_core::CapabilityLease> {
+    use sigil_core::{DelegationRequest, delegate};
+
+    let request = DelegationRequest {
+        delegatee: command.delegatee.clone(),
+        capabilities,
+        authority_ceiling: command.ceiling,
+        representation_digest,
+        validity_seconds: command.validity,
+    };
+    delegate(
+        parent_lease,
+        &request,
+        now,
+        parent_lease.revocation_epoch,
+        signer,
+    )
+    .map_err(|e| anyhow!("delegation failed: {e}"))
+}
+
+fn issue_root_lease(
+    command: &LeaseCreateCommand,
+    capabilities: std::collections::BTreeSet<sigil_core::Capability>,
+    representation_digest: String,
+    now: u64,
+    signer: Option<&dyn ReceiptSigner>,
+) -> sigil_core::CapabilityLease {
+    use sigil_core::{RootLeaseParams, create_root_lease};
+
+    let principal = command
+        .principal
+        .clone()
+        .unwrap_or_else(|| "agent://root".to_string());
+    let mut params = RootLeaseParams::new(principal, &command.delegatee, representation_digest);
+    params.capabilities = capabilities;
+    params.authority_ceiling = command.ceiling;
+    params.max_depth = command.max_depth;
+    params.validity_seconds = command.validity;
+    params.issued_at = now;
+    params.revocation_epoch = 1;
+    create_root_lease(params, signer)
+}
+
 /// Verifies a capability lease or full delegation chain.
 pub fn lease_verify_command(command: &LeaseVerifyCommand) -> Result<LeaseVerificationOutcome> {
     use sigil_core::{CapabilityLease, validate_chain, validate_lease};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
-    let now = command.now.unwrap_or_else(|| {
-        SystemTime::now()
-            .duration_since(UNIX_EPOCH)
-            .map(|d| d.as_secs())
-            .unwrap_or(0)
-    });
+    let now = command.now.unwrap_or_else(unix_now_secs);
 
     let registry = if let Some(ref reg_path) = command.revocation_registry {
         Some(load_revocation_registry_from_path(reg_path)?)
@@ -183,52 +221,31 @@ pub fn lease_verify_command(command: &LeaseVerifyCommand) -> Result<LeaseVerific
             .with_context(|| format!("read chain from {}", chain_path.display()))?;
         let chain: Vec<CapabilityLease> = serde_json::from_str(&contents)
             .with_context(|| format!("parse chain JSON from {}", chain_path.display()))?;
-        let outcome = match validate_chain(&chain, now, registry.as_ref(), command.key.as_deref()) {
-            Ok(()) => LeaseVerificationOutcome {
-                valid: true,
-                lease_id: chain.last().map(|l| l.lease_id.clone()),
-                depth: chain.last().map(|l| l.depth),
-                delegatee: chain.last().map(|l| l.delegatee.clone()),
-                authority_ceiling: chain.last().map(|l| l.authority_ceiling.to_string()),
-                chain_length: Some(chain.len()),
-                error: None,
-            },
-            Err(e) => LeaseVerificationOutcome {
-                valid: false,
-                lease_id: chain.last().map(|l| l.lease_id.clone()),
-                depth: chain.last().map(|l| l.depth),
-                delegatee: chain.last().map(|l| l.delegatee.clone()),
-                authority_ceiling: chain.last().map(|l| l.authority_ceiling.to_string()),
-                chain_length: Some(chain.len()),
-                error: Some(e.to_string()),
-            },
-        };
-        Ok(outcome)
+        let verdict = validate_chain(&chain, now, registry.as_ref(), command.key.as_deref());
+        Ok(lease_outcome(chain.last(), chain.len(), verdict))
     } else if let Some(ref lease_path) = command.lease {
         let lease = load_lease_from_path(lease_path)?;
-        let outcome = match validate_lease(&lease, now, registry.as_ref(), command.key.as_deref()) {
-            Ok(()) => LeaseVerificationOutcome {
-                valid: true,
-                lease_id: Some(lease.lease_id.clone()),
-                depth: Some(lease.depth),
-                delegatee: Some(lease.delegatee.clone()),
-                authority_ceiling: Some(lease.authority_ceiling.to_string()),
-                chain_length: Some(1),
-                error: None,
-            },
-            Err(e) => LeaseVerificationOutcome {
-                valid: false,
-                lease_id: Some(lease.lease_id.clone()),
-                depth: Some(lease.depth),
-                delegatee: Some(lease.delegatee.clone()),
-                authority_ceiling: Some(lease.authority_ceiling.to_string()),
-                chain_length: Some(1),
-                error: Some(e.to_string()),
-            },
-        };
-        Ok(outcome)
+        let verdict = validate_lease(&lease, now, registry.as_ref(), command.key.as_deref());
+        Ok(lease_outcome(Some(&lease), 1, verdict))
     } else {
         Err(anyhow!("either --lease or --chain must be specified"))
+    }
+}
+
+/// Reports a validation verdict against the lease at the end of the chain.
+fn lease_outcome<E: std::fmt::Display>(
+    lease: Option<&sigil_core::CapabilityLease>,
+    chain_length: usize,
+    verdict: std::result::Result<(), E>,
+) -> LeaseVerificationOutcome {
+    LeaseVerificationOutcome {
+        valid: verdict.is_ok(),
+        lease_id: lease.map(|l| l.lease_id.clone()),
+        depth: lease.map(|l| l.depth),
+        delegatee: lease.map(|l| l.delegatee.clone()),
+        authority_ceiling: lease.map(|l| l.authority_ceiling.to_string()),
+        chain_length: Some(chain_length),
+        error: verdict.err().map(|e| e.to_string()),
     }
 }
 
@@ -237,10 +254,7 @@ pub fn envelope_create_command(
     command: &EnvelopeCreateCommand,
     signer: Option<&dyn ReceiptSigner>,
 ) -> Result<sigil_core::AgentEnvelope> {
-    use sha2::{Digest, Sha384};
     use sigil_core::AgentEnvelope;
-    use sigil_core::signing::{ReceiptSignature, hex_digest};
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     let lease = load_lease_from_path(&command.lease)?;
     let receipt = load_receipt_from_path(&command.receipt)?;
@@ -253,30 +267,8 @@ pub fn envelope_create_command(
         ));
     }
 
-    let payload = if let Some(ref p) = command.payload {
-        p.clone()
-    } else if let Some(ref path) = command.payload_file {
-        fs::read_to_string(path).with_context(|| format!("read payload file {}", path.display()))?
-    } else {
-        String::new()
-    };
-
-    let now = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_secs())
-        .unwrap_or(0);
-
-    let seed = format!(
-        "envelope|{}|{}|{}|{}",
-        lease.lease_id,
-        receipt.canonical_digest,
-        payload.len(),
-        now
-    );
-    let mut hasher = Sha384::new();
-    hasher.update(seed.as_bytes());
-    let id_hash = hex_digest(&hasher.finalize());
-    let envelope_id = format!("env_{}", &id_hash[..16]);
+    let payload = envelope_payload(command)?;
+    let envelope_id = new_envelope_id(&lease, &receipt, payload.len(), unix_now_secs());
 
     let mut envelope = AgentEnvelope {
         envelope_id,
@@ -285,23 +277,57 @@ pub fn envelope_create_command(
         payload,
         signature: None,
     };
-
-    if let Some(s) = signer {
-        let msg = envelope.canonical_message();
-        let sig_bytes = s.sign(msg.as_bytes());
-        envelope.signature = Some(ReceiptSignature {
-            algorithm: s.algorithm(),
-            key_id: s.key_id(),
-            signature: hex_digest(&sig_bytes),
-        });
+    if let Some(signer) = signer {
+        sign_envelope(&mut envelope, signer);
     }
 
     if let Some(ref out_path) = command.out {
-        let json = serde_json::to_string_pretty(&envelope)?;
-        fs::write(out_path, json).with_context(|| format!("write {}", out_path.display()))?;
+        write_pretty_json(out_path, &envelope)?;
     }
 
     Ok(envelope)
+}
+
+/// The task payload: `--payload`, else the contents of `--payload-file`, else empty.
+fn envelope_payload(command: &EnvelopeCreateCommand) -> Result<String> {
+    if let Some(ref p) = command.payload {
+        Ok(p.clone())
+    } else if let Some(ref path) = command.payload_file {
+        fs::read_to_string(path).with_context(|| format!("read payload file {}", path.display()))
+    } else {
+        Ok(String::new())
+    }
+}
+
+fn new_envelope_id(
+    lease: &sigil_core::CapabilityLease,
+    receipt: &sigil_core::RepresentationReceipt,
+    payload_len: usize,
+    now: u64,
+) -> String {
+    use sha2::{Digest, Sha384};
+    use sigil_core::signing::hex_digest;
+
+    let seed = format!(
+        "envelope|{}|{}|{}|{}",
+        lease.lease_id, receipt.canonical_digest, payload_len, now
+    );
+    let mut hasher = Sha384::new();
+    hasher.update(seed.as_bytes());
+    let id_hash = hex_digest(&hasher.finalize());
+    format!("env_{}", &id_hash[..16])
+}
+
+fn sign_envelope(envelope: &mut sigil_core::AgentEnvelope, signer: &dyn ReceiptSigner) {
+    use sigil_core::signing::{ReceiptSignature, hex_digest};
+
+    let msg = envelope.canonical_message();
+    let sig_bytes = signer.sign(msg.as_bytes());
+    envelope.signature = Some(ReceiptSignature {
+        algorithm: signer.algorithm(),
+        key_id: signer.key_id(),
+        signature: hex_digest(&sig_bytes),
+    });
 }
 
 /// Verifies an agent envelope and its bound representation receipt.

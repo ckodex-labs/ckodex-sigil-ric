@@ -7,7 +7,7 @@ use sigil_core::vocab::SpecialTokenMode;
 use sigil_core::{TokenizerActor, Vocab};
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub const BENCH_ROOT: &str = concat!(env!("CARGO_MANIFEST_DIR"), "/../../bench");
 pub const BENCHMARK_MAX_REGRESSION_PCT: u32 = 200;
@@ -181,38 +181,9 @@ pub fn run_benchmark(
     }
 
     let mode = benchmark.special_token_mode.as_runtime_mode();
-
-    let sequential_start = Instant::now();
-    let mut sequential_tokens = 0usize;
-    for _ in 0..benchmark.rounds {
-        for chunk in benchmark.texts.chunks(benchmark.batch_size) {
-            let expected = encode_sequential(vocab, chunk, &mode)?;
-            sequential_tokens += count_tokens(&expected);
-        }
-    }
-    let sequential_elapsed = sequential_start.elapsed();
-
-    let parallel_start = Instant::now();
-    let mut parallel_tokens = 0usize;
-    let mut outputs_match = true;
-    for _ in 0..benchmark.rounds {
-        for chunk in benchmark.texts.chunks(benchmark.batch_size) {
-            let owned_chunk: Vec<String> = chunk.to_vec();
-            let actual = match benchmark.special_token_mode {
-                BenchmarkSpecialTokenMode::AllowAll => {
-                    actor.encode_batch_with_specials(&owned_chunk, SpecialTokenMode::AllowAll)?
-                }
-                BenchmarkSpecialTokenMode::Disallow => actor.encode_batch(&owned_chunk)?,
-            };
-            parallel_tokens += count_tokens(&actual);
-
-            let expected = encode_sequential(vocab, chunk, &mode)?;
-            if expected != actual {
-                outputs_match = false;
-            }
-        }
-    }
-    let parallel_elapsed = parallel_start.elapsed();
+    let (sequential_tokens, sequential_elapsed) = time_sequential(vocab, &benchmark, &mode)?;
+    let (parallel_tokens, parallel_elapsed, outputs_match) =
+        time_parallel(vocab, actor, &benchmark, &mode)?;
 
     let result = BenchmarkResult {
         name: benchmark.name,
@@ -224,20 +195,18 @@ pub fn run_benchmark(
         special_token_mode: benchmark.special_token_mode,
         expected_parity: benchmark.expected_parity,
         items: benchmark.texts.len(),
-        sequential: BenchmarkTiming {
-            rounds: benchmark.rounds,
-            items: benchmark.texts.len(),
-            tokens: sequential_tokens,
-            elapsed_ns: sequential_elapsed.as_nanos(),
-            ns_per_token: ns_per_token(sequential_elapsed, sequential_tokens),
-        },
-        parallel: BenchmarkTiming {
-            rounds: benchmark.rounds,
-            items: benchmark.texts.len(),
-            tokens: parallel_tokens,
-            elapsed_ns: parallel_elapsed.as_nanos(),
-            ns_per_token: ns_per_token(parallel_elapsed, parallel_tokens),
-        },
+        sequential: benchmark_timing(
+            benchmark.rounds,
+            benchmark.texts.len(),
+            sequential_tokens,
+            sequential_elapsed,
+        ),
+        parallel: benchmark_timing(
+            benchmark.rounds,
+            benchmark.texts.len(),
+            parallel_tokens,
+            parallel_elapsed,
+        ),
         outputs_match,
     };
 
@@ -250,6 +219,69 @@ pub fn run_benchmark(
     }
 
     Ok(result)
+}
+
+fn benchmark_timing(
+    rounds: usize,
+    items: usize,
+    tokens: usize,
+    elapsed: Duration,
+) -> BenchmarkTiming {
+    BenchmarkTiming {
+        rounds,
+        items,
+        tokens,
+        elapsed_ns: elapsed.as_nanos(),
+        ns_per_token: ns_per_token(elapsed, tokens),
+    }
+}
+
+/// Encodes every chunk one text at a time; returns total tokens and wall time.
+fn time_sequential(
+    vocab: &Vocab,
+    benchmark: &ResolvedBenchmark,
+    mode: &SpecialTokenMode,
+) -> Result<(usize, Duration)> {
+    let start = Instant::now();
+    let mut tokens = 0usize;
+    for _ in 0..benchmark.rounds {
+        for chunk in benchmark.texts.chunks(benchmark.batch_size) {
+            let expected = encode_sequential(vocab, chunk, mode)?;
+            tokens += count_tokens(&expected);
+        }
+    }
+    Ok((tokens, start.elapsed()))
+}
+
+/// Encodes every chunk through the actor's batch path, checking each batch
+/// against the sequential encoding; returns tokens, wall time and parity.
+fn time_parallel(
+    vocab: &Vocab,
+    actor: &TokenizerActor,
+    benchmark: &ResolvedBenchmark,
+    mode: &SpecialTokenMode,
+) -> Result<(usize, Duration, bool)> {
+    let start = Instant::now();
+    let mut tokens = 0usize;
+    let mut outputs_match = true;
+    for _ in 0..benchmark.rounds {
+        for chunk in benchmark.texts.chunks(benchmark.batch_size) {
+            let owned_chunk: Vec<String> = chunk.to_vec();
+            let actual = match benchmark.special_token_mode {
+                BenchmarkSpecialTokenMode::AllowAll => {
+                    actor.encode_batch_with_specials(&owned_chunk, SpecialTokenMode::AllowAll)?
+                }
+                BenchmarkSpecialTokenMode::Disallow => actor.encode_batch(&owned_chunk)?,
+            };
+            tokens += count_tokens(&actual);
+
+            let expected = encode_sequential(vocab, chunk, mode)?;
+            if expected != actual {
+                outputs_match = false;
+            }
+        }
+    }
+    Ok((tokens, start.elapsed(), outputs_match))
 }
 
 pub fn write_benchmark_baselines(dir: &Path, result: &BenchmarkResult) -> Result<()> {

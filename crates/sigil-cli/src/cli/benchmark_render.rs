@@ -147,24 +147,7 @@ pub fn emit_burn_in_telemetry(command: &BurnInTelemetryCommand) -> Result<BurnIn
         ));
     }
 
-    let mut representative_corpora = BTreeSet::new();
-    let mut evidence_refs = BTreeSet::new();
-    for benchmark_path in &command.benchmark {
-        let benchmark: BurnInBenchmarkSummary = load_json_file(benchmark_path)?;
-        if benchmark.outputs_match != benchmark.expected_parity {
-            return Err(anyhow!(
-                "benchmark {} does not satisfy expected parity",
-                benchmark_path.display()
-            ));
-        }
-        representative_corpora.insert(benchmark.corpus.clone());
-        evidence_refs.insert(benchmark_path.display().to_string());
-        evidence_refs.insert(format!(
-            "benchmark:{}:{}",
-            benchmark.preset, benchmark.corpus
-        ));
-        evidence_refs.insert(format!("benchmark:vocab:{}", benchmark.vocab));
-    }
+    let (representative_corpora, mut evidence_refs) = summarise_benchmarks(&command.benchmark)?;
 
     for ref_item in &command.evidence_ref {
         evidence_refs.insert(ref_item.clone());
@@ -187,6 +170,30 @@ pub fn emit_burn_in_telemetry(command: &BurnInTelemetryCommand) -> Result<BurnIn
         evidence_refs: evidence_refs.into_iter().collect(),
         notes: command.note.clone(),
     })
+}
+
+/// Loads each benchmark report, requires parity, and returns the corpora and
+/// evidence references it contributes.
+fn summarise_benchmarks(paths: &[PathBuf]) -> Result<(BTreeSet<String>, BTreeSet<String>)> {
+    let mut representative_corpora = BTreeSet::new();
+    let mut evidence_refs = BTreeSet::new();
+    for benchmark_path in paths {
+        let benchmark: BurnInBenchmarkSummary = load_json_file(benchmark_path)?;
+        if benchmark.outputs_match != benchmark.expected_parity {
+            return Err(anyhow!(
+                "benchmark {} does not satisfy expected parity",
+                benchmark_path.display()
+            ));
+        }
+        representative_corpora.insert(benchmark.corpus.clone());
+        evidence_refs.insert(benchmark_path.display().to_string());
+        evidence_refs.insert(format!(
+            "benchmark:{}:{}",
+            benchmark.preset, benchmark.corpus
+        ));
+        evidence_refs.insert(format!("benchmark:vocab:{}", benchmark.vocab));
+    }
+    Ok((representative_corpora, evidence_refs))
 }
 
 pub fn read_burn_in_false_positive_threshold() -> Option<f64> {

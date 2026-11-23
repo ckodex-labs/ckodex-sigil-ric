@@ -246,24 +246,31 @@ mod tests {
         assert!(message.contains("parallel regression"));
     }
 
-    #[test]
-    fn burn_in_telemetry_emitter_aggregates_benchmark_corpora() {
+    /// Writes the small, medium and stress reports under a fresh temp dir and
+    /// returns their paths in that order.
+    fn write_telemetry_reports() -> Vec<PathBuf> {
         let root = temp_benchmark_dir("telemetry");
         fs::create_dir_all(&root).expect("temp dir should be creatable");
 
-        let small = benchmark_result("small", "small", 2);
-        let medium = benchmark_result("medium", "medium", 4);
-        let stress = benchmark_result("stress", "stress", 6);
+        let reports = [
+            ("small", benchmark_result("small", "small", 2)),
+            ("medium", benchmark_result("medium", "medium", 4)),
+            ("stress", benchmark_result("stress", "stress", 6)),
+        ];
+        reports
+            .iter()
+            .map(|(name, report)| {
+                let path = root.join(format!("{name}.json"));
+                fs::write(&path, serde_json::to_string_pretty(report).unwrap()).unwrap();
+                path
+            })
+            .collect()
+    }
 
-        let small_path = root.join("small.json");
-        let medium_path = root.join("medium.json");
-        let stress_path = root.join("stress.json");
-        fs::write(&small_path, serde_json::to_string_pretty(&small).unwrap()).unwrap();
-        fs::write(&medium_path, serde_json::to_string_pretty(&medium).unwrap()).unwrap();
-        fs::write(&stress_path, serde_json::to_string_pretty(&stress).unwrap()).unwrap();
-
+    #[test]
+    fn burn_in_telemetry_emitter_aggregates_benchmark_corpora() {
         let command = BurnInTelemetryCommand {
-            benchmark: vec![small_path.clone(), medium_path.clone(), stress_path.clone()],
+            benchmark: write_telemetry_reports(),
             deployment_mode: BurnInDeploymentMode::Monitor,
             monitor_shadow_enabled: true,
             false_positive_rate: Some(0.0),

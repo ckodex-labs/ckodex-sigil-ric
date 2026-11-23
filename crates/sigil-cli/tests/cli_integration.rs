@@ -82,11 +82,11 @@ fn keygen_writes_both_pem_files() {
 /// The full offline receipt path: keygen → signed scan → verify-receipt
 /// → attest → verify-attestation. Exercises the signing plumbing,
 /// receipt envelope handling, and DSSE verify end to end.
-#[test]
-fn signed_receipt_and_attestation_chain() {
-    let dir = tmpdir();
-    let priv_path = dir.path().join("k.pem");
-    let pub_path = dir.path().join("k.pub.pem");
+/// Generate `k.pem` / `k.pub.pem` in `dir`; returns the private key path and
+/// the hex-encoded verification key.
+fn keygen_in(dir: &Path) -> (PathBuf, String) {
+    let priv_path = dir.join("k.pem");
+    let pub_path = dir.join("k.pub.pem");
     let keygen = sigil(&[
         "keygen",
         "--out-private",
@@ -98,6 +98,13 @@ fn signed_receipt_and_attestation_chain() {
         .as_str()
         .expect("key hex")
         .to_string();
+    (priv_path, key_hex)
+}
+
+#[test]
+fn signed_receipt_and_attestation_chain() {
+    let dir = tmpdir();
+    let (priv_path, key_hex) = keygen_in(dir.path());
 
     // Signed scan → receipt-bearing SigilOutput on stdout.
     let scan = sigil(&[
