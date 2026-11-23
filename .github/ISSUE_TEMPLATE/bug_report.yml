@@ -1,0 +1,41 @@
+name: Bug report
+description: SIGIL behaved differently from its documentation or the RIC rules.
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: "Security issue? Do not file it here; use the private report link instead."
+  - type: input
+    id: version
+    attributes:
+      label: SIGIL version or commit
+      placeholder: "sigil-cli --version, or a commit hash"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command or API call and a minimal input. Remove anything sensitive.
+      render: shell
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: What SIGIL did
+      description: Decision, findings, ceiling, or the error, as printed (`--format json` helps).
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected, and why
+      description: Cite the RIC rule or doc section if you know it.
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: Environment
+      placeholder: "OS, architecture, Rust version, Tesseract/ffmpeg versions if perception is involved"

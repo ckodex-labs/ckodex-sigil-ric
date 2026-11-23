@@ -1,10 +1,26 @@
 # SIGIL representation integrity engine
 
-SIGIL is a security engine that sits in front of AI models. It guarantees that an AI model only processes text that security policies explicitly inspected and approved.
+[![CI](https://github.com/ckodex-labs/ckodex-sigil-ric/actions/workflows/ci.yml/badge.svg?branch=develop)](https://github.com/ckodex-labs/ckodex-sigil-ric/actions/workflows/ci.yml)
+[![Release](https://img.shields.io/github/v/release/ckodex-labs/ckodex-sigil-ric)](https://github.com/ckodex-labs/ckodex-sigil-ric/releases)
+[![License](https://img.shields.io/badge/license-Apache--2.0%20or%20commercial-blue)](./LICENSE)
 
-When models consume prompts, documents, images, audio, tool returns, and agent messages, standard security scanners check inputs at the file or string boundary. Standard tokenizers then split and merge those inputs into token IDs. During that step, provenance vanishes. Text fragments fuse across trust boundaries, hidden Unicode characters alter semantics, and screen repaint sequences forge visual outputs.
+SIGIL sits in front of AI models and checks that a model only consumes input
+that policy inspected and admitted.
 
-SIGIL wraps tokenization. It tracks byte provenance, evaluates security policies, detects injection and terminal tampering, and signs a tamper-proof admission receipt before the model runs. If the engine cannot prove what the model received, the system revokes autonomous execution authority.
+Security scanners usually check a prompt, document, image, recording or tool
+response at the file or string boundary. The model never sees that boundary:
+a tokenizer splits and merges text into token IDs, and a preprocessor
+resizes images and resamples audio. Provenance is lost on the way. Fragments
+fuse across trust boundaries, hidden Unicode changes meaning, terminal
+repaint sequences forge output, and a downscaled image can carry text the
+original does not show.
+
+SIGIL wraps that step. It tracks byte provenance through tokenization,
+produces the model's own view of images and audio, runs its detectors on
+what the model will actually consume, and signs an admission receipt that
+binds the decision to those bytes. When SIGIL cannot show what the model
+received, it lowers the authority it grants (an `observe` ceiling instead
+of `act`) rather than raising it.
 
 ```mermaid
 flowchart TD
@@ -41,13 +57,34 @@ flowchart TD
     EnvelopeVerifier -->|"Tampered input or revoked lease"| Revoke
 ```
 
-## Quick start
+## Install
 
-Build the release binary:
+### Signed release (Linux x86_64 and aarch64)
+
+Download the archive for your architecture from the
+[releases page](https://github.com/ckodex-labs/ckodex-sigil-ric/releases), then
+verify it before use. Releases are signed keylessly with Sigstore from the
+release workflow, carry SLSA build provenance and a CycloneDX SBOM, and
+publish SHA-384 sums:
+
+```sh
+sha384sum --check SHA384SUMS
+gh attestation verify sigil-0.4.0-x86_64-unknown-linux-gnu.tar.gz --repo ckodex-labs/ckodex-sigil-ric
+```
+
+The full procedure, including `cosign verify-blob`, is in
+[docs/RELEASE-VERIFICATION.md](./docs/RELEASE-VERIFICATION.md).
+
+### From source
+
+Requires Rust 1.88 or later and Zig 0.15.2 (`sigil-core` compiles the Zig
+tokenizer at build time).
 
 ```sh
 cargo build --release -p sigil-cli
 ```
+
+## Quick start
 
 Scan an input string:
 
@@ -151,20 +188,60 @@ If an untrusted tool injects system override commands into its JSON response, th
 
 ### Multimodal perception
 
-The `perceive` command extracts and scans text channels from binary media files:
+The `perceive` command extracts and scans text channels from media files:
 
 ```sh
-target/release/sigil-cli perceive \
-  --input recording.mp4 \
-  --analyze
+target/release/sigil-cli perceive --input recording.mp4 --analyze
 ```
 
-Supported pipelines include:
+Supported pipelines:
 - Images: OCR text extraction and invisible Unicode tag detection.
-- Audio: speech recognition transcripts and spectral analysis.
+- Audio: speech recognition transcripts and spectral analysis, including
+  energy above the audible band and resampler aliasing.
 - Video: audio demuxing and per-frame OCR text extraction.
-- Documents: PDF text extraction compared against rasterized page renders to uncover white-on-white text.
-- Source code: separation of executable statements from comments and string literals.
+- Documents: PDF text extraction compared against rasterized page renders to
+  uncover white-on-white text.
+- Source code: separation of executable statements from comments and string
+  literals.
+
+### The model's view, not only the file
+
+A vision-language model does not read the image file; it reads the pixels
+its preprocessor produces. With `--profile`, SIGIL produces that view
+itself, scans it, and reports text the view carries but the original does
+not (a `divergence` finding):
+
+```sh
+target/release/sigil-cli perceive --input chart.png --analyze \
+  --profile qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow \
+  --ocr-binary "$(command -v tesseract)" --ocr-args "stdin - --psm 6"
+```
+
+Profiles today: `qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow` and
+`thumbnail/nearest-80` for images; `audio/16k-decimate` and
+`whisper/16k-filtered` (with `--resampler-binary`) for audio. The signed
+receipt (v4) records the profile, the digest of the consumed bytes, whether
+they match the reference preprocessor bit for bit (`parity`), the extractor
+that read them, and how the engine obtained them (`--delivery`).
+
+Media and documents without a reference-matched, scanned view are capped at
+`observe`. This is deliberate: an admission decision about a file says
+nothing about a resized sibling the model actually consumed.
+
+With `--vlm-assets`, SIGIL also emits Qwen2-VL's exact request token-ID
+stream (`sigil-cli vlm-request`). It needs Qwen2-VL-2B's tokenizer and
+processor files, which SIGIL does not redistribute; we used them, from their
+[original repository](https://huggingface.co/mlx-community/Qwen2-VL-2B-4bit),
+to conduct our tests. See
+[docs/reference-models/QWEN2-VL-2B.md](./docs/reference-models/QWEN2-VL-2B.md)
+to fetch them.
+
+### Retrieval boundary
+
+A retriever or embedding filter is an interpreter too. SIGIL signs a
+retrieval receipt binding the embedding model and the exact input it scored,
+never lets retrieval raise trust above the source's, and caps retrieved
+content it cannot tie to such a receipt at `observe` (RIC-SPEC §4.3).
 
 ## Workspace crates
 
@@ -202,20 +279,37 @@ For native Zig targets and cross-compilation, the build pipeline integrates with
 
 ## Verification and test coverage
 
-The codebase is tested continuously against 29 attack classes documented in [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md):
+The attack classes and the tests that block them are listed in
+[docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md). On every push:
 
-- 407 cargo tests passing with 0 failures across 32 test binaries.
-- Zero clippy warnings under strict `-D warnings`.
-- Detector findings mapped against MITRE ATLAS v5.6.0 and ATT&CK techniques.
-- Conformance verified against ghostty terminal escape tables.
-- Production launch checklist passing with automated burn-in telemetry.
+- `cargo test --workspace`: TESTCOUNT tests, 0 failures, in the Dagger CI image
+  with real Tesseract and ffmpeg.
+- `cargo clippy --workspace --all-targets -- -D warnings`, with functions held
+  to 50 lines (`clippy.toml`).
+- Line coverage gate of 80 % (`cargo llvm-cov`); COVERAGE at the 0.4.0 release.
+- Conformance vectors CV-RIC-001 to CV-RIC-040 (`docs/RIC-CONTRACT.md`),
+  detector findings mapped to MITRE ATLAS and ATT&CK, and terminal-escape
+  conformance against ghostty.
+
+Reproduce any lane locally with Dagger:
+
+```sh
+dagger run cargo run --manifest-path ci/Cargo.toml -- all
+```
 
 ## Documentation index
 
-- [SIGIL-SPEC.md](./SIGIL-SPEC.md): formal specification and representation integrity contract.
-- [docs/THREAT-MODEL.md](./docs/THREAT-MODEL.md): trust boundaries, abuse paths, and residual risks.
+- [docs/RIC-SPEC.md](./docs/RIC-SPEC.md): the Representation Integrity Contract specification.
+- [docs/RIC-CONTRACT.md](./docs/RIC-CONTRACT.md): how SIGIL implements each rule, with its conformance vectors.
+- [docs/ADR-001-model-side-perception.md](./docs/ADR-001-model-side-perception.md) and [docs/ADR-002-kernel-io-and-tokenizer-extraction.md](./docs/ADR-002-kernel-io-and-tokenizer-extraction.md): architecture decisions.
+- [docs/THREAT-MODEL.md](./docs/THREAT-MODEL.md): trust boundaries, abuse paths and residual risks.
 - [docs/THREAT-MAPPING.md](./docs/THREAT-MAPPING.md): mapping to MITRE ATLAS techniques and mitigations.
-- [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md): attack classes, blocking layers, and proof tests.
-- [docs/POC-CASES.md](./docs/POC-CASES.md): reproducible proof-of-concept attack demonstrations.
-- [docs/LAUNCH-CHECKLIST.md](./docs/LAUNCH-CHECKLIST.md): release gate criteria and burn-in requirements.
-- [docs/TRAJECTORY.md](./docs/TRAJECTORY.md): engineering trajectory and verification history.
+- [docs/PERCEPTION-ADAPTERS.md](./docs/PERCEPTION-ADAPTERS.md): perception adapters, profiles and their flags.
+- [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md): attack classes, blocking layers and proof tests.
+- [docs/POC-CASES.md](./docs/POC-CASES.md): reproducible proof-of-concept attacks.
+- [docs/RELEASE-VERIFICATION.md](./docs/RELEASE-VERIFICATION.md): verifying a signed release.
+- [CHANGELOG.md](./CHANGELOG.md), [SECURITY.md](./SECURITY.md), [CONTRIBUTING.md](./CONTRIBUTING.md).
+
+## Licence
+
+Apache License 2.0 or a commercial licence; see [LICENSE](./LICENSE).

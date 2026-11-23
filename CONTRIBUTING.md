@@ -1,35 +1,62 @@
-# Contributing
+# Contributing to SIGIL
 
-## The gates a change must pass
+Thank you for helping. SIGIL is a security control, so changes are judged
+first on whether they keep its guarantees, then on everything else.
+
+## Before you start
+
+- Open an issue for anything beyond a small fix, so the approach is agreed
+  before code is written.
+- A change to a normative rule (`docs/RIC-SPEC.md`), a signed message, or a
+  serialized form needs an ADR (`docs/ADR-*.md`) and a version note.
+- Report vulnerabilities privately (`SECURITY.md`), never in an issue.
+
+## Development setup
+
+- Rust 1.88 or later (edition 2024) and Zig 0.15.2 (`sigil-core` builds the
+  Zig tokenizer).
+- Tesseract and ffmpeg: the perception tests run them for real and fail,
+  rather than skip, when they are missing.
+- The Qwen2-VL interpreter tests need third-party files SIGIL does not
+  redistribute: `scripts/reference/fetch_qwen2vl_assets.sh`.
+
+## The gates
+
+Every pull request must pass the same lane CI runs:
 
 ```sh
-cargo test --workspace
+cargo fmt --all -- --check
 cargo clippy --workspace --all-targets -- -D warnings
-cargo fmt --all
+cargo test --workspace
 python3 scripts/check_contracts.py
+# or all of them, in the CI image:
+dagger run cargo run --manifest-path ci/Cargo.toml -- all
 ```
 
-`check_contracts.py` keeps the generated docs in sync with the proof surface. If you add a test file, add its scorecard row or the check fails.
+Enforced by the gates: functions of 50 lines or fewer (`clippy.toml`), no
+`unsafe` outside the two documented FFI boundaries, and line coverage of
+80 % or more. Checked in review: files under 500 lines, and no `unwrap` or
+`expect` outside tests.
 
-## Structural conventions
+## Tests
 
-- Keep files under 500 lines of code, and functions under 50 lines. Exceeding these limits indicates that decomposition is required.
-- Kernel verdicts live in `sigil-core`. Presentation code in `sigil-cli` renders them but never alters or re-evaluates decisions.
-- External binaries execute only through pinned adapters like `ExternalOcr`, `ExternalPipe`, or `ExternalTranscript`. The engine records SHA-384 digests as evidence rather than invoking bare system commands.
-- Unmodelled behavior degrades to named evidence properties rather than silent pass-throughs.
+- New behaviour comes with a test that fails without it. For a security rule,
+  break the rule on purpose once and confirm a test catches it.
+- No mocks of the thing under test, and no test that compares SIGIL's output
+  with a value SIGIL produced itself: reference values come from the real
+  reference implementation (`scripts/reference/`, Python only there).
+- Conformance vectors are named `cv_ric_NNN_...` and listed in
+  `docs/RIC-CONTRACT.md`; `scripts/check_contracts.py` keeps the two in sync.
 
-## Commit flow
+## Commits and pull requests
 
-Create a feature branch off `develop`, and merge using `--no-ff`.
+- Conventional commits (`feat(scope): ...`, `fix(...)`, `docs(...)`,
+  `refactor(...)`, `ci: ...`). The body says why, and how it was verified.
+- One logical change per commit. Signed commits are preferred.
+- Fill in the pull request template; link the issue and the RIC rule or
+  vector the change touches.
 
-CI lanes run inside Dagger containers. GitHub Actions functions as a thin invoker. Reproduce any pipeline stage locally:
+## Licence of contributions
 
-```sh
-dagger run cargo run --manifest-path ci/Cargo.toml -- <stage>
-```
-
-Available stages include `all`, `fmt`, `contracts`, `test`, `clippy`, `coverage`, `zig-build`, `bench <preset>`, `bindings`, `conformance`, and `reports`.
-
-The `conformance` lane runs in an isolated container with Rust 1.90 and Zig for ghostty comparison tests. The runtime path never touches this dependency.
-
-For native Zig module execution and containerized Zig builds, the pipeline integrates with [dagger-zig](https://github.com/MChorfa/dagger-zig). This enables containerized compilation and testing of the Zig tokenizer artifacts without requiring local compiler setup.
+Contributions are accepted under the terms in `LICENSE`: Apache-2.0, and
+dual-licensed as described there.
