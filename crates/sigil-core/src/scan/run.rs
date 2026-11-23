@@ -4,7 +4,7 @@ use super::detectors::{
 use super::dlp::detect_dlp;
 use super::types::{ScanReport, TextMap, annotate_graphemes, summarize_findings};
 use crate::policy::Policy;
-use crate::types::{EntropyProfile, Severity, TaintedGrapheme};
+use crate::types::{DlpFinding, EntropyProfile, ScanFinding, Severity, TaintedGrapheme};
 
 pub fn run_scan(policy: &Policy, tainted: &mut [TaintedGrapheme]) -> ScanReport {
     run_scan_with_scorer(policy, tainted, None)
@@ -34,87 +34,9 @@ pub fn run_scan_with_engines(
     terminal_scanner: Option<&dyn crate::terminal::TerminalSequenceScanner>,
 ) -> ScanReport {
     let map = TextMap::new(tainted);
-    let mut findings = Vec::new();
-    let mut dlp_findings = Vec::new();
-    let mut entropy_profile = EntropyProfile::default();
-
-    if policy.scan.injection_detection {
-        findings.extend(detect_injection(&map, policy));
-    }
-    if policy.scan.tokenizer_firewall {
-        findings.extend(detect_tokenizer_firewall(&map, policy));
-    }
-    if policy.scan.dlp_enabled {
-        let (dlp, scan_findings) = detect_dlp(&map, policy);
-        dlp_findings.extend(dlp);
-        findings.extend(scan_findings);
-    }
-    if policy.scan.entropy_analysis {
-        let (profile, entropy_findings) = detect_entropy(&map, policy);
-        entropy_profile = profile;
-        findings.extend(entropy_findings);
-    }
-
-    if policy.scan.smuggling_detection {
-        findings.extend(detect_smuggling(&map, policy));
-    }
-
-    if policy.scan.encoded_payloads {
-        findings.extend(super::decode::detect_encoded(&map, policy, 0));
-    }
-
-    if policy.scan.rare_pattern_detection {
-        findings.extend(crate::lfdd::detect_rare_patterns(
-            &map.text,
-            &crate::lfdd::RarePatternConfig::default(),
-        ));
-    }
-
-    let mut perplexity = None;
-    if policy.scan.perplexity.enabled {
-        let builtin;
-        let scorer: &dyn crate::perplexity::SurprisalScorer = match scorer {
-            Some(s) => s,
-            None => {
-                builtin =
-                    crate::perplexity::SelfSurprisalScorer::new(policy.scan.perplexity.model_order);
-                &builtin
-            }
-        };
-        let (pfindings, preport) = match scorer.score(&map.text) {
-            Ok(units) => crate::perplexity::detect_perplexity_anomalies(
-                &units,
-                &policy.scan.perplexity,
-                scorer.name(),
-            ),
-            Err(e) => (
-                Vec::new(),
-                crate::perplexity::PerplexityReport::failed(scorer.name(), e.to_string()),
-            ),
-        };
-        findings.extend(pfindings);
-        perplexity = Some(preport);
-    }
-
-    let mut terminal = None;
-    if policy.scan.terminal_escapes.enabled {
-        let treport = match terminal_scanner {
-            None => crate::terminal::TerminalReport::skipped("none", "no scanner injected"),
-            Some(scanner) => match scanner.scan(map.text.as_bytes()) {
-                Ok(sequences) => {
-                    let (tfindings, treport) = crate::terminal::detect_terminal_escapes(
-                        &sequences,
-                        scanner.name(),
-                        policy.scan.terminal_escapes.max_sequences,
-                    );
-                    findings.extend(tfindings);
-                    treport
-                }
-                Err(e) => crate::terminal::TerminalReport::failed(scanner.name(), e),
-            },
-        };
-        terminal = Some(treport);
-    }
+    let (mut findings, dlp_findings, entropy_profile) = run_text_detectors(&map, policy);
+    let perplexity = run_perplexity(&map, policy, scorer, &mut findings);
+    let terminal = run_terminal(&map, policy, terminal_scanner, &mut findings);
 
     findings.extend(tag_shadow_findings(&map, policy));
 
@@ -131,6 +53,111 @@ pub fn run_scan_with_engines(
         perplexity,
         terminal,
     }
+}
+
+/// Findings, DLP findings and entropy profile from the policy-enabled text detectors.
+fn run_text_detectors(
+    map: &TextMap,
+    policy: &Policy,
+) -> (Vec<ScanFinding>, Vec<DlpFinding>, EntropyProfile) {
+    let mut findings = Vec::new();
+    let mut dlp_findings = Vec::new();
+    let mut entropy_profile = EntropyProfile::default();
+
+    if policy.scan.injection_detection {
+        findings.extend(detect_injection(map, policy));
+    }
+    if policy.scan.tokenizer_firewall {
+        findings.extend(detect_tokenizer_firewall(map, policy));
+    }
+    if policy.scan.dlp_enabled {
+        let (dlp, scan_findings) = detect_dlp(map, policy);
+        dlp_findings.extend(dlp);
+        findings.extend(scan_findings);
+    }
+    if policy.scan.entropy_analysis {
+        let (profile, entropy_findings) = detect_entropy(map, policy);
+        entropy_profile = profile;
+        findings.extend(entropy_findings);
+    }
+
+    if policy.scan.smuggling_detection {
+        findings.extend(detect_smuggling(map, policy));
+    }
+
+    if policy.scan.encoded_payloads {
+        findings.extend(super::decode::detect_encoded(map, policy, 0));
+    }
+
+    if policy.scan.rare_pattern_detection {
+        findings.extend(crate::lfdd::detect_rare_patterns(
+            &map.text,
+            &crate::lfdd::RarePatternConfig::default(),
+        ));
+    }
+    (findings, dlp_findings, entropy_profile)
+}
+
+/// Perplexity pass: the injected scorer, else the built-in self-surprisal one.
+fn run_perplexity(
+    map: &TextMap,
+    policy: &Policy,
+    scorer: Option<&dyn crate::perplexity::SurprisalScorer>,
+    findings: &mut Vec<ScanFinding>,
+) -> Option<crate::perplexity::PerplexityReport> {
+    if !policy.scan.perplexity.enabled {
+        return None;
+    }
+    let builtin;
+    let scorer: &dyn crate::perplexity::SurprisalScorer = match scorer {
+        Some(s) => s,
+        None => {
+            builtin =
+                crate::perplexity::SelfSurprisalScorer::new(policy.scan.perplexity.model_order);
+            &builtin
+        }
+    };
+    let (pfindings, preport) = match scorer.score(&map.text) {
+        Ok(units) => crate::perplexity::detect_perplexity_anomalies(
+            &units,
+            &policy.scan.perplexity,
+            scorer.name(),
+        ),
+        Err(e) => (
+            Vec::new(),
+            crate::perplexity::PerplexityReport::failed(scorer.name(), e.to_string()),
+        ),
+    };
+    findings.extend(pfindings);
+    Some(preport)
+}
+
+/// Terminal escape pass; enabled-but-unwired is recorded as `Skipped`.
+fn run_terminal(
+    map: &TextMap,
+    policy: &Policy,
+    terminal_scanner: Option<&dyn crate::terminal::TerminalSequenceScanner>,
+    findings: &mut Vec<ScanFinding>,
+) -> Option<crate::terminal::TerminalReport> {
+    if !policy.scan.terminal_escapes.enabled {
+        return None;
+    }
+    let treport = match terminal_scanner {
+        None => crate::terminal::TerminalReport::skipped("none", "no scanner injected"),
+        Some(scanner) => match scanner.scan(map.text.as_bytes()) {
+            Ok(sequences) => {
+                let (tfindings, treport) = crate::terminal::detect_terminal_escapes(
+                    &sequences,
+                    scanner.name(),
+                    policy.scan.terminal_escapes.max_sequences,
+                );
+                findings.extend(tfindings);
+                treport
+            }
+            Err(e) => crate::terminal::TerminalReport::failed(scanner.name(), e),
+        },
+    };
+    Some(treport)
 }
 
 /// Rescan the tag-character shadow text as its own derived channel. The tag

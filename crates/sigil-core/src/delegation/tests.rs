@@ -37,6 +37,21 @@ fn test_root(
     )
 }
 
+/// A representation receipt whose only varying field is the canonical digest.
+fn receipt_with_canonical_digest(canonical_digest: &str) -> RepresentationReceipt {
+    RepresentationReceipt {
+        receipt_version: crate::receipt::RECEIPT_VERSION,
+        consumed: None,
+        raw_digest: "raw123".to_string(),
+        canonical_digest: canonical_digest.to_string(),
+        digest_algorithm: "sha384".to_string(),
+        normalization: "nfc".to_string(),
+        vocab: "cl100k_base".to_string(),
+        token_count: 10,
+        signature: None,
+    }
+}
+
 #[test]
 fn root_lease_creation_and_verification() {
     let signer = test_signer();
@@ -314,17 +329,7 @@ fn envelope_representation_mismatch_denied() {
     );
 
     // Receipt with matching digest
-    let good_receipt = RepresentationReceipt {
-        receipt_version: crate::receipt::RECEIPT_VERSION,
-        consumed: None,
-        raw_digest: "raw123".to_string(),
-        canonical_digest: "admitted_digest_abc".to_string(),
-        digest_algorithm: "sha384".to_string(),
-        normalization: "nfc".to_string(),
-        vocab: "cl100k_base".to_string(),
-        token_count: 10,
-        signature: None,
-    };
+    let good_receipt = receipt_with_canonical_digest("admitted_digest_abc");
 
     let good_envelope = AgentEnvelope {
         envelope_id: "env_1".to_string(),
@@ -337,17 +342,7 @@ fn envelope_representation_mismatch_denied() {
     assert!(validate_envelope(&good_envelope, now + 5, None, None).is_ok());
 
     // Receipt with tampered/divergent digest
-    let bad_receipt = RepresentationReceipt {
-        receipt_version: crate::receipt::RECEIPT_VERSION,
-        consumed: None,
-        raw_digest: "raw123".to_string(),
-        canonical_digest: "tampered_digest_xyz".to_string(),
-        digest_algorithm: "sha384".to_string(),
-        normalization: "nfc".to_string(),
-        vocab: "cl100k_base".to_string(),
-        token_count: 10,
-        signature: None,
-    };
+    let bad_receipt = receipt_with_canonical_digest("tampered_digest_xyz");
 
     let bad_envelope = AgentEnvelope {
         envelope_id: "env_2".to_string(),

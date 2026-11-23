@@ -2,6 +2,19 @@ use crate::delegation::types::*;
 use crate::signing::{ReceiptSignature, ReceiptSigner, hex_digest, verify_receipt_signature};
 use sha2::{Digest, Sha384};
 
+/// Attaches a signature over the lease's canonical message when a signer is supplied.
+fn sign_lease(lease: &mut CapabilityLease, signer: Option<&dyn ReceiptSigner>) {
+    if let Some(s) = signer {
+        let msg = lease.canonical_message();
+        let sig_bytes = s.sign(msg.as_bytes());
+        lease.signature = Some(ReceiptSignature {
+            algorithm: s.algorithm(),
+            key_id: s.key_id(),
+            signature: hex_digest(&sig_bytes),
+        });
+    }
+}
+
 /// Creates a new root capability lease.
 pub fn create_root_lease(
     params: RootLeaseParams,
@@ -38,27 +51,17 @@ pub fn create_root_lease(
         signature: None,
     };
 
-    if let Some(s) = signer {
-        let msg = lease.canonical_message();
-        let sig_bytes = s.sign(msg.as_bytes());
-        lease.signature = Some(ReceiptSignature {
-            algorithm: s.algorithm(),
-            key_id: s.key_id(),
-            signature: hex_digest(&sig_bytes),
-        });
-    }
+    sign_lease(&mut lease, signer);
 
     lease
 }
 
-/// Delegates an attenuated child lease from an active parent lease.
-pub fn delegate(
+/// Checks that `parent` may delegate `request` at `now`, in the order the errors are reported.
+fn check_delegable(
     parent: &CapabilityLease,
     request: &DelegationRequest,
     now: u64,
-    epoch: u64,
-    signer: Option<&dyn ReceiptSigner>,
-) -> Result<CapabilityLease, DelegationError> {
+) -> Result<(), DelegationError> {
     if now > parent.expires_at {
         return Err(DelegationError::LeaseExpired {
             now,
@@ -100,6 +103,20 @@ pub fn delegate(
         });
     }
 
+    Ok(())
+}
+
+/// Delegates an attenuated child lease from an active parent lease.
+pub fn delegate(
+    parent: &CapabilityLease,
+    request: &DelegationRequest,
+    now: u64,
+    epoch: u64,
+    signer: Option<&dyn ReceiptSigner>,
+) -> Result<CapabilityLease, DelegationError> {
+    check_delegable(parent, request, now)?;
+    let child_depth = parent.depth.saturating_add(1);
+
     let child_expires_at = now
         .saturating_add(request.validity_seconds)
         .min(parent.expires_at);
@@ -129,15 +146,7 @@ pub fn delegate(
         signature: None,
     };
 
-    if let Some(s) = signer {
-        let msg = lease.canonical_message();
-        let sig_bytes = s.sign(msg.as_bytes());
-        lease.signature = Some(ReceiptSignature {
-            algorithm: s.algorithm(),
-            key_id: s.key_id(),
-            signature: hex_digest(&sig_bytes),
-        });
-    }
+    sign_lease(&mut lease, signer);
 
     Ok(lease)
 }
@@ -189,6 +198,64 @@ pub fn validate_lease(
     Ok(())
 }
 
+/// Checks that `child` is a well-formed, attenuated delegation of `parent`.
+fn check_link(parent: &CapabilityLease, child: &CapabilityLease) -> Result<(), DelegationError> {
+    if child.parent_lease_id.as_deref() != Some(&parent.lease_id) {
+        return Err(DelegationError::BrokenChain {
+            expected: Some(parent.lease_id.clone()),
+            actual: child.lease_id.clone(),
+        });
+    }
+
+    if child.principal != parent.delegatee {
+        return Err(DelegationError::BrokenChain {
+            expected: Some(parent.delegatee.clone()),
+            actual: child.principal.clone(),
+        });
+    }
+
+    if child.depth != parent.depth + 1 {
+        return Err(DelegationError::MaxDepthExceeded {
+            depth: child.depth,
+            max_depth: parent.max_depth,
+        });
+    }
+
+    if child.max_depth > parent.max_depth {
+        return Err(DelegationError::MaxDepthExceeded {
+            depth: child.max_depth,
+            max_depth: parent.max_depth,
+        });
+    }
+
+    if child.depth > child.max_depth {
+        return Err(DelegationError::MaxDepthExceeded {
+            depth: child.depth,
+            max_depth: child.max_depth,
+        });
+    }
+
+    if let Err(cap) = is_attenuated(&child.capabilities, &parent.capabilities) {
+        return Err(DelegationError::CapabilityEscalation { requested: cap });
+    }
+
+    if !parent.authority_ceiling.permits(child.authority_ceiling) {
+        return Err(DelegationError::AuthorityCeilingEscalation {
+            child: child.authority_ceiling,
+            parent: parent.authority_ceiling,
+        });
+    }
+
+    if child.expires_at > parent.expires_at {
+        return Err(DelegationError::LeaseExpired {
+            now: child.expires_at,
+            expires_at: parent.expires_at,
+        });
+    }
+
+    Ok(())
+}
+
 /// Validates an entire recursive delegation chain from root to leaf.
 pub fn validate_chain(
     chain: &[CapabilityLease],
@@ -216,60 +283,7 @@ pub fn validate_chain(
     for i in 1..chain.len() {
         let parent = &chain[i - 1];
         let child = &chain[i];
-
-        if child.parent_lease_id.as_deref() != Some(&parent.lease_id) {
-            return Err(DelegationError::BrokenChain {
-                expected: Some(parent.lease_id.clone()),
-                actual: child.lease_id.clone(),
-            });
-        }
-
-        if child.principal != parent.delegatee {
-            return Err(DelegationError::BrokenChain {
-                expected: Some(parent.delegatee.clone()),
-                actual: child.principal.clone(),
-            });
-        }
-
-        if child.depth != parent.depth + 1 {
-            return Err(DelegationError::MaxDepthExceeded {
-                depth: child.depth,
-                max_depth: parent.max_depth,
-            });
-        }
-
-        if child.max_depth > parent.max_depth {
-            return Err(DelegationError::MaxDepthExceeded {
-                depth: child.max_depth,
-                max_depth: parent.max_depth,
-            });
-        }
-
-        if child.depth > child.max_depth {
-            return Err(DelegationError::MaxDepthExceeded {
-                depth: child.depth,
-                max_depth: child.max_depth,
-            });
-        }
-
-        if let Err(cap) = is_attenuated(&child.capabilities, &parent.capabilities) {
-            return Err(DelegationError::CapabilityEscalation { requested: cap });
-        }
-
-        if !parent.authority_ceiling.permits(child.authority_ceiling) {
-            return Err(DelegationError::AuthorityCeilingEscalation {
-                child: child.authority_ceiling,
-                parent: parent.authority_ceiling,
-            });
-        }
-
-        if child.expires_at > parent.expires_at {
-            return Err(DelegationError::LeaseExpired {
-                now: child.expires_at,
-                expires_at: parent.expires_at,
-            });
-        }
-
+        check_link(parent, child)?;
         validate_lease(child, now, registry, None)?;
     }
 

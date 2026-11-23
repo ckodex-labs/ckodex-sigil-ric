@@ -16,8 +16,8 @@ use sigil_core::delegation::AuthorityCeiling;
 use sigil_core::policy::Policy;
 use sigil_core::receipt::ReceiptVerifyError;
 use sigil_core::retrieval::{
-    EmbeddedInput, EmbeddingBinding, EmbeddingModel, Pooling, RetrievalFinding, RetrievedChunk,
-    assess_retrieval, sign_retrieval, verify_retrieval_receipt,
+    EmbeddedInput, EmbeddingBinding, EmbeddingModel, Pooling, RetrievalFinding, RetrievalReceipt,
+    RetrievedChunk, assess_retrieval, sign_retrieval, verify_retrieval_receipt,
 };
 use sigil_core::signing::{EcdsaP384Signer, SignatureVerifyError};
 use sigil_core::types::{Provenance, RepresentationReceipt, TextSegment, TrustLevel};
@@ -228,20 +228,10 @@ fn cv_ric_040_unbound_or_non_finite_retrievals_produce_no_receipt() {
     assert!(sign_retrieval(&c, signer.as_ref()).is_none());
 }
 
-type Tamper = (
-    &'static str,
-    fn(&mut sigil_core::retrieval::RetrievalReceipt),
-);
+type Tamper = (&'static str, fn(&mut RetrievalReceipt));
 
-#[test]
-fn cv_ric_040_changing_any_bound_field_fails() {
-    let signer = signer();
-    let key = signer.verification_key_hex();
-    let receipt = sign_retrieval(
-        &bound_chunk(TrustLevel::Bounded, AuthorityCeiling::Draft),
-        signer.as_ref(),
-    )
-    .expect("signs");
+/// Changing any signed field breaks the signature (and only the signature).
+fn assert_field_tampers_break_signature(receipt: &RetrievalReceipt, key: &str) {
     let tampers: Vec<Tamper> = vec![
         ("score", |r| r.score = TAG_SCORE),
         ("source id", |r| r.source_id.push('x')),
@@ -263,14 +253,17 @@ fn cv_ric_040_changing_any_bound_field_fails() {
         let mut tampered = receipt.clone();
         tamper(&mut tampered);
         assert_eq!(
-            verify_retrieval_receipt(&tampered, &key),
+            verify_retrieval_receipt(&tampered, key),
             Err(ReceiptVerifyError::Signature(
                 SignatureVerifyError::Mismatch
             )),
             "{name}"
         );
     }
-    // A changed model changes its identity: recorded and recomputed disagree.
+}
+
+/// A changed model changes its identity: recorded and recomputed disagree.
+fn assert_model_tampers_are_inconsistent(receipt: &RetrievalReceipt, key: &str) {
     let model_tampers: Vec<Tamper> = vec![
         ("weights", |r| r.model.weights_digest = "e5".repeat(48)),
         ("tokenizer", |r| r.model.tokenizer_digest = "e5".repeat(48)),
@@ -282,20 +275,33 @@ fn cv_ric_040_changing_any_bound_field_fails() {
         let mut tampered = receipt.clone();
         tamper(&mut tampered);
         assert_eq!(
-            verify_retrieval_receipt(&tampered, &key),
+            verify_retrieval_receipt(&tampered, key),
             Err(ReceiptVerifyError::InconsistentModelIdentity),
             "{name}"
         );
         // Recording the new identity too still fails the signature.
         tampered.model_identity = tampered.model.identity_digest();
         assert_eq!(
-            verify_retrieval_receipt(&tampered, &key),
+            verify_retrieval_receipt(&tampered, key),
             Err(ReceiptVerifyError::Signature(
                 SignatureVerifyError::Mismatch
             )),
             "{name}"
         );
     }
+}
+
+#[test]
+fn cv_ric_040_changing_any_bound_field_fails() {
+    let signer = signer();
+    let key = signer.verification_key_hex();
+    let receipt = sign_retrieval(
+        &bound_chunk(TrustLevel::Bounded, AuthorityCeiling::Draft),
+        signer.as_ref(),
+    )
+    .expect("signs");
+    assert_field_tampers_break_signature(&receipt, &key);
+    assert_model_tampers_are_inconsistent(&receipt, &key);
     let mut other_version = receipt;
     other_version.retrieval_version = 2;
     assert_eq!(

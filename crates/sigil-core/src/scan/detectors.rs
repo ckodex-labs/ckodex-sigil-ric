@@ -5,105 +5,106 @@ use crate::types::{ByteRange, DetectorId, EntropyProfile, ScanFinding, Severity}
 use regex::Regex;
 use std::sync::LazyLock;
 
-pub(crate) fn detect_injection(map: &TextMap, policy: &Policy) -> Vec<ScanFinding> {
-    static PATTERNS: &[(&str, Severity, DetectorId)] = &[
-        (
-            "ignore previous",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "disregard previous",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "ignore all prior",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        ("ignore prior", Severity::High, DetectorId::InjectionGrammar),
-        (
-            "ignore the above",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "disregard all",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "forget all previous",
-            Severity::High,
-            DetectorId::InjectionGrammar,
-        ),
-        ("forget prior", Severity::High, DetectorId::InjectionGrammar),
-        (
-            "previous instructions",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "prior instructions",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "from now on",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "do anything now",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "new persona",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "pretend to be",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "pretend you are",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "new instructions",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        ("system:", Severity::High, DetectorId::InjectionGrammar),
-        ("[inst]", Severity::High, DetectorId::InjectionGrammar),
-        ("<|im_start|>", Severity::High, DetectorId::InjectionGrammar),
-        (
-            "### instruction",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "developer message",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        (
-            "you are now",
-            Severity::Medium,
-            DetectorId::InjectionGrammar,
-        ),
-        ("act as", Severity::Medium, DetectorId::InjectionGrammar),
-        ("override", Severity::Medium, DetectorId::InjectionGrammar),
-    ];
+/// Case-folded injection phrases with the severity each one carries.
+static INJECTION_PATTERNS: &[(&str, Severity, DetectorId)] = &[
+    (
+        "ignore previous",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "disregard previous",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "ignore all prior",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    ("ignore prior", Severity::High, DetectorId::InjectionGrammar),
+    (
+        "ignore the above",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "disregard all",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "forget all previous",
+        Severity::High,
+        DetectorId::InjectionGrammar,
+    ),
+    ("forget prior", Severity::High, DetectorId::InjectionGrammar),
+    (
+        "previous instructions",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "prior instructions",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "from now on",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "do anything now",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "new persona",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "pretend to be",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "pretend you are",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "new instructions",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    ("system:", Severity::High, DetectorId::InjectionGrammar),
+    ("[inst]", Severity::High, DetectorId::InjectionGrammar),
+    ("<|im_start|>", Severity::High, DetectorId::InjectionGrammar),
+    (
+        "### instruction",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "developer message",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    (
+        "you are now",
+        Severity::Medium,
+        DetectorId::InjectionGrammar,
+    ),
+    ("act as", Severity::Medium, DetectorId::InjectionGrammar),
+    ("override", Severity::Medium, DetectorId::InjectionGrammar),
+];
 
+pub(crate) fn detect_injection(map: &TextMap, policy: &Policy) -> Vec<ScanFinding> {
     let mut findings = Vec::new();
     let lower = map.text.to_lowercase();
-    for (needle, severity, detector) in PATTERNS {
+    for (needle, severity, detector) in INJECTION_PATTERNS {
         for (start, _) in lower.match_indices(needle) {
             let end = start + needle.len();
             findings.push(ScanFinding {

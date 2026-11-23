@@ -226,85 +226,96 @@ fn median(values: &mut [f32]) -> f32 {
 /// Maximum flagged clusters emitted as findings (bounded evidence).
 const MAX_FINDINGS: usize = 8;
 
-/// Analyze a scored unit stream at every configured scale. Windows whose
-/// mean surprisal exceeds `median + z_threshold·MAD/0.6745` are flagged;
-/// overlapping flags must span `min_scales` distinct scales to report.
-pub fn detect_perplexity_anomalies(
-    units: &[ScoredUnit],
-    policy: &PerplexityPolicy,
-    scorer_name: &str,
-) -> (Vec<ScanFinding>, PerplexityReport) {
-    if units.len() < policy.min_units {
-        return (
-            Vec::new(),
-            PerplexityReport::skipped(scorer_name, "insufficient_scored_units"),
-        );
-    }
+/// Valid window sizes from the policy: at least two units, sorted, deduplicated.
+fn normalized_scales(policy: &PerplexityPolicy) -> Vec<usize> {
     let mut scales: Vec<usize> = policy.window_sizes.clone();
     scales.retain(|&w| w >= 2);
     scales.sort_unstable();
     scales.dedup();
-    if scales.is_empty() {
-        return (
-            Vec::new(),
-            PerplexityReport::skipped(scorer_name, "no_valid_window_sizes"),
-        );
-    }
+    scales
+}
 
+/// Mean surprisal of each half-overlapping window of `w` units, as
+/// `(start_unit, mean)`; every window consumes one unit of `budget`.
+fn window_means(units: &[ScoredUnit], w: usize, budget: &mut usize) -> Vec<(usize, f32)> {
+    let step = (w / 2).max(1);
+    let mut means = Vec::new();
+    let mut start = 0;
+    while start + w <= units.len() && *budget > 0 {
+        let mean: f32 = units[start..start + w]
+            .iter()
+            .map(|u| u.surprisal)
+            .sum::<f32>()
+            / w as f32;
+        means.push((start, mean));
+        start += step;
+        *budget -= 1;
+    }
+    means
+}
+
+/// Summarize one scale's window means (median/MAD) and push every window
+/// whose robust z-score reaches the policy threshold onto `flagged`.
+fn analyze_scale(
+    units: &[ScoredUnit],
+    w: usize,
+    means: &[(usize, f32)],
+    policy: &PerplexityPolicy,
+    flagged: &mut Vec<FlaggedWindow>,
+) -> ScaleStats {
+    let mut sorted: Vec<f32> = means.iter().map(|&(_, m)| m).collect();
+    let med = median(&mut sorted);
+    let mut devs: Vec<f32> = sorted.iter().map(|m| (m - med).abs()).collect();
+    let mad = median(&mut devs);
+    let mut scale_flagged = 0;
+    for &(off, mean) in means {
+        let z = 0.6745 * (mean - med) / mad.max(f32::EPSILON);
+        if z >= policy.z_threshold {
+            flagged.push(FlaggedWindow {
+                byte_range: ByteRange::new(
+                    units[off].byte_range.start,
+                    units[off + w - 1].byte_range.end,
+                ),
+                scale: w,
+                mean_surprisal: mean,
+                z,
+            });
+            scale_flagged += 1;
+        }
+    }
+    ScaleStats {
+        units_per_window: w,
+        window_count: means.len(),
+        median_surprisal: med,
+        mad,
+        flagged: scale_flagged,
+    }
+}
+
+/// Score every scale under the shared window budget.
+fn score_scales(
+    units: &[ScoredUnit],
+    scales: &[usize],
+    policy: &PerplexityPolicy,
+) -> (Vec<ScaleStats>, Vec<FlaggedWindow>) {
     let mut stats = Vec::new();
     let mut flagged: Vec<FlaggedWindow> = Vec::new();
     let mut budget = policy.max_windows;
-    for &w in &scales {
+    for &w in scales {
         if units.len() < w || budget == 0 {
             continue;
         }
-        let step = (w / 2).max(1);
-        let mut means = Vec::new();
-        let mut start = 0;
-        while start + w <= units.len() && budget > 0 {
-            let mean: f32 = units[start..start + w]
-                .iter()
-                .map(|u| u.surprisal)
-                .sum::<f32>()
-                / w as f32;
-            means.push((start, mean));
-            start += step;
-            budget -= 1;
-        }
-        let mut sorted: Vec<f32> = means.iter().map(|&(_, m)| m).collect();
-        let med = median(&mut sorted);
-        let mut devs: Vec<f32> = sorted.iter().map(|m| (m - med).abs()).collect();
-        let mad = median(&mut devs);
-        let mut scale_flagged = 0;
-        for &(off, mean) in &means {
-            let z = 0.6745 * (mean - med) / mad.max(f32::EPSILON);
-            if z >= policy.z_threshold {
-                flagged.push(FlaggedWindow {
-                    byte_range: ByteRange::new(
-                        units[off].byte_range.start,
-                        units[off + w - 1].byte_range.end,
-                    ),
-                    scale: w,
-                    mean_surprisal: mean,
-                    z,
-                });
-                scale_flagged += 1;
-            }
-        }
-        stats.push(ScaleStats {
-            units_per_window: w,
-            window_count: means.len(),
-            median_surprisal: med,
-            mad,
-            flagged: scale_flagged,
-        });
+        let means = window_means(units, w, &mut budget);
+        stats.push(analyze_scale(units, w, &means, policy, &mut flagged));
     }
+    (stats, flagged)
+}
 
-    // Cluster overlapping flagged windows across scales; a cluster must
-    // cover `min_scales` distinct scales to produce a finding.
+/// Cluster overlapping flagged windows across scales, in byte order.
+fn cluster_flagged(flagged: &mut [FlaggedWindow]) -> Vec<FlagCluster> {
     flagged.sort_by_key(|f| (f.byte_range.start, f.scale));
     let mut clusters: Vec<FlagCluster> = Vec::new();
-    for fw in &flagged {
+    for fw in flagged.iter() {
         match clusters.last_mut() {
             Some(c)
                 if fw.byte_range.start <= c.byte_range.end
@@ -323,8 +334,13 @@ pub fn detect_perplexity_anomalies(
             }),
         }
     }
+    clusters
+}
 
-    let min_scales = policy.min_scales.max(1);
+/// Keep clusters covering `min_scales` distinct scales, strongest first,
+/// bounded to [`MAX_FINDINGS`].
+fn corroborate(clusters: Vec<FlagCluster>, min_scales: usize) -> Vec<FlagCluster> {
+    let min_scales = min_scales.max(1);
     let mut corroborated: Vec<FlagCluster> = clusters
         .into_iter()
         .filter(|c| c.scales.len() >= min_scales)
@@ -335,8 +351,12 @@ pub fn detect_perplexity_anomalies(
             .unwrap_or(std::cmp::Ordering::Equal)
     });
     corroborated.truncate(MAX_FINDINGS);
+    corroborated
+}
 
-    let findings = corroborated
+/// One `Medium` finding per corroborated cluster.
+fn cluster_findings(clusters: &[FlagCluster], policy: &PerplexityPolicy) -> Vec<ScanFinding> {
+    clusters
         .iter()
         .map(|c| ScanFinding {
             byte_range: c.byte_range,
@@ -350,7 +370,36 @@ pub fn detect_perplexity_anomalies(
                 c.scales
             ),
         })
-        .collect();
+        .collect()
+}
+
+/// Analyze a scored unit stream at every configured scale. Windows whose
+/// mean surprisal exceeds `median + z_threshold·MAD/0.6745` are flagged;
+/// overlapping flags must span `min_scales` distinct scales to report.
+pub fn detect_perplexity_anomalies(
+    units: &[ScoredUnit],
+    policy: &PerplexityPolicy,
+    scorer_name: &str,
+) -> (Vec<ScanFinding>, PerplexityReport) {
+    if units.len() < policy.min_units {
+        return (
+            Vec::new(),
+            PerplexityReport::skipped(scorer_name, "insufficient_scored_units"),
+        );
+    }
+    let scales = normalized_scales(policy);
+    if scales.is_empty() {
+        return (
+            Vec::new(),
+            PerplexityReport::skipped(scorer_name, "no_valid_window_sizes"),
+        );
+    }
+
+    let (stats, mut flagged) = score_scales(units, &scales, policy);
+    // A cluster must cover `min_scales` distinct scales to produce a finding.
+    let clusters = cluster_flagged(&mut flagged);
+    let corroborated = corroborate(clusters, policy.min_scales);
+    let findings = cluster_findings(&corroborated, policy);
 
     (
         findings,

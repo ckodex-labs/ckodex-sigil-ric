@@ -45,6 +45,37 @@ fn make_root(
     )
 }
 
+/// A request for an `Act`-ceiling child lease carrying `caps`.
+fn act_request(
+    delegatee: &str,
+    caps: &BTreeSet<Capability>,
+    digest: &str,
+    validity_seconds: u64,
+) -> DelegationRequest {
+    DelegationRequest {
+        delegatee: delegatee.to_string(),
+        capabilities: caps.clone(),
+        authority_ceiling: AuthorityCeiling::Act,
+        representation_digest: digest.to_string(),
+        validity_seconds,
+    }
+}
+
+/// A representation receipt whose varying fields are the canonical digest and token count.
+fn receipt_with(canonical_digest: &str, token_count: usize) -> RepresentationReceipt {
+    RepresentationReceipt {
+        receipt_version: sigil_core::RECEIPT_VERSION,
+        consumed: None,
+        raw_digest: "raw_384".to_string(),
+        canonical_digest: canonical_digest.to_string(),
+        digest_algorithm: "sha384".to_string(),
+        normalization: "nfc".to_string(),
+        vocab: "cl100k_base".to_string(),
+        token_count,
+        signature: None,
+    }
+}
+
 /// CV-RIC-009: Valid multi-hop recursive delegation chain with monotonic attenuation.
 /// Demonstrates Root (Act) -> Planner (Draft) -> Worker (Observe).
 #[test]
@@ -253,13 +284,7 @@ fn cv_ric_012_max_depth_enforced() {
     // Tier 1 -> Tier 2 (depth = 1, allowed)
     let tier1 = delegate(
         &root,
-        &DelegationRequest {
-            delegatee: "agent://tier2".to_string(),
-            capabilities: caps.clone(),
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_1".to_string(),
-            validity_seconds: 1800,
-        },
+        &act_request("agent://tier2", &caps, "digest_1", 1800),
         now + 1,
         1,
         None,
@@ -270,13 +295,7 @@ fn cv_ric_012_max_depth_enforced() {
     // Tier 2 -> Tier 3 (depth = 2, allowed)
     let tier2 = delegate(
         &tier1,
-        &DelegationRequest {
-            delegatee: "agent://tier3".to_string(),
-            capabilities: caps.clone(),
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_2".to_string(),
-            validity_seconds: 900,
-        },
+        &act_request("agent://tier3", &caps, "digest_2", 900),
         now + 2,
         1,
         None,
@@ -287,13 +306,7 @@ fn cv_ric_012_max_depth_enforced() {
     // Tier 3 -> Tier 4 (depth = 3 > max_depth 2, MUST FAIL)
     let result = delegate(
         &tier2,
-        &DelegationRequest {
-            delegatee: "agent://tier4".to_string(),
-            capabilities: caps,
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_3".to_string(),
-            validity_seconds: 450,
-        },
+        &act_request("agent://tier4", &caps, "digest_3", 450),
         now + 3,
         1,
         None,
@@ -323,17 +336,7 @@ fn cv_ric_013_representation_binding_divergence_denied() {
         None,
     );
 
-    let matching_receipt = RepresentationReceipt {
-        receipt_version: sigil_core::RECEIPT_VERSION,
-        consumed: None,
-        raw_digest: "raw_384".to_string(),
-        canonical_digest: "canonical_digest_task_approved".to_string(),
-        digest_algorithm: "sha384".to_string(),
-        normalization: "nfc".to_string(),
-        vocab: "cl100k_base".to_string(),
-        token_count: 15,
-        signature: None,
-    };
+    let matching_receipt = receipt_with("canonical_digest_task_approved", 15);
 
     let valid_envelope = AgentEnvelope {
         envelope_id: "env_approved".to_string(),
@@ -348,17 +351,7 @@ fn cv_ric_013_representation_binding_divergence_denied() {
         "matching representation digest envelope must pass validation"
     );
 
-    let tampered_receipt = RepresentationReceipt {
-        receipt_version: sigil_core::RECEIPT_VERSION,
-        consumed: None,
-        raw_digest: "raw_384".to_string(),
-        canonical_digest: "canonical_digest_injected_exploit".to_string(),
-        digest_algorithm: "sha384".to_string(),
-        normalization: "nfc".to_string(),
-        vocab: "cl100k_base".to_string(),
-        token_count: 15,
-        signature: None,
-    };
+    let tampered_receipt = receipt_with("canonical_digest_injected_exploit", 15);
 
     let tampered_envelope = AgentEnvelope {
         envelope_id: "env_tampered".to_string(),
@@ -397,13 +390,7 @@ fn cv_ric_014_revocation_cascade_invalidates_descendants() {
 
     let child = delegate(
         &root,
-        &DelegationRequest {
-            delegatee: "agent://worker".to_string(),
-            capabilities: caps.clone(),
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_child".to_string(),
-            validity_seconds: 1800,
-        },
+        &act_request("agent://worker", &caps, "digest_child", 1800),
         now + 10,
         1,
         None,
@@ -462,17 +449,7 @@ fn sec_audit_crit_01_payload_malleability_rejected() {
         Some(&signer),
     );
 
-    let receipt = RepresentationReceipt {
-        receipt_version: sigil_core::RECEIPT_VERSION,
-        consumed: None,
-        raw_digest: "raw_384".to_string(),
-        canonical_digest: "task_rep_digest_384".to_string(),
-        digest_algorithm: "sha384".to_string(),
-        normalization: "nfc".to_string(),
-        vocab: "cl100k_base".to_string(),
-        token_count: 5,
-        signature: None,
-    };
+    let receipt = receipt_with("task_rep_digest_384", 5);
 
     let mut envelope = AgentEnvelope {
         envelope_id: "env_audit_crit01".to_string(),
@@ -578,13 +555,7 @@ fn sec_audit_crit_04_grandparent_revocation_cascades() {
 
     let child = delegate(
         &root,
-        &DelegationRequest {
-            delegatee: "agent://tier2".to_string(),
-            capabilities: caps.clone(),
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_1".to_string(),
-            validity_seconds: 1800,
-        },
+        &act_request("agent://tier2", &caps, "digest_1", 1800),
         now + 1,
         1,
         None,
@@ -593,13 +564,7 @@ fn sec_audit_crit_04_grandparent_revocation_cascades() {
 
     let grandchild = delegate(
         &child,
-        &DelegationRequest {
-            delegatee: "agent://tier3".to_string(),
-            capabilities: caps,
-            authority_ceiling: AuthorityCeiling::Act,
-            representation_digest: "digest_2".to_string(),
-            validity_seconds: 900,
-        },
+        &act_request("agent://tier3", &caps, "digest_2", 900),
         now + 2,
         1,
         None,

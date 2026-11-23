@@ -9,6 +9,49 @@ use crate::vocab::{EncodedToken, MaterializationContext, SpecialTokenMode, Vocab
 use rayon::prelude::*;
 use std::sync::Arc;
 
+/// Token spans were computed in NORMALIZED cluster space but offset by the RAW
+/// base offset. Whenever normalization changed byte length, remap every token
+/// onto the raw byte ranges of the clusters it covers, so annotations always
+/// trace to raw input (INV-007 / RIC-R-2).
+fn remap_to_raw_ranges(
+    tokens: &mut [EncodedToken],
+    graphemes: &[TaintedGrapheme],
+    base_offset: usize,
+) {
+    let normalized_len_changed = graphemes
+        .iter()
+        .any(|g| g.grapheme.text.len() != g.grapheme.byte_range.len());
+    if !normalized_len_changed {
+        return;
+    }
+    let mut cursor = 0usize;
+    let mut map: Vec<(ByteRange, ByteRange)> = Vec::with_capacity(graphemes.len());
+    for grapheme in graphemes {
+        let n_len = grapheme.grapheme.text.len();
+        map.push((
+            ByteRange::new(cursor, cursor + n_len),
+            grapheme.grapheme.byte_range,
+        ));
+        cursor += n_len;
+    }
+    for token in tokens {
+        let rel_start = token.byte_range.start.saturating_sub(base_offset);
+        let rel_end = token.byte_range.end.saturating_sub(base_offset);
+        let mut remapped: Option<ByteRange> = None;
+        for (n_range, raw) in &map {
+            if n_range.start < rel_end && rel_start < n_range.end {
+                remapped = Some(match remapped {
+                    Some(current) => current.union(*raw),
+                    None => *raw,
+                });
+            }
+        }
+        if let Some(range) = remapped {
+            token.byte_range = range;
+        }
+    }
+}
+
 impl Vocab {
     pub fn tiktoken(name: impl Into<String>) -> Self {
         Self {
@@ -185,41 +228,8 @@ impl Vocab {
             boundary,
         )?;
 
-        // Token spans were computed in NORMALIZED cluster space but offset by
-        // the RAW base offset. Whenever normalization changed byte length,
-        // remap every token onto the raw byte ranges of the clusters it
-        // covers, so annotations always trace to raw input (INV-007 / RIC-R-2).
-        let normalized_len_changed = graphemes
-            .iter()
-            .any(|g| g.grapheme.text.len() != g.grapheme.byte_range.len());
-        if normalized_len_changed {
-            let mut cursor = 0usize;
-            let mut map: Vec<(ByteRange, ByteRange)> = Vec::with_capacity(graphemes.len());
-            for grapheme in graphemes {
-                let n_len = grapheme.grapheme.text.len();
-                map.push((
-                    ByteRange::new(cursor, cursor + n_len),
-                    grapheme.grapheme.byte_range,
-                ));
-                cursor += n_len;
-            }
-            for token in &mut tokens {
-                let rel_start = token.byte_range.start.saturating_sub(base_offset);
-                let rel_end = token.byte_range.end.saturating_sub(base_offset);
-                let mut remapped: Option<ByteRange> = None;
-                for (n_range, raw) in &map {
-                    if n_range.start < rel_end && rel_start < n_range.end {
-                        remapped = Some(match remapped {
-                            Some(current) => current.union(*raw),
-                            None => *raw,
-                        });
-                    }
-                }
-                if let Some(range) = remapped {
-                    token.byte_range = range;
-                }
-            }
-        }
+        // Annotations must trace to raw input (INV-007 / RIC-R-2).
+        remap_to_raw_ranges(&mut tokens, graphemes, base_offset);
 
         Ok(tokens)
     }

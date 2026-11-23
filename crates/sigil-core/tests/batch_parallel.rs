@@ -1,5 +1,34 @@
+use sigil_core::vocab::EncodedToken;
 use sigil_core::{SpecialTokenMode, TokenizerActor, Vocab};
 use std::{sync::Arc, thread};
+
+/// Eight threads each re-run the batch encode 64 times and must see `expected` every time.
+fn assert_threaded_encode_matches(
+    actor: &Arc<TokenizerActor>,
+    samples: &[&str],
+    expected: &[Vec<EncodedToken>],
+) {
+    let handles = (0..8)
+        .map(|_| {
+            let actor = Arc::clone(actor);
+            let samples = samples
+                .iter()
+                .map(|sample| sample.to_string())
+                .collect::<Vec<_>>();
+            let expected_encoded = expected.to_vec();
+            thread::spawn(move || {
+                for _ in 0..64 {
+                    let encoded = actor.encode_batch(&samples).expect("threaded encode");
+                    assert_eq!(encoded, expected_encoded);
+                }
+            })
+        })
+        .collect::<Vec<_>>();
+
+    for handle in handles {
+        handle.join().expect("thread join");
+    }
+}
 
 #[test]
 fn batch_encode_decode_matches_sequential_and_is_thread_safe() {
@@ -46,24 +75,5 @@ fn batch_encode_decode_matches_sequential_and_is_thread_safe() {
         .expect("batch specials");
     assert!(special_encoded.iter().all(|tokens| tokens.len() < 10));
 
-    let handles = (0..8)
-        .map(|_| {
-            let actor = Arc::clone(&actor);
-            let samples = samples
-                .iter()
-                .map(|sample| sample.to_string())
-                .collect::<Vec<_>>();
-            let expected_encoded = expected_encoded.clone();
-            thread::spawn(move || {
-                for _ in 0..64 {
-                    let encoded = actor.encode_batch(&samples).expect("threaded encode");
-                    assert_eq!(encoded, expected_encoded);
-                }
-            })
-        })
-        .collect::<Vec<_>>();
-
-    for handle in handles {
-        handle.join().expect("thread join");
-    }
+    assert_threaded_encode_matches(&actor, &samples, &expected_encoded);
 }
