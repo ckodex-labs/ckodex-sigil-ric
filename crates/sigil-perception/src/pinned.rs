@@ -37,6 +37,10 @@ pub const TRANSCRIPT_EXTRACTOR: &str = "external-transcript";
 
 /// Bytes of stderr kept for error messages (the tail, where tools report).
 const STDERR_TAIL_BYTES: usize = 2048;
+/// Spawn retries on `ETXTBSY`, with a linearly growing pause (at most
+/// 20 + 40 + 60 + 80 + 100 ms in all).
+const BUSY_RETRIES: u32 = 5;
+const BUSY_BACKOFF: Duration = Duration::from_millis(20);
 /// Granularity of the post-EOF exit wait. Only reached after the tool has
 /// closed stdout, so the loop runs a handful of times at most.
 const EXIT_POLL: Duration = Duration::from_millis(5);
@@ -194,14 +198,7 @@ impl PinnedTool {
         extra_args: &[String],
     ) -> Result<ToolOutput<Vec<u8>>, PerceptionError> {
         let deadline = Instant::now() + self.limits.timeout;
-        let mut child = Command::new(&self.binary)
-            .args(&self.args)
-            .args(extra_args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()
-            .map_err(|err| self.failure(format!("could not spawn: {err}")))?;
+        let mut child = self.spawn_child(extra_args)?;
         let pipes = self.take_pipes(&mut child)?;
         let writer = self.spawn_io(&mut child, "stdin", write_all(pipes.0, bytes.to_vec()))?;
         let stdout = self.spawn_io(&mut child, "stdout", read_capped(pipes.1, self.limits))?;
@@ -239,6 +236,35 @@ impl PinnedTool {
             _ => {
                 kill(child);
                 Err(self.failure("started without its stdio pipes".to_string()))
+            }
+        }
+    }
+
+    /// Spawns the pinned binary. `ETXTBSY` ("text file busy") means the
+    /// file is momentarily open for writing in another process, as when a
+    /// sibling thread forks while a file is still being written; that one
+    /// error is retried a bounded number of times, and every other spawn
+    /// error fails at once.
+    fn spawn_child(&self, extra_args: &[String]) -> Result<Child, PerceptionError> {
+        let mut attempt = 0;
+        loop {
+            let spawned = Command::new(&self.binary)
+                .args(&self.args)
+                .args(extra_args)
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn();
+            match spawned {
+                Ok(child) => return Ok(child),
+                Err(err)
+                    if err.kind() == std::io::ErrorKind::ExecutableFileBusy
+                        && attempt < BUSY_RETRIES =>
+                {
+                    attempt += 1;
+                    thread::sleep(BUSY_BACKOFF * attempt);
+                }
+                Err(err) => return Err(self.failure(format!("could not spawn: {err}"))),
             }
         }
     }

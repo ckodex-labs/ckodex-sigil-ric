@@ -160,3 +160,28 @@ fn pinning_a_missing_binary_fails() {
     let missing = PathBuf::from("/nonexistent/sigil-no-such-tool");
     assert!(PinnedTool::pin(missing, Vec::new(), "v".to_string()).is_err());
 }
+
+/// Linux reports `ETXTBSY` when a binary is executed while a file handle
+/// holds it open for writing (as a forking sibling thread can, mid-write).
+/// The spawn retries that one error a bounded number of times, then fails
+/// closed with the cause; it never waits without limit.
+#[cfg(target_os = "linux")]
+#[test]
+fn a_binary_held_open_for_writing_fails_after_bounded_retries() {
+    let script = Script::new("busy", "exec cat");
+    let tool = script.tool();
+    let held = std::fs::OpenOptions::new()
+        .write(true)
+        .open(&script.0)
+        .expect("hold for writing");
+    let started = Instant::now();
+    let err = tool.run(b"x").expect_err("busy binary");
+    drop(held);
+    assert!(failure_message(err).contains("could not spawn"));
+    assert!(
+        started.elapsed() < Duration::from_secs(5),
+        "the retries are bounded"
+    );
+    // Once the writer is gone, the same tool runs.
+    assert_eq!(tool.run(b"ok").expect("run").output, b"ok");
+}
