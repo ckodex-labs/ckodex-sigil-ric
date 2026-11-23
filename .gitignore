@@ -34,3 +34,6 @@ ci-out/
 # Third-party reference files fetched for tests, never committed
 # (scripts/reference/fetch_qwen2vl_assets.sh).
 /.ref-models/
+
+# Release artifacts (ci: release, sbom)
+/dist/

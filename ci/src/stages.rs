@@ -1,7 +1,7 @@
 //! Pipeline stages — one function per CI lane, each returning a
 //! Container (or exporting artifacts) so failures propagate as errors.
 
-use crate::base::{rust, rust_go, sh, with_ref_assets, LLVM_COV_INSTALL, MSRV};
+use crate::base::{rust, rust_go, sh, source, with_ref_assets, LLVM_COV_INSTALL, MSRV};
 use dagger_sdk::Query;
 use eyre::Result;
 
@@ -224,3 +224,67 @@ pub async fn reports(client: &Query) -> Result<()> {
     ctr.directory("/out").export("ci-out").await?;
     Ok(())
 }
+
+/// Release artifacts for the engine's own platform, exported to ./dist/:
+/// `sigil-<version>-<triple>.tar.gz` (sigil-cli, libsigil static and shared,
+/// the C header, licences, README, changelog) and its `.sha384`. The archive
+/// is byte-stable for a commit: sorted entries, fixed owner, mtime from
+/// SOURCE_DATE_EPOCH, gzip without a timestamp. Signing and provenance are
+/// not done here; the release workflow does them keylessly with the
+/// workflow's GitHub OIDC identity, so no key reaches this pipeline.
+pub async fn release(client: &Query, source_date_epoch: &str) -> Result<()> {
+    rust(client, MSRV)
+        .with_env_variable("SOURCE_DATE_EPOCH", source_date_epoch)
+        .with_exec(sh(RELEASE_BUILD))
+        .directory("/dist")
+        .export("dist")
+        .await?;
+    Ok(())
+}
+
+/// CycloneDX SBOM of the source tree (Cargo.lock and the Python reference
+/// scripts' imports), exported to ./dist/sigil-<version>.cdx.json.
+pub async fn sbom(client: &Query, version: &str) -> Result<()> {
+    let name = format!("sigil-{version}.cdx.json");
+    client
+        .container()
+        .from(SYFT_IMAGE)
+        .with_mounted_directory("/src", source(client))
+        .with_exec(vec![
+            "/syft".to_string(),
+            "scan".to_string(),
+            "dir:/src".to_string(),
+            "--source-name".to_string(),
+            "sigil".to_string(),
+            "--source-version".to_string(),
+            version.to_string(),
+            "--exclude".to_string(),
+            "./.ref-models/**".to_string(),
+            "-o".to_string(),
+            format!("cyclonedx-json=/out/{name}"),
+        ])
+        .file(format!("/out/{name}"))
+        .export(format!("dist/{name}"))
+        .await?;
+    Ok(())
+}
+
+/// Syft, pinned (the version the maintainer's host runs, 2026-11-23).
+const SYFT_IMAGE: &str = "anchore/syft:v1.57.2";
+
+const RELEASE_BUILD: &str = r#"set -eu
+ver=$(sed -n 's/^version = "\(.*\)"$/\1/p' Cargo.toml | head -1)
+triple=$(rustc -vV | sed -n 's/^host: //p')
+cargo build --release --locked -p sigil-cli -p sigil-ffi
+scripts/build_ffi_shared.sh
+name="sigil-$ver-$triple"
+d="/stage/$name"
+mkdir -p "$d/bin" "$d/lib" "$d/include" /dist
+cp target/release/sigil-cli "$d/bin/"
+strip "$d/bin/sigil-cli"
+cp target/release/libsigil.a target/release/libsigil.so "$d/lib/"
+cp bindings/c/sigil_tiktoken.h "$d/include/"
+cp LICENSE LICENSE-APACHE README.md CHANGELOG.md "$d/"
+"$d/bin/sigil-cli" --version
+tar --sort=name --owner=0 --group=0 --numeric-owner --mtime="@$SOURCE_DATE_EPOCH"   -C /stage -cf - "$name" | gzip -n -9 > "/dist/$name.tar.gz"
+(cd /dist && sha384sum "$name.tar.gz" > "$name.tar.gz.sha384")"#;

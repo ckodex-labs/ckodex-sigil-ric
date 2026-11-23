@@ -24,6 +24,8 @@ const STAGES: &[&str] = &[
     "bindings",
     "conformance",
     "reports",
+    "release",
+    "sbom",
 ];
 
 #[tokio::main]
@@ -78,6 +80,8 @@ async fn main() -> Result<()> {
                 }
             }
             "fmt" => stages::fmt(&client).await?,
+            "release" => stages::release(&client, &source_date_epoch()?).await?,
+            "sbom" => stages::sbom(&client, &workspace_version()?).await?,
             "contracts" => stages::contracts(&client).await?,
             "test" => stages::test(&client).await?,
             "clippy" => stages::clippy(&client).await?,
@@ -99,4 +103,26 @@ async fn main() -> Result<()> {
     })
     .await
     .map_err(|e| eyre!("dagger pipeline failed: {e}"))
+}
+
+/// The commit time of HEAD, so a release archive's mtimes depend only on the
+/// commit (reproducible builds).
+fn source_date_epoch() -> Result<String> {
+    let out = std::process::Command::new("git")
+        .args(["log", "-1", "--format=%ct"])
+        .output()?;
+    if !out.status.success() {
+        return Err(eyre!("git log failed: SOURCE_DATE_EPOCH needs a git checkout"));
+    }
+    Ok(String::from_utf8(out.stdout)?.trim().to_string())
+}
+
+/// `[workspace.package] version` from the root Cargo.toml.
+fn workspace_version() -> Result<String> {
+    let manifest = std::fs::read_to_string("Cargo.toml")?;
+    manifest
+        .lines()
+        .find_map(|l| l.strip_prefix("version = \"").and_then(|v| v.strip_suffix('"')))
+        .map(str::to_string)
+        .ok_or_else(|| eyre!("no version in Cargo.toml"))
 }
