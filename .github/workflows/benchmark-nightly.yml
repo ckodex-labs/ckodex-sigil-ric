@@ -24,18 +24,20 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       - name: Rust toolchain (CI driver only)
-        uses: dtolnay/rust-toolchain@stable
+        uses: dtolnay/rust-toolchain@df2a88e9fe4098bad09cb42c3dec7187f15861fc # master 2026-11-23
+        with:
+          toolchain: stable
 
       - name: Cache CI driver build
-        uses: swatinem/rust-cache@v2
+        uses: swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
           workspaces: ci
 
       - name: Nightly lane (3 presets + telemetry + burn-in + rollout)
-        uses: dagger/dagger-for-github@v7
+        uses: dagger/dagger-for-github@b81317a976cb7f7125469707321849737cd1b3bc # v7.0.6
         with:
           version: "0.21.8"
           verb: run
@@ -55,7 +57,7 @@ jobs:
           } >> "$GITHUB_STEP_SUMMARY"
 
       - name: Upload benchmark artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
           name: benchmark-stress-${{ github.run_id }}
           path: ci-out/nightly/
