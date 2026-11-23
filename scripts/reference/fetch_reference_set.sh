@@ -11,6 +11,10 @@
 #   glove100.gz, for embeddings.py (O-2)
 # - the Pillow 13.0.0 source distribution from PyPI, to read Resample.c (O-10)
 # - a Python 3.13 venv with sherpa-onnx 1.12.40 and the scripts' imports
+# - the Kodak Lossless True Color Image Suite (24 photographs), with its
+#   source page saved beside it as the licence record, as benign images for
+#   the D5 benign-rate measurement (O-3). The ASR tarball's test_wavs are the
+#   benign speech.
 set -eu
 
 dest=${SIGIL_REF_MODELS:-.ref-models}
@@ -37,6 +41,12 @@ sdist=$(curl -fsSL https://pypi.org/pypi/pillow/13.0.0/json \
   | python3 -c 'import json,sys; print(next(u["url"] for u in json.load(sys.stdin)["urls"] if u["packagetype"]=="sdist"))')
 fetch "$sdist" "$dest/pillow-13.0.0.tar.gz"
 [ -d "$dest/pillow-13.0.0" ] || { mkdir -p "$dest/pillow-13.0.0" && tar -xzf "$dest/pillow-13.0.0.tar.gz" -C "$dest/pillow-13.0.0" --strip-components 1; }
+
+mkdir -p "$dest/benign/kodak"
+[ -f "$dest/benign/kodak/SOURCE.html" ] || curl -fsSL -o "$dest/benign/kodak/SOURCE.html" https://r0k.us/graphics/kodak/
+for i in $(seq -w 1 24); do
+  fetch "https://r0k.us/graphics/kodak/kodak/kodim$i.png" "$dest/benign/kodak/kodim$i.png"
+done
 
 [ -x "$dest/venv/bin/python" ] || uv venv --python 3.13 "$dest/venv"
 uv pip install --python "$dest/venv/bin/python" --quiet \
