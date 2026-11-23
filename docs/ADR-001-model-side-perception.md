@@ -104,19 +104,25 @@ order.
 - **transformers 5.x** uses a torchvision resize path. It is a distinct profile
   and its parity is never assumed.
 
-## Open decision (D6) — not decided here
+## Decision D6 — delivery is a separate field (decided 2026-11-23)
 
 When SIGIL itself produces the consumed representation and the engine
 consumes it unchanged (SGLang `processor_output`), the reference *is*
-SIGIL's output. Three options:
+SIGIL's output. Three options were open:
 
 1. Declare `reference-matched`, since the profile still has to match the
    model's reference processor to be correct.
 2. Add a third value, `sigil-produced`.
 3. Record the delivery mode in a separate field.
 
-This ADR does not choose. Until a decision, receipts use
-`reference-matched` only for profiles whose parity vector passes.
+The owner chose option 3. `consumed.delivery` is `engine-processed` or
+`sigil-supplied` and is signed in receipt v4 (RIC-SPEC §5.1); `perceive
+--delivery` states it. `parity` keeps one meaning, whether the profile
+matches the reference preprocessor, and receipts still use
+`reference-matched` only for profiles whose parity vector passes. Delivery
+never raises authority: the caller states it, and SIGIL cannot see the
+engine's input. Pinned by `cv_ric_035_delivery_is_signed_evidence` and
+`cv_ric_032_a_stated_delivery_never_lifts_the_cap`.
 
 ## Consequences
 
@@ -158,10 +164,10 @@ This ADR does not choose. Until a decision, receipts use
     pin keeps any other template from loading. Text containing a
     special-token literal is refused, because Hugging Face's tokenizer turns
     `<|image_pad|>` in user text into the real placeholder ID.
-  - Document inputs are not capped. No document profile exists yet. This is
-    a derogation that needs a human decision: a PDF rendered for a
-    vision-language model reaches it as pixels. Re-evaluate when a document
-    profile lands.
+  - Document inputs are capped like images (decided 2026-11-23, O-4): a
+    PDF rendered for a vision-language model reaches it as pixels, and no
+    document profile exists, so a document caps at `observe`. Pinned by
+    `cv_ric_032_documents_are_capped_like_images`.
 
 ## Known limits
 

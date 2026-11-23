@@ -30,9 +30,11 @@ pub(crate) fn authority_ceiling(verdict: &Verdict, fusion: &FusionAssessment) ->
     }
 }
 
-/// RIC-R-8: a pixel or sound input whose consumed representation SIGIL did
-/// not produce under a reference-matched profile leaves the model's
+/// RIC-R-8: a pixel, sound or document input whose consumed representation
+/// SIGIL did not produce under a reference-matched profile leaves the model's
 /// interpreter unresolved. Uncertainty degrades authority, never raises it.
+/// Documents are capped like images (decision O-4): a PDF rendered for a
+/// vision-language model reaches it as pixels, and no document profile exists.
 /// The retrieval boundary's cap on a retrieval-provenance input (RIC-SPEC
 /// §4.3): observe without an in-process assessment, or when the assessment
 /// was made for text other than what the engine admitted (`admitted`, the
@@ -59,7 +61,7 @@ pub(crate) fn input_trust(input: &ModalInput) -> sigil_core::TrustLevel {
 pub(crate) fn interpreter_unresolved(input: &ModalInput) -> bool {
     matches!(
         input.modality,
-        Modality::Vision | Modality::Audio | Modality::Video
+        Modality::Vision | Modality::Audio | Modality::Video | Modality::Document
     ) && !input
         .consumed
         .as_ref()

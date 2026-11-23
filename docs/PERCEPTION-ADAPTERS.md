@@ -160,6 +160,11 @@ digest (`ffmpeg-s16le:<sha384>`), so an ASR that reads the view binds it. The
 view is approximate, because the specimen's recorded reference hash was not
 reproduced, so the ceiling stays capped.
 
+`--delivery engine-processed|sigil-supplied` (with `--profile`) states how the
+model's engine obtains the view: by running its own preprocessor, or by
+consuming SIGIL's view bytes unchanged. It is signed into `consumed.delivery`
+and never raises the ceiling.
+
 `--vlm-assets <dir>` (images, with a vision-language profile; RIC-MM-001
 WP6) loads the target model's interpreter from digest-pinned files, today
 Qwen2-VL-2B's, fetched from its Hugging Face repository at a pinned revision

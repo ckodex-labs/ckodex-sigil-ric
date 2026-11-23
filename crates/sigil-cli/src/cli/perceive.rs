@@ -48,7 +48,7 @@ pub struct PerceiveOutcome {
 /// Which modalities each adapter flag applies to. A flag the routed adapter
 /// would silently ignore reads as "configured" to the operator, so it is an
 /// error instead.
-fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'static str]); 12] {
+fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'static str]); 13] {
     const VISUAL: &[&str] = &["image", "video", "document"];
     const SOUND: &[&str] = &["audio", "video"];
     [
@@ -91,6 +91,11 @@ fn flag_scopes(command: &PerceiveCommand) -> [(&'static str, bool, &'static [&'s
             "--resampler-binary",
             command.resampler_binary.is_some(),
             &["audio"],
+        ),
+        (
+            "--delivery",
+            command.delivery.is_some(),
+            &["image", "audio"],
         ),
     ]
 }
@@ -314,6 +319,18 @@ fn perceive_routed(
     }
 }
 
+/// The caller's statement of how the engine obtains the view, recorded in the
+/// consumed block it signs (decision O-5). clap restricts the label.
+fn record_delivery(command: &PerceiveCommand, report: &mut PerceptionReport) {
+    let delivery = command
+        .delivery
+        .as_deref()
+        .and_then(sigil_multimodal::Delivery::from_label);
+    if let Some(consumed) = report.consumed.as_mut() {
+        consumed.delivery = delivery;
+    }
+}
+
 pub fn perceive_command(
     command: PerceiveCommand,
     policy: Policy,
@@ -339,6 +356,7 @@ pub fn perceive_command(
 
     let (adapter_id, mut report, modality) =
         perceive_routed(&command, &artifact, effective_modality)?;
+    record_delivery(&command, &mut report);
     if let Some(sniffed) = routed {
         report.properties.push((
             "sigil.modality_routed".to_string(),

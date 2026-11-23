@@ -6,7 +6,8 @@
 //! verify, and so do the v4 receipts the binary signed. There is no v3
 //! fixture: v3 belongs to the remediation line, which this repo lacks.
 //! CV-RIC-035: changing, adding or removing any consumed field, or
-//! relabelling the version, fails verification.
+//! relabelling the version, fails verification. That includes `delivery`
+//! (decision O-5): who produced the consumed bytes is signed evidence.
 
 use std::sync::Arc;
 
@@ -14,7 +15,7 @@ use sigil_core::policy::Policy;
 use sigil_core::receipt::{ReceiptVerifyError, verify_receipt};
 use sigil_core::signing::{EcdsaP384Signer, SignatureVerifyError};
 use sigil_core::types::{Provenance, RepresentationReceipt, TextSegment};
-use sigil_core::{ConsumedParity, ConsumedView, RECEIPT_VERSION, Sigil, Vocab};
+use sigil_core::{ConsumedParity, ConsumedView, Delivery, RECEIPT_VERSION, Sigil, Vocab};
 
 const FIXTURE_KEY: &str = include_str!("../../../tests/fixtures/receipts/signer.pub.hex");
 const V2_KEY: &str = include_str!("../../../tests/fixtures/receipts/v2_signer.pub.hex");
@@ -36,6 +37,7 @@ fn view() -> ConsumedView {
         placeholders: Some(529),
         placeholder_stream_digest: None,
         interpreter: None,
+        delivery: None,
     }
 }
 
@@ -213,4 +215,47 @@ fn an_unsigned_receipt_does_not_verify() {
         verify_receipt(&receipt, FIXTURE_KEY),
         Err(ReceiptVerifyError::Unsigned)
     );
+}
+
+#[test]
+fn cv_ric_035_delivery_is_signed_evidence() {
+    let signer = signer();
+    let key = signer.verification_key_hex();
+    let stated = ConsumedView {
+        delivery: Some(Delivery::SigilSupplied),
+        ..view()
+    };
+    let receipt = Sigil::new(Vocab::tiktoken("cl100k_base"), Policy::default())
+        .expect("engine")
+        .with_receipt_signer(signer)
+        .process_text_segments_bound(
+            &[TextSegment {
+                text: "Q3 revenue by region",
+                provenance: Provenance::McpTool,
+            }],
+            Some(stated),
+        )
+        .expect("process")
+        .receipt;
+    assert!(verify_receipt(&receipt, &key).is_ok());
+    let wire = serde_json::to_value(&receipt).expect("serialize");
+    assert_eq!(wire["consumed"]["delivery"], "sigil-supplied");
+
+    let tampers: Vec<Tamper> = vec![
+        ("delivery changed", |v| {
+            v.delivery = Some(Delivery::EngineProcessed);
+        }),
+        ("delivery removed", |v| v.delivery = None),
+    ];
+    for (name, tamper) in tampers {
+        let mut tampered = receipt.clone();
+        tamper(tampered.consumed.as_mut().expect("consumed"));
+        assert_ne!(tampered, receipt, "{name}: the tamper changed nothing");
+        assert_mismatch(&tampered, &key);
+    }
+    // Stating a delivery where none was signed also fails.
+    let (unstated, key) = signed_media_receipt();
+    let mut added = unstated;
+    added.consumed.as_mut().expect("consumed").delivery = Some(Delivery::EngineProcessed);
+    assert_mismatch(&added, &key);
 }

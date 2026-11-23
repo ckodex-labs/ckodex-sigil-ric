@@ -32,7 +32,7 @@ pub use engine::Sigil;
 pub use error::{Result, SigilError};
 pub use parallel::TokenizerActor;
 pub use policy::Policy;
-pub use receipt::{ConsumedParity, ConsumedView, RECEIPT_VERSION, ReceiptVerifyError};
+pub use receipt::{ConsumedParity, ConsumedView, Delivery, RECEIPT_VERSION, ReceiptVerifyError};
 pub use signing::{EcdsaP384Signer, ReceiptSignature, ReceiptSigner, SignatureVerifyError};
 pub use sink::{EvidenceSink, JsonlEvidenceSink};
 pub use types::{

@@ -102,3 +102,48 @@ fn a_resampler_needs_an_ffmpeg_resampled_profile() {
     assert!(!out.status.success());
     assert!(String::from_utf8_lossy(&out.stderr).contains("ffmpeg-resampled"));
 }
+
+#[test]
+fn a_stated_delivery_is_recorded_in_the_consumed_block() {
+    let out = perceive(
+        "attack_source.png",
+        &[
+            "--profile",
+            "qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow",
+            "--delivery",
+            "sigil-supplied",
+            "--analyze",
+        ],
+    );
+    assert!(
+        out.status.success(),
+        "{}",
+        String::from_utf8_lossy(&out.stderr)
+    );
+    let json: serde_json::Value = serde_json::from_slice(&out.stdout).expect("json");
+    assert_eq!(
+        json["result"]["report"]["consumed"]["delivery"],
+        "sigil-supplied"
+    );
+    // Evidence only: the unread view still caps the ceiling (decision O-5).
+    assert_eq!(json["result"]["analysis"]["authority_ceiling"], "observe");
+}
+
+#[test]
+fn delivery_needs_a_profile_and_a_known_label() {
+    let bare = perceive("attack_source.png", &["--delivery", "sigil-supplied"]);
+    assert!(
+        !bare.status.success(),
+        "no profile, no consumed block to state it in"
+    );
+    let unknown = perceive(
+        "attack_source.png",
+        &[
+            "--profile",
+            "thumbnail/nearest-80",
+            "--delivery",
+            "trust-me",
+        ],
+    );
+    assert!(!unknown.status.success());
+}

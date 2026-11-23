@@ -56,6 +56,12 @@ pub struct PerceiveCommand {
     /// reference command and binds its digest in the view's transform.
     #[arg(long, requires = "profile")]
     pub resampler_binary: Option<PathBuf>,
+    /// How the model's engine obtains the consumed view: `engine-processed`
+    /// (it runs its own preprocessor on the raw input) or `sigil-supplied`
+    /// (it consumes SIGIL's view bytes unchanged). Signed into the receipt's
+    /// `consumed` block as evidence; it never raises authority (RIC-SPEC §5.1).
+    #[arg(long, requires = "profile", value_parser = ["engine-processed", "sigil-supplied"])]
+    pub delivery: Option<String>,
     /// External renderer binary to pin for render-vs-extract comparison
     /// (document/PDF, optional — e.g. `pdftoppm`).
     #[arg(long)]

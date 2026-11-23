@@ -67,7 +67,7 @@ each rule to its SIGIL enforcement point (the reference implementation).
 | **RIC-R-5** | Composition must not merge across provenance boundaries; every crossing or suppression is recorded. | `security_aware_merge` + `MergeBoundary` findings (High when crossings are policy-permitted) |
 | **RIC-R-6** | Fusing multiple sources is itself a security event: cross-trust and cross-role composition is audited even when each artifact is individually clean. | `audit_fusion` — `CrossTrustFusion`, `CrossRoleFusion`, `CrossSourceInstructionFormation` |
 | **RIC-R-7** | A derived artifact never inherits more authority than its source. | `derived_from` lineage + `DerivedAuthorityEscalation` |
-| **RIC-R-8** | Representation uncertainty degrades authority; it never raises it. | `AuthorityCeiling` (`Act < Draft < Observe < Escalate`); restrictive trust composition |
+| **RIC-R-8** | Representation uncertainty degrades authority; it never raises it. | `AuthorityCeiling` (`Act < Draft < Observe < Escalate`); restrictive trust composition; a pixel, sound or document input without a read, reference-matched consumed view caps at `observe` |
 
 ## 4. What conformance means, per boundary
 
@@ -183,7 +183,8 @@ Vectors: CV-RIC-038 to CV-RIC-040.
     "extractor":      "<hex identity digest of the extractor that read the view>",
     "placeholders":   <u64>,
     "placeholder_stream_digest": "<hex SHA-384 over the placeholder token IDs>",
-    "interpreter":    "<hex identity digest of the model interpreter>"
+    "interpreter":    "<hex identity digest of the model interpreter>",
+    "delivery":       "engine-processed | sigil-supplied"
   },
   "signature": {
     "algorithm":  "ecdsa-p384-sha384",
@@ -201,13 +202,23 @@ mislabeled receipt fails signature verification.
 `consumed` is present when the receipt's text was read from a media artifact
 under a preprocessor profile: it binds the representation the model receives,
 not only the text extracted from it. `extractor`, `placeholders`,
-`placeholder_stream_digest` and `interpreter` are optional; an absent value
+`placeholder_stream_digest`, `interpreter` and `delivery` are optional; an absent value
 is signed as absent. `placeholder_stream_digest` is SHA-384 over one image's
 token IDs (vision start, the placeholders, vision end) as little-endian
 `u32`. `interpreter` identifies the digest-pinned tokenizer, chat template,
 processor config and model config that stream was computed with. A consumed view no extractor read (`extractor` absent) or one that is
 `approximate` does not resolve the interpreter, and RIC-R-8 caps authority at
 `observe`.
+
+`delivery` records how the model's engine obtained the consumed bytes:
+`engine-processed` (the engine ran its own preprocessor on the raw input, and
+SIGIL's view reproduces it as faithfully as `parity` states) or
+`sigil-supplied` (the engine consumed SIGIL's view bytes unchanged, for example
+SGLang's `processor_output`). It is a separate field so that `parity` keeps one
+meaning: whether the profile matches the reference preprocessor. `delivery` is
+signed evidence a verifier can compare with the engine's own input digest. It
+never raises authority: a `sigil-supplied` view that is `approximate`, or that
+no extractor read, still caps at `observe` (RIC-R-8).
 
 `receipt_version` selects the signing message. A receipt without the field is
 version 2. Version 3 is reserved and not defined by this document.
@@ -233,7 +244,7 @@ message       = str("sigil-receipt-v4")
              || opt(str(profile) || str(profile_digest) || str(digest)
                     || str(parity) || opt(str(extractor))
                     || opt(u64be(placeholders)) || opt(str(placeholder_stream_digest))
-                    || opt(str(interpreter)))
+                    || opt(str(interpreter)) || opt(str(delivery)))
 ```
 
 ### 5.2 Capability lease schema
@@ -394,6 +405,14 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
   RIC-RET-3, with the signed retrieval receipt `sigil-retrieval-v1`. Why: a
   word-level embedding filter scored a tag-smuggled attack below a benign
   request, and nothing bound which model scored what.
+- §5.1 (decision O-5): the consumed block gains `delivery`
+  (`engine-processed` | `sigil-supplied`), signed as the last optional field.
+  Who produced the consumed bytes is recorded apart from `parity`, and never
+  raises authority. Receipt v4 had not been released, so v4 itself carries it.
+- §3 RIC-R-8 (decision O-4): document inputs are capped like images. A PDF
+  rendered for a vision-language model reaches it as pixels, and no document
+  profile exists, so a document without a read, reference-matched consumed
+  view caps at `observe`.
 - 0.3.0 and receipt version 3 are reserved for the remediation line
   (remediation/2026-11-21). This repository does not contain that line, so
   this document moves from 0.2.0 to 0.4.0.

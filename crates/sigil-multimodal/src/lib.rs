@@ -24,8 +24,8 @@ pub use perception::{
 };
 pub use types::{
     AuthorityCeiling, BoundRetrieval, ConsumedParity, CrossModalAssessment, CrossModalCorrelation,
-    FusionAssessment, FusionEvent, FusionRiskKind, ModalInput, Modality, ModalityAssessment,
-    MultimodalAssessment, MultimodalFinding, MultimodalFindingKind,
+    Delivery, FusionAssessment, FusionEvent, FusionRiskKind, ModalInput, Modality,
+    ModalityAssessment, MultimodalAssessment, MultimodalFinding, MultimodalFindingKind,
 };
 
 #[cfg(test)]

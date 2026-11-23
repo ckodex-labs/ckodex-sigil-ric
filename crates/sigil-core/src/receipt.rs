@@ -46,6 +46,42 @@ impl ConsumedParity {
     }
 }
 
+/// How the model's engine obtained the consumed representation (RIC-SPEC
+/// §5.1, decision O-5). Parity answers whether the profile matches the
+/// reference preprocessor; delivery answers who produced the bytes the engine
+/// consumed. It is evidence for a verifier and never raises authority.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum Delivery {
+    /// The engine runs its own preprocessor on the raw input; SIGIL's view
+    /// reproduces it, as faithfully as `parity` states.
+    EngineProcessed,
+    /// The engine consumes SIGIL's view bytes unchanged (for example SGLang's
+    /// `processor_output`): the view is the model's input by construction.
+    SigilSupplied,
+}
+
+impl Delivery {
+    /// The label signed into a v4 receipt (the serialized form).
+    #[must_use]
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::EngineProcessed => "engine-processed",
+            Self::SigilSupplied => "sigil-supplied",
+        }
+    }
+
+    /// Parse a label as [`Delivery::label`] writes it.
+    #[must_use]
+    pub fn from_label(label: &str) -> Option<Self> {
+        match label {
+            "engine-processed" => Some(Self::EngineProcessed),
+            "sigil-supplied" => Some(Self::SigilSupplied),
+            _ => None,
+        }
+    }
+}
+
 /// The consumed representation: what the model receives, produced by SIGIL.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ConsumedView {
@@ -76,6 +112,10 @@ pub struct ConsumedView {
     /// stream was computed with (RIC-MM-001 WP6).
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub interpreter: Option<String>,
+    /// How the engine obtained these bytes, when the caller stated it.
+    /// `None`: not stated. Never changes the authority cap.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub delivery: Option<Delivery>,
 }
 
 impl ConsumedView {
@@ -160,6 +200,7 @@ pub fn v4_message(receipt: &RepresentationReceipt) -> Vec<u8> {
             }
             put_opt_str(&mut out, view.placeholder_stream_digest.as_deref());
             put_opt_str(&mut out, view.interpreter.as_deref());
+            put_opt_str(&mut out, view.delivery.map(Delivery::label));
         }
     }
     out

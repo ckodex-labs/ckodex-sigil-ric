@@ -84,6 +84,7 @@ pub(crate) fn image_view(
         placeholders: profile.placeholder_count(width, height),
         placeholder_stream_digest: None,
         interpreter: None,
+        delivery: None,
     };
     if let Some(interpreter) = interpreter {
         bind_interpreter(&mut consumed, profile, interpreter, width, height)?;
@@ -190,6 +191,7 @@ pub(crate) fn audio_view(
         placeholders: None,
         placeholder_stream_digest: None,
         interpreter: None,
+        delivery: None,
     };
     let mut channels = Vec::new();
     if let Some((tool, source_text)) = transcript {

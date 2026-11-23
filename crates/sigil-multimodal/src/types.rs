@@ -77,7 +77,7 @@ impl ModalInput {
     }
 }
 
-pub use sigil_core::receipt::{ConsumedParity, ConsumedView};
+pub use sigil_core::receipt::{ConsumedParity, ConsumedView, Delivery};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct MultimodalFinding {

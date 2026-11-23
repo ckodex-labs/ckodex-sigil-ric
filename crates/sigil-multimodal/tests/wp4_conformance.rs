@@ -1,8 +1,9 @@
 //! RIC-MM-001 WP4 kernel vectors.
 //!
-//! CV-RIC-032: a pixel or sound input whose consumed representation SIGIL did
-//! not produce under a reference-matched profile caps the ceiling at observe
-//! (RIC-R-8), and parity cannot be asserted over the wire.
+//! CV-RIC-032: a pixel, sound or document input whose consumed representation
+//! SIGIL did not produce under a reference-matched profile caps the ceiling at
+//! observe (RIC-R-8; documents by decision O-4), parity cannot be asserted over
+//! the wire, and a stated delivery never lifts the cap (decision O-5).
 //! CV-RIC-029 (kernel half): a divergence channel is a finding whose
 //! severity follows the instruction content only the model's view carries.
 //! The OCR text below is what Tesseract read from the specimen's 80² view
@@ -13,7 +14,7 @@ use sigil_core::policy::Policy;
 use sigil_core::types::{Provenance, Severity, Verdict};
 use sigil_multimodal::perception::channels_to_modal_inputs;
 use sigil_multimodal::{
-    AuthorityCeiling, ChannelKind, ConsumedParity, ConsumedView, ModalInput, Modality,
+    AuthorityCeiling, ChannelKind, ConsumedParity, ConsumedView, Delivery, ModalInput, Modality,
     MultimodalAssessment, MultimodalEngine, MultimodalFindingKind, PerceptionReport,
 };
 
@@ -52,6 +53,7 @@ fn view(parity: ConsumedParity, extractor: Option<&str>) -> ConsumedView {
         placeholders: None,
         placeholder_stream_digest: None,
         interpreter: None,
+        delivery: None,
     }
 }
 
@@ -228,4 +230,51 @@ fn cv_ric_032_media_with_no_extracted_text_still_reaches_the_kernel() {
         analyze(&inputs).authority_ceiling,
         AuthorityCeiling::Observe
     );
+}
+
+#[test]
+fn cv_ric_032_documents_are_capped_like_images() {
+    let unprofiled = analyze(&[channel(
+        Modality::Document,
+        ChannelKind::OcrText,
+        BENIGN,
+        None,
+    )]);
+    assert_eq!(unprofiled.verdict, Verdict::Allow);
+    assert_eq!(
+        unprofiled.authority_ceiling,
+        AuthorityCeiling::Observe,
+        "a rendered PDF reaches a vision model as pixels"
+    );
+    let approximate = analyze(&[channel(
+        Modality::Document,
+        ChannelKind::OcrText,
+        BENIGN,
+        Some(ConsumedParity::Approximate),
+    )]);
+    assert_eq!(approximate.authority_ceiling, AuthorityCeiling::Observe);
+    // The rule is the images' rule: only a read, reference-matched view resolves it.
+    let matched = analyze(&[channel(
+        Modality::Document,
+        ChannelKind::OcrText,
+        BENIGN,
+        Some(ConsumedParity::ReferenceMatched),
+    )]);
+    assert_eq!(matched.authority_ceiling, AuthorityCeiling::Act);
+}
+
+#[test]
+fn cv_ric_032_a_stated_delivery_never_lifts_the_cap() {
+    for delivery in [Delivery::SigilSupplied, Delivery::EngineProcessed] {
+        let mut input = channel(Modality::Vision, ChannelKind::OcrText, BENIGN, None);
+        input.consumed = Some(ConsumedView {
+            delivery: Some(delivery),
+            ..view(ConsumedParity::Approximate, Some("ocr-identity"))
+        });
+        assert_eq!(
+            analyze(&[input]).authority_ceiling,
+            AuthorityCeiling::Observe,
+            "{delivery:?}"
+        );
+    }
 }
