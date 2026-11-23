@@ -1,13 +1,14 @@
 """Reference Qwen2-VL ID streams for RIC-MM-001 WP6 (CV-RIC-036, CV-RIC-037).
 
-Runs Hugging Face's own code on the vendored assets in assets/qwen2-vl-2b:
+Runs Hugging Face's own code on the assets fetched into .ref-models/qwen2-vl-2b
+(scripts/reference/fetch_qwen2vl_assets.sh; not redistributed):
 the `tokenizers` library for text IDs, transformers' Qwen2VLProcessor for the
 placeholder expansion, and jinja2 (as transformers renders chat templates) for
 the template. The image grid is the one transformers 4.57.6 produced for
 attack_source.png (tests/fixtures/multimodal/specimens.json), so no pixels are
 needed here.
 
-    python3 -I scripts/reference/qwen2vl_ids.py assets/qwen2-vl-2b > tests/fixtures/multimodal/qwen2vl_ids.json
+    python3 -I scripts/reference/qwen2vl_ids.py .ref-models/qwen2-vl-2b > tests/fixtures/multimodal/qwen2vl_ids.json
 
 Run from the repository root (DOCUMENTS are repo-relative).
 """
@@ -47,7 +48,7 @@ TEXTS = [
 ]
 # Whole files, for breadth: markdown, Python and digit-heavy JSON.
 DOCUMENTS = [
-    "assets/qwen2-vl-2b/README.md",
+    ".ref-models/qwen2-vl-2b/README.md",
     "scripts/reference/qwen2vl_view.py",
     "tests/fixtures/multimodal/pillow_parity.json",
 ]

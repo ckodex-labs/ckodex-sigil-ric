@@ -10,6 +10,22 @@ fn repo(path: &str) -> PathBuf {
         .join(path)
 }
 
+/// The Qwen2-VL-2B files the interpreter tests run against. SIGIL does not
+/// redistribute them: `scripts/reference/fetch_qwen2vl_assets.sh` fetches them
+/// from their Hugging Face repository at the pinned revision into
+/// `.ref-models/qwen2-vl-2b` (or set `SIGIL_QWEN2VL_ASSETS`). Missing files fail
+/// the test; they are never skipped.
+fn qwen_assets() -> PathBuf {
+    let dir = std::env::var_os("SIGIL_QWEN2VL_ASSETS")
+        .map_or_else(|| repo(".ref-models/qwen2-vl-2b"), PathBuf::from);
+    assert!(
+        dir.join("tokenizer.json").is_file(),
+        "Qwen2-VL assets missing at {}: run scripts/reference/fetch_qwen2vl_assets.sh",
+        dir.display()
+    );
+    dir
+}
+
 fn perceive(args: &[&str]) -> Output {
     Command::new(env!("CARGO_BIN_EXE_sigil-cli"))
         .args(["perceive", "--format", "json", "--input"])
@@ -23,7 +39,7 @@ const QWEN: &str = "qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow";
 
 #[test]
 fn the_pinned_assets_bind_the_placeholder_stream() {
-    let assets = repo("assets/qwen2-vl-2b");
+    let assets = qwen_assets();
     let out = perceive(&[
         "--profile",
         QWEN,
@@ -55,7 +71,7 @@ fn assets_that_differ_from_their_pins_are_rejected() {
         "preprocessor_config.json",
         "config.json",
     ] {
-        std::fs::copy(repo("assets/qwen2-vl-2b").join(name), dir.path().join(name)).expect("copy");
+        std::fs::copy(qwen_assets().join(name), dir.path().join(name)).expect("copy");
     }
     std::fs::write(
         dir.path().join("chat_template.json"),
@@ -74,7 +90,7 @@ fn assets_that_differ_from_their_pins_are_rejected() {
 
 #[test]
 fn vlm_assets_need_a_profile() {
-    let assets = repo("assets/qwen2-vl-2b");
+    let assets = qwen_assets();
     let out = perceive(&["--vlm-assets", assets.to_str().expect("path")]);
     assert!(!out.status.success());
 }
@@ -82,7 +98,7 @@ fn vlm_assets_need_a_profile() {
 fn vlm_request(parts: &[String]) -> Output {
     let mut cmd = Command::new(env!("CARGO_BIN_EXE_sigil-cli"));
     cmd.args(["--format", "json", "vlm-request", "--vlm-assets"])
-        .arg(repo("assets/qwen2-vl-2b"));
+        .arg(qwen_assets());
     for part in parts {
         cmd.arg("--part").arg(part);
     }

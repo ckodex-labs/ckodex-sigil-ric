@@ -55,6 +55,15 @@ pub fn rust(client: &Query, version: &str) -> Container {
         .with_workdir("/src")
 }
 
+/// `rust()` plus the Qwen2-VL reference files the interpreter tests need.
+/// SIGIL does not redistribute them; the script fetches them from their
+/// Hugging Face repository at the pinned revision and checks each SHA-384,
+/// and skips any file already present with its pinned digest (a local run
+/// reuses the host's `.ref-models`).
+pub fn with_ref_assets(ctr: Container) -> Container {
+    ctr.with_exec(sh("scripts/reference/fetch_qwen2vl_assets.sh .ref-models/qwen2-vl-2b"))
+}
+
 /// `rust()` plus the Go 1.22 toolchain — only the bindings lane
 /// compiles/tests Go code.
 pub fn rust_go(client: &Query, version: &str) -> Container {

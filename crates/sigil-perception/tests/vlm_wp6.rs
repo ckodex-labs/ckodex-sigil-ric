@@ -19,8 +19,22 @@ use sigil_perception::vlm::{
     AssetPin, InterpreterError, Part, QWEN2_VL_2B, Qwen2VlInterpreter, identity_digest, ids_sha384,
 };
 
+/// The Qwen2-VL-2B files the interpreter tests run against. SIGIL does not
+/// redistribute them: `scripts/reference/fetch_qwen2vl_assets.sh` fetches them
+/// from their Hugging Face repository at the pinned revision into
+/// `.ref-models/qwen2-vl-2b` (or set `SIGIL_QWEN2VL_ASSETS`). Missing files fail
+/// the test; they are never skipped.
 fn assets() -> PathBuf {
-    Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/qwen2-vl-2b")
+    let dir = std::env::var_os("SIGIL_QWEN2VL_ASSETS").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.ref-models/qwen2-vl-2b"),
+        PathBuf::from,
+    );
+    assert!(
+        dir.join("tokenizer.json").is_file(),
+        "Qwen2-VL assets missing at {}: run scripts/reference/fetch_qwen2vl_assets.sh",
+        dir.display()
+    );
+    dir
 }
 
 fn interpreter() -> Qwen2VlInterpreter {
@@ -72,7 +86,11 @@ fn cv_ric_036_whole_files_encode_as_hugging_face_does() {
     let root = Path::new(env!("CARGO_MANIFEST_DIR")).join("../..");
     for doc in reference()["documents"].as_array().expect("documents") {
         let path = doc["path"].as_str().expect("path");
-        let raw = std::fs::read(root.join(path)).expect("read document");
+        // The model card is one of the fetched files, not part of the repository.
+        let file = path
+            .strip_prefix(".ref-models/qwen2-vl-2b/")
+            .map_or_else(|| root.join(path), |name| assets().join(name));
+        let raw = std::fs::read(file).expect("read document");
         assert_eq!(
             sha384_hex(&raw),
             doc["sha384"].as_str().expect("sha"),

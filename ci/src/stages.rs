@@ -1,7 +1,7 @@
 //! Pipeline stages — one function per CI lane, each returning a
 //! Container (or exporting artifacts) so failures propagate as errors.
 
-use crate::base::{rust, rust_go, sh, LLVM_COV_INSTALL, MSRV};
+use crate::base::{rust, rust_go, sh, with_ref_assets, LLVM_COV_INSTALL, MSRV};
 use dagger_sdk::Query;
 use eyre::Result;
 
@@ -25,7 +25,7 @@ pub async fn contracts(client: &Query) -> Result<()> {
 
 /// cargo test --workspace
 pub async fn test(client: &Query) -> Result<()> {
-    rust(client, MSRV)
+    with_ref_assets(rust(client, MSRV))
         .with_exec(sh("cargo test --workspace"))
         .sync()
         .await?;
@@ -43,7 +43,7 @@ pub async fn clippy(client: &Query) -> Result<()> {
 
 /// Coverage gate: llvm-cov ≥80% lines, export lcov.info to ./ci-out/.
 pub async fn coverage(client: &Query) -> Result<()> {
-    let ctr = rust(client, MSRV)
+    let ctr = with_ref_assets(rust(client, MSRV))
         .with_exec(sh(LLVM_COV_INSTALL))
         .with_exec(sh(
             "mkdir -p /out && cargo llvm-cov --workspace --lcov \

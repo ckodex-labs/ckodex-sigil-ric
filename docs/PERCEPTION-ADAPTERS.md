@@ -162,7 +162,8 @@ reproduced, so the ceiling stays capped.
 
 `--vlm-assets <dir>` (images, with a vision-language profile; RIC-MM-001
 WP6) loads the target model's interpreter from digest-pinned files, today
-`assets/qwen2-vl-2b` (see its PROVENANCE.md). It adds the view's
+Qwen2-VL-2B's, fetched from its Hugging Face repository at a pinned revision
+and not redistributed (`docs/reference-models/QWEN2-VL-2B.md`). It adds the view's
 placeholder-stream digest and the interpreter identity to `consumed`. The
 interpreter must patch exactly as the profile does, or perception fails. The
 library (`sigil_perception::vlm`) also emits a whole request's ID stream. It

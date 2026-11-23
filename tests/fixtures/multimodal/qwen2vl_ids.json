@@ -258,7 +258,7 @@
  ],
  "documents": [
   {
-   "path": "assets/qwen2-vl-2b/README.md",
+   "path": ".ref-models/qwen2-vl-2b/README.md",
    "sha384": "3cf9f08d4c58c337d41e02687ba824ee20065d51bcbda557e7c8fa7774f19ed3a2b1e257cd36d395fb35b604967b8140",
    "count": 180,
    "ids_sha384_u32le": "80141627667577949ccf830481969698ef5de41c6baaab63e9e5b729f1e5db08ae786cb4401aee8edf85ed526e5a0f6a"

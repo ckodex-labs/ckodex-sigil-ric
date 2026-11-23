@@ -31,7 +31,7 @@ limit by design, kept visible), **closed** (with the commit that closed it).
 
 | ID | Item | Status | What closes it |
 |---|---|---|---|
-| O-11 | 51 functions exceed 50 lines (M3). Largest: `cli::run::dispatch` 384, `MultimodalEngine::analyze` 139 (it grew in WP5 and WP7), `detect_dlp` 136, `detect_perplexity_anomalies` 133, `ProbeEngine::analyze` 129. | open | Decompose, behaviour checked against captured output, as `perceive_command` was in 9c5eb09. |
+| O-11 | 51 functions exceed 50 lines (M3). Largest: `cli::run::dispatch` 384, `MultimodalEngine::analyze` 139 (it grew in WP5 and WP7), `detect_dlp` 136, `detect_perplexity_anomalies` 133, `ProbeEngine::analyze` 129. | open | Decompose, behaviour checked against captured output, as `perceive_command` was in 4aa6f9a. |
 
 ## Accepted limits
 
@@ -44,7 +44,7 @@ limit by design, kept visible), **closed** (with the commit that closed it).
 ## Verified this round
 
 The full Dagger verify lane (`dagger run cargo run --manifest-path
-ci/Cargo.toml -- all`) passed on 2026-11-22 at a676e62: contracts, fmt,
+ci/Cargo.toml -- all`) passed on 2026-11-22 at faffb13: contracts, fmt,
 Zig build, clippy then `cargo test --workspace` in `rust:1.88-bookworm`,
 coverage, and reports. Workspace line coverage: 89.40 % (16,620 of 18,590
 lines, `cargo llvm-cov`, gate 80 %).
@@ -53,10 +53,10 @@ lines, `cargo llvm-cov`, gate 80 %).
 
 | Item | Commit |
 |---|---|
-| `commands.rs` (928 lines) and `types.rs` (620) over the file limit; `perceive_command` a 326-line function | 9c5eb09, a7afabf |
-| `whisper/16k-filtered` had no implementation | f9f39b1 |
-| DEV-5: media receipts could not be attested | 0d584d4 |
-| The full Qwen2-VL request ID stream was library-only | 8a4bb31 |
-| Word-coverage divergence could be suppressed by scattering the payload's words | 332bacd |
-| The divergence window check cost O(lines x source words) (security review of 332bacd) | 8ad98ba |
-| The CI image lacked Tesseract and ffmpeg; the Dagger test lane now passes with both (rust:1.88-bookworm) | a676e62 |
+| `commands.rs` (928 lines) and `types.rs` (620) over the file limit; `perceive_command` a 326-line function | 4aa6f9a, 781c83d |
+| `whisper/16k-filtered` had no implementation | d1dbffb |
+| DEV-5: media receipts could not be attested | b549243 |
+| The full Qwen2-VL request ID stream was library-only | 51e92ef |
+| Word-coverage divergence could be suppressed by scattering the payload's words | bc847ec |
+| The divergence window check cost O(lines x source words) (security review of bc847ec) | 5b147d4 |
+| The CI image lacked Tesseract and ffmpeg; the Dagger test lane now passes with both (rust:1.88-bookworm) | faffb13 |

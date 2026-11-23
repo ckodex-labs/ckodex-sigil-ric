@@ -23,8 +23,9 @@ pub struct AssetPin {
     pub files: &'static [(&'static str, &'static str)],
 }
 
-/// `mlx-community/Qwen2-VL-2B-4bit` at the revision vendored in
-/// `assets/qwen2-vl-2b` (see its PROVENANCE.md).
+/// `mlx-community/Qwen2-VL-2B-4bit` at a pinned revision. SIGIL does not
+/// redistribute these files; `scripts/reference/fetch_qwen2vl_assets.sh` fetches
+/// them (see `docs/reference-models/QWEN2-VL-2B.md`).
 pub const QWEN2_VL_2B: AssetPin = AssetPin {
     model: "mlx-community/Qwen2-VL-2B-4bit",
     revision: "949a35dce2ee94a3337551e02051ab00dde3e3b4",

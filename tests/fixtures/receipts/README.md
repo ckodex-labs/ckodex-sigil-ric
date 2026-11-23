@@ -15,7 +15,7 @@ over that point.
 |---|---|---|---|
 | `v2_tokenize.json` | 2 | `sigil-cli` at 52dbd81 (before receipt v4) | `tokenize --text "Q3 revenue by region"` |
 | `v4_tokenize.json` | 4 | `sigil-cli` with receipt v4 and the WP6 interpreter field | same |
-| `v4_perceive_qwen.json` | 4 | same | `perceive --input tests/fixtures/multimodal/attack_source.png --profile qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow --vlm-assets assets/qwen2-vl-2b --analyze --ocr-binary tesseract --ocr-args "stdin - --psm 6"`, the vision receipt |
+| `v4_perceive_qwen.json` | 4 | same | `perceive --input tests/fixtures/multimodal/attack_source.png --profile qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow --vlm-assets .ref-models/qwen2-vl-2b --analyze --ocr-binary tesseract --ocr-args "stdin - --psm 6"`, the vision receipt |
 
 All commands ran with `--format json --signing-key <key>`. The perceive
 receipt's `consumed.extractor` is the identity digest of the Tesseract 5.5.4

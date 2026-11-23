@@ -5,7 +5,9 @@ use std::path::PathBuf;
 #[derive(clap::Args, Debug)]
 pub struct VlmRequestCommand {
     /// Directory holding the model's digest-pinned interpreter assets
-    /// (`assets/qwen2-vl-2b`). A file that differs from its pin is an error.
+    /// (fetched into `.ref-models/qwen2-vl-2b` by
+    /// `scripts/reference/fetch_qwen2vl_assets.sh`). A file that differs from its
+    /// pin is an error.
     #[arg(long)]
     pub vlm_assets: PathBuf,
     /// Preprocessor profile that sizes each image part.

@@ -151,7 +151,8 @@ This ADR does not choose. Until a decision, receipts use
     receipt read one object. `ConsumedView` and `ConsumedParity` live in
     `sigil-core::receipt`; `sigil-multimodal` re-exports them.
   - The model interpreter (WP6) is loaded from digest-pinned assets
-    (`assets/qwen2-vl-2b`). It must patch exactly as the profile does, and
+    (fetched from Hugging Face, not redistributed; see
+    `docs/reference-models/QWEN2-VL-2B.md`). It must patch exactly as the profile does, and
     then binds the placeholder-stream digest and its identity into
     `consumed`. It implements only the pinned chat template, and the digest
     pin keeps any other template from loading. Text containing a

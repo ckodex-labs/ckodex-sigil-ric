@@ -30,11 +30,17 @@ fn cv_ric_039_a_byte_level_embedder_binds_the_whole_tag_smuggled_chunk() {
         "the tag probe"
     );
 
-    let interpreter = Qwen2VlInterpreter::load(
-        &Path::new(env!("CARGO_MANIFEST_DIR")).join("../../assets/qwen2-vl-2b"),
-        &QWEN2_VL_2B,
-    )
-    .expect("assets");
+    // Fetched, not vendored: scripts/reference/fetch_qwen2vl_assets.sh.
+    let assets = std::env::var_os("SIGIL_QWEN2VL_ASSETS").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.ref-models/qwen2-vl-2b"),
+        std::path::PathBuf::from,
+    );
+    let interpreter = Qwen2VlInterpreter::load(&assets, &QWEN2_VL_2B).unwrap_or_else(|e| {
+        panic!(
+            "Qwen2-VL assets at {}: {e} (run scripts/reference/fetch_qwen2vl_assets.sh)",
+            assets.display()
+        )
+    });
     let ids = interpreter.tokenizer().encode(text).expect("encode");
     let expected: Vec<u64> = probe["ids"]
         .as_array()
