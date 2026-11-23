@@ -51,42 +51,8 @@ fn convert_bundle(
         _ => upstream.media_type.clone(),
     };
 
-    let certificates = match &upstream.verification_material.content {
-        VerificationMaterialContent::Certificate(c) => {
-            vec![BundleCertificate {
-                raw_bytes: c.raw_bytes.to_base64(),
-            }]
-        }
-        VerificationMaterialContent::X509CertificateChain { certificates } => certificates
-            .iter()
-            .map(|c| BundleCertificate {
-                raw_bytes: c.raw_bytes.to_base64(),
-            })
-            .collect(),
-        VerificationMaterialContent::PublicKey { .. } => {
-            return Err(unsupported("public-key verification material"));
-        }
-    };
-
-    let message_signature = match &upstream.content {
-        SignatureContent::MessageSignature(ms) => {
-            let digest = ms
-                .message_digest
-                .as_ref()
-                .ok_or_else(|| unsupported("message signature without digest"))?;
-            BundleMessageSignature {
-                message_digest: BundleMessageDigest {
-                    algorithm: digest.algorithm.to_string(),
-                    digest: base64::engine::general_purpose::STANDARD
-                        .encode(digest.digest.as_bytes()),
-                },
-                signature: ms.signature.to_base64(),
-            }
-        }
-        SignatureContent::DsseEnvelope(_) => {
-            return Err(unsupported("DSSE envelope content"));
-        }
-    };
+    let certificates = convert_certificates(&upstream.verification_material.content)?;
+    let message_signature = convert_message_signature(&upstream.content)?;
 
     let entry = upstream
         .verification_material
@@ -105,6 +71,47 @@ fn convert_bundle(
         },
         rekor_entry,
     ))
+}
+
+fn convert_certificates(
+    content: &VerificationMaterialContent,
+) -> Result<Vec<BundleCertificate>, SigstoreError> {
+    match content {
+        VerificationMaterialContent::Certificate(c) => Ok(vec![BundleCertificate {
+            raw_bytes: c.raw_bytes.to_base64(),
+        }]),
+        VerificationMaterialContent::X509CertificateChain { certificates } => Ok(certificates
+            .iter()
+            .map(|c| BundleCertificate {
+                raw_bytes: c.raw_bytes.to_base64(),
+            })
+            .collect()),
+        VerificationMaterialContent::PublicKey { .. } => {
+            Err(unsupported("public-key verification material"))
+        }
+    }
+}
+
+fn convert_message_signature(
+    content: &SignatureContent,
+) -> Result<BundleMessageSignature, SigstoreError> {
+    match content {
+        SignatureContent::MessageSignature(ms) => {
+            let digest = ms
+                .message_digest
+                .as_ref()
+                .ok_or_else(|| unsupported("message signature without digest"))?;
+            Ok(BundleMessageSignature {
+                message_digest: BundleMessageDigest {
+                    algorithm: digest.algorithm.to_string(),
+                    digest: base64::engine::general_purpose::STANDARD
+                        .encode(digest.digest.as_bytes()),
+                },
+                signature: ms.signature.to_base64(),
+            })
+        }
+        SignatureContent::DsseEnvelope(_) => Err(unsupported("DSSE envelope content")),
+    }
 }
 
 fn convert_tlog_entry(

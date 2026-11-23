@@ -164,6 +164,32 @@ pub(crate) fn verify_embedded_scts(
     if trust.ctfe_keys.is_empty() {
         return Ok(());
     }
+    let scts = embedded_scts(leaf)?;
+    let issuer_spki_der = issuer
+        .tbs_certificate
+        .subject_public_key_info
+        .to_der()
+        .map_err(|e| sct_err(format!("issuer SPKI encode: {e}")))?;
+    let precert = precert_tbs_der(leaf)?;
+    check_sct_timestamps(leaf, &scts)?;
+    let mut verified = false;
+    for sct in &scts {
+        if sct_verifies(sct, trust, &issuer_spki_der, &precert)? {
+            verified = true;
+        }
+    }
+    if verified {
+        Ok(())
+    } else {
+        Err(sct_err(
+            "no embedded SCT verifies against a trusted CT log key",
+        ))
+    }
+}
+
+/// Parse the leaf's embedded SCT list; a missing or empty list is
+/// [`TrustError::MissingSct`].
+fn embedded_scts(leaf: &Certificate) -> Result<Vec<Sct>, TrustError> {
     let exts = leaf
         .tbs_certificate
         .extensions
@@ -177,53 +203,50 @@ pub(crate) fn verify_embedded_scts(
     if scts.is_empty() {
         return Err(TrustError::MissingSct);
     }
-    let issuer_spki_der = issuer
-        .tbs_certificate
-        .subject_public_key_info
-        .to_der()
-        .map_err(|e| sct_err(format!("issuer SPKI encode: {e}")))?;
-    let precert = precert_tbs_der(leaf)?;
-    // Sanity: the SCT timestamp should sit inside the certificate's
-    // validity window, allowing for precert logging before issuance.
+    Ok(scts)
+}
+
+/// Sanity: the SCT timestamp should sit inside the certificate's
+/// validity window, allowing for precert logging before issuance.
+fn check_sct_timestamps(leaf: &Certificate, scts: &[Sct]) -> Result<(), TrustError> {
     let not_before =
         crate::trust::chain::extract_unix_time(&leaf.tbs_certificate.validity.not_before)?;
     let not_after =
         crate::trust::chain::extract_unix_time(&leaf.tbs_certificate.validity.not_after)?;
-    for sct in &scts {
+    for sct in scts {
         let ts_secs = (sct.timestamp_ms / 1000) as i64;
         if ts_secs < not_before - 3600 || ts_secs > not_after {
             return Err(sct_err("SCT timestamp outside certificate validity window"));
         }
     }
-    let mut verified = false;
-    for sct in &scts {
-        let Some((_, key_der)) = trust
-            .ctfe_keys
-            .iter()
-            .find(|(id, _)| id.as_slice() == sct.log_id)
-        else {
-            continue;
-        };
-        let spki = SubjectPublicKeyInfoOwned::from_der(key_der)
-            .map_err(|e| sct_err(format!("CT key SPKI parse: {e}")))?;
-        let point = spki
-            .subject_public_key
-            .as_bytes()
-            .ok_or_else(|| sct_err("CT key not octet-aligned"))?;
-        let vk = P256VerifyingKey::from_sec1_bytes(point)
-            .map_err(|e| sct_err(format!("CT key parse: {e}")))?;
-        let sig = P256Signature::from_der(&sct.signature_der)
-            .map_err(|_| sct_err("SCT signature is not DER"))?;
-        let input = sct_signature_input(sct, &issuer_spki_der, &precert);
-        if vk.verify(&input, &sig).is_ok() {
-            verified = true;
-        }
-    }
-    if verified {
-        Ok(())
-    } else {
-        Err(sct_err(
-            "no embedded SCT verifies against a trusted CT log key",
-        ))
-    }
+    Ok(())
+}
+
+/// Check one SCT against the trusted CT log keys. An SCT from a log the
+/// trust root does not know is not an error, just not a verification.
+fn sct_verifies(
+    sct: &Sct,
+    trust: &TrustRoot,
+    issuer_spki_der: &[u8],
+    precert: &[u8],
+) -> Result<bool, TrustError> {
+    let Some((_, key_der)) = trust
+        .ctfe_keys
+        .iter()
+        .find(|(id, _)| id.as_slice() == sct.log_id)
+    else {
+        return Ok(false);
+    };
+    let spki = SubjectPublicKeyInfoOwned::from_der(key_der)
+        .map_err(|e| sct_err(format!("CT key SPKI parse: {e}")))?;
+    let point = spki
+        .subject_public_key
+        .as_bytes()
+        .ok_or_else(|| sct_err("CT key not octet-aligned"))?;
+    let vk = P256VerifyingKey::from_sec1_bytes(point)
+        .map_err(|e| sct_err(format!("CT key parse: {e}")))?;
+    let sig = P256Signature::from_der(&sct.signature_der)
+        .map_err(|_| sct_err("SCT signature is not DER"))?;
+    let input = sct_signature_input(sct, issuer_spki_der, precert);
+    Ok(vk.verify(&input, &sig).is_ok())
 }

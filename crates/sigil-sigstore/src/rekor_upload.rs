@@ -8,36 +8,22 @@ use serde::Deserialize;
 use sha2::{Digest as _, Sha384};
 use sigil_core::signing::hex_digest;
 
+#[derive(Deserialize)]
+struct RekorResponse {
+    #[serde(flatten)]
+    entries: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
 pub fn upload_to_rekor(
     rekor_url: &str,
     message: &[u8],
     signature: &[u8],
     public_key_pem: &str,
 ) -> Result<RekorUploadReceipt, SigstoreError> {
-    #[derive(Deserialize)]
-    struct RekorResponse {
-        #[serde(flatten)]
-        entries: std::collections::BTreeMap<String, serde_json::Value>,
-    }
-
-    let mut hasher = sha2::Sha384::new();
-    hasher.update(message);
-    let message_hash = hex_digest(&hasher.finalize());
-
     let client = reqwest::blocking::Client::builder()
         .build()
         .map_err(|err| SigstoreError::Rekor(format!("client: {err}")))?;
-    let body = serde_json::json!({
-        "apiVersion": "0.0.1",
-        "kind": "hashedrekord",
-        "spec": {
-            "data": { "hash": { "algorithm": "sha384", "value": message_hash } },
-            "signature": {
-                "content": base64::engine::general_purpose::STANDARD.encode(signature),
-                "publicKey": { "content": base64::engine::general_purpose::STANDARD.encode(public_key_pem) }
-            }
-        }
-    });
+    let body = hashedrekord_body(message, signature, public_key_pem);
     let response = client
         .post(format!("{rekor_url}/api/v1/log/entries"))
         .json(&body)
@@ -52,6 +38,28 @@ pub fn upload_to_rekor(
     let parsed: RekorResponse = response
         .json()
         .map_err(|err| SigstoreError::Rekor(format!("parse: {err}")))?;
+    receipt_from_response(parsed)
+}
+
+/// The Rekor v1 `hashedrekord` proposed entry for a SHA-384 message digest.
+fn hashedrekord_body(message: &[u8], signature: &[u8], public_key_pem: &str) -> serde_json::Value {
+    let mut hasher = sha2::Sha384::new();
+    hasher.update(message);
+    let message_hash = hex_digest(&hasher.finalize());
+    serde_json::json!({
+        "apiVersion": "0.0.1",
+        "kind": "hashedrekord",
+        "spec": {
+            "data": { "hash": { "algorithm": "sha384", "value": message_hash } },
+            "signature": {
+                "content": base64::engine::general_purpose::STANDARD.encode(signature),
+                "publicKey": { "content": base64::engine::general_purpose::STANDARD.encode(public_key_pem) }
+            }
+        }
+    })
+}
+
+fn receipt_from_response(parsed: RekorResponse) -> Result<RekorUploadReceipt, SigstoreError> {
     let (uuid, entry) = parsed
         .entries
         .into_iter()

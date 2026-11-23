@@ -48,43 +48,47 @@ pub(crate) fn pem_csr(csr_der: &[u8]) -> Result<String, SigstoreError> {
         .map_err(|_| SigstoreError::CsrFailed)
 }
 
+// Fulcio v2 (fulcio.proto CreateSigningCertificateRequest): the OIDC
+// token travels in the body (credentials.oidcIdentityToken); the CSR is
+// PKCS#10 PEM-encoded, base64'd again by the proto-JSON bytes mapping.
+// Verified against sigstore/fulcio fulcio.proto (main, 2026-09).
+#[derive(Serialize)]
+struct FulcioCredentials<'a> {
+    #[serde(rename = "oidcIdentityToken")]
+    oidc_identity_token: &'a str,
+}
+
+#[derive(Serialize)]
+struct FulcioRequest<'a> {
+    credentials: FulcioCredentials<'a>,
+    #[serde(rename = "certificateSigningRequest")]
+    certificate_signing_request: &'a str,
+}
+
+#[derive(Deserialize)]
+struct FulcioResponse {
+    #[serde(rename = "signedCertificateEmbeddedSct")]
+    signed_certificate_embedded_sct: Option<FulcioSignedCertificate>,
+    #[serde(rename = "signedCertificate")]
+    signed_certificate: Option<FulcioSignedCertificate>,
+}
+
+#[derive(Deserialize)]
+struct FulcioSignedCertificate {
+    chain: FulcioChain,
+}
+
+#[derive(Deserialize)]
+struct FulcioChain {
+    certificates: Vec<String>,
+}
+
 /// Exchange the CSR + OIDC token for a Fulcio certificate chain (DER).
 pub(crate) fn fulcio_exchange(
     fulcio_url: &str,
     oidc_token: &str,
     csr_der: &[u8],
 ) -> Result<Vec<u8>, SigstoreError> {
-    // Fulcio v2 (fulcio.proto CreateSigningCertificateRequest): the OIDC
-    // token travels in the body (credentials.oidcIdentityToken); the CSR is
-    // PKCS#10 PEM-encoded, base64'd again by the proto-JSON bytes mapping.
-    // Verified against sigstore/fulcio fulcio.proto (main, 2026-09).
-    #[derive(Serialize)]
-    struct FulcioCredentials<'a> {
-        #[serde(rename = "oidcIdentityToken")]
-        oidc_identity_token: &'a str,
-    }
-    #[derive(Serialize)]
-    struct FulcioRequest<'a> {
-        credentials: FulcioCredentials<'a>,
-        #[serde(rename = "certificateSigningRequest")]
-        certificate_signing_request: &'a str,
-    }
-    #[derive(Deserialize)]
-    struct FulcioResponse {
-        #[serde(rename = "signedCertificateEmbeddedSct")]
-        signed_certificate_embedded_sct: Option<FulcioSignedCertificate>,
-        #[serde(rename = "signedCertificate")]
-        signed_certificate: Option<FulcioSignedCertificate>,
-    }
-    #[derive(Deserialize)]
-    struct FulcioSignedCertificate {
-        chain: FulcioChain,
-    }
-    #[derive(Deserialize)]
-    struct FulcioChain {
-        certificates: Vec<String>,
-    }
-
     let client = reqwest::blocking::Client::builder()
         .build()
         .map_err(|err| SigstoreError::Fulcio(format!("client: {err}")))?;

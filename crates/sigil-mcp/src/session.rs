@@ -5,7 +5,7 @@ use sigil_core::{
     Vocab,
     engine::Sigil,
     policy::{Policy, TaintPolicy},
-    types::{FlagReason, Provenance, Severity, TextSegment, TrustLevel, Verdict},
+    types::{FlagReason, Provenance, Severity, SigilOutput, TextSegment, TrustLevel, Verdict},
 };
 use std::sync::{Arc, Mutex};
 
@@ -73,27 +73,14 @@ impl McpSession {
         response: &str,
         declared_schema: Option<&ResponseSchema>,
     ) -> Result<McpInspection> {
-        let profile = self
-            .gate
-            .config
-            .server_profiles
-            .get(server_id)
-            .cloned()
-            .unwrap_or_else(|| ServerTrustProfile::default_for(server_id));
+        let profile = self.profile_for(server_id);
 
         let core_output = self.gate.sigil.process_text_segments(&[TextSegment {
             text: response,
             provenance: Provenance::McpTool,
         }])?;
 
-        let schema_valid = if self.gate.config.schema_validation {
-            match declared_schema {
-                Some(schema) => validate_schema(response, schema),
-                None => true,
-            }
-        } else {
-            true
-        };
+        let schema_valid = self.schema_is_valid(response, declared_schema);
 
         let budget = profile
             .token_budget
@@ -101,26 +88,7 @@ impl McpSession {
         let token_budget_used = core_output.token_ids.len().min(budget);
         let context_output = truncate_output(core_output.clone(), token_budget_used);
 
-        let mut final_verdict = compose_verdict(
-            &self.gate.sigil.policy().sigil.mode,
-            &profile,
-            &context_output,
-            self.combined_taint,
-            schema_valid,
-            self.gate.config.resource_policy,
-        );
-
-        if profile.trust_level <= TrustLevel::Bounded
-            && matches!(
-                context_output.assessment.max_severity,
-                Severity::Low | Severity::Medium
-            )
-            && matches!(final_verdict, Verdict::Allow)
-        {
-            final_verdict = Verdict::Flag {
-                reasons: vec![FlagReason::DlpFinding],
-            };
-        }
+        let final_verdict = self.final_verdict(&profile, &context_output, schema_valid);
 
         self.update_history(&profile, &final_verdict);
         self.combine_taint(context_output.assessment.max_severity);
@@ -136,17 +104,7 @@ impl McpSession {
             sigil_version: self.gate.sigil.policy().sigil.version.clone(),
         });
 
-        if let Some(sink) = &self.evidence_sink {
-            // Fail closed: an inspection whose evidence cannot be persisted
-            // is an error, not a verdict without a record.
-            sink.lock()
-                .map_err(|_| {
-                    sigil_core::error::SigilError::Io(std::io::Error::other(
-                        "evidence sink poisoned",
-                    ))
-                })?
-                .record(&evidence)?;
-        }
+        self.persist_evidence(&evidence)?;
 
         Ok(McpInspection {
             server_id: server_id.to_string(),
@@ -160,6 +118,71 @@ impl McpSession {
             verdict: final_verdict,
             evidence,
         })
+    }
+
+    fn profile_for(&self, server_id: &str) -> ServerTrustProfile {
+        self.gate
+            .config
+            .server_profiles
+            .get(server_id)
+            .cloned()
+            .unwrap_or_else(|| ServerTrustProfile::default_for(server_id))
+    }
+
+    fn schema_is_valid(&self, response: &str, declared_schema: Option<&ResponseSchema>) -> bool {
+        if self.gate.config.schema_validation {
+            match declared_schema {
+                Some(schema) => validate_schema(response, schema),
+                None => true,
+            }
+        } else {
+            true
+        }
+    }
+
+    fn final_verdict(
+        &self,
+        profile: &ServerTrustProfile,
+        context_output: &SigilOutput,
+        schema_valid: bool,
+    ) -> Verdict {
+        let verdict = compose_verdict(
+            &self.gate.sigil.policy().sigil.mode,
+            profile,
+            context_output,
+            self.combined_taint,
+            schema_valid,
+            self.gate.config.resource_policy,
+        );
+
+        if profile.trust_level <= TrustLevel::Bounded
+            && matches!(
+                context_output.assessment.max_severity,
+                Severity::Low | Severity::Medium
+            )
+            && matches!(verdict, Verdict::Allow)
+        {
+            Verdict::Flag {
+                reasons: vec![FlagReason::DlpFinding],
+            }
+        } else {
+            verdict
+        }
+    }
+
+    fn persist_evidence(&self, evidence: &McpEvidenceRecord) -> Result<()> {
+        if let Some(sink) = &self.evidence_sink {
+            // Fail closed: an inspection whose evidence cannot be persisted
+            // is an error, not a verdict without a record.
+            sink.lock()
+                .map_err(|_| {
+                    sigil_core::error::SigilError::Io(std::io::Error::other(
+                        "evidence sink poisoned",
+                    ))
+                })?
+                .record(evidence)?;
+        }
+        Ok(())
     }
 
     fn update_history(&mut self, profile: &ServerTrustProfile, verdict: &Verdict) {

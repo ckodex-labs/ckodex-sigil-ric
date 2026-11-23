@@ -25,104 +25,24 @@ impl ProbeEngine {
         boundary_probes: &[BoundaryProbe],
     ) -> HealthReport {
         let baseline_age_secs = now_secs().saturating_sub(self.baseline.last_updated_unix_secs);
-        let mut signals = Vec::new();
+        let core = self.core_signals(samples);
+        let canary = canary_check(samples, canaries);
+        let identity = identity_check(samples, fingerprints);
+        let boundary = boundary_check(samples, boundary_probes);
+        let consistency = consistency_check(samples);
 
-        let input_output_correlation = correlation_score(samples);
-        signals.push(SignalAssessment {
-            kind: SignalKind::InputOutputCorrelation,
-            score: input_output_correlation,
-            severity: severity_from_score(input_output_correlation),
-            detail: "response entropy and latency drift relative to input complexity".to_string(),
-        });
+        let mut signals = core.signals;
+        signals.extend(canary.signal);
+        signals.push(identity.signal);
+        signals.extend(boundary.signal);
+        signals.extend(consistency.signal);
 
-        let distribution_shift = output_distribution_shift(samples, &self.baseline);
-        signals.push(SignalAssessment {
-            kind: SignalKind::OutputDistributionShift,
-            score: distribution_shift,
-            severity: severity_from_score(distribution_shift),
-            detail: "token distribution divergence vs baseline".to_string(),
-        });
-
-        let refusal_rate = refusal_rate(samples);
-        let refusal_delta = (refusal_rate - self.baseline.refusal_rate).abs();
-        signals.push(SignalAssessment {
-            kind: SignalKind::RefusalRate,
-            score: refusal_delta,
-            severity: severity_from_score(refusal_delta),
-            detail: format!("refusal-rate delta {refusal_delta:.3}"),
-        });
-
-        let latency_skew = latency_skew(samples, self.baseline.average_latency_to_token_ratio);
-        signals.push(SignalAssessment {
-            kind: SignalKind::LatencySkew,
-            score: latency_skew,
-            severity: severity_from_score(latency_skew),
-            detail: "latency-to-token ratio skew".to_string(),
-        });
-
-        let canary_failures = canary_failures(samples, canaries);
-        if canary_failures > 0 {
-            let score = canary_failures as f32 / canaries.len().max(1) as f32;
-            signals.push(SignalAssessment {
-                kind: SignalKind::CapabilityRegression,
-                score,
-                severity: severity_from_score(score),
-                detail: format!("{canary_failures} canary failures"),
-            });
-        }
-
-        let fingerprint_mismatches = fingerprint_mismatches(samples, fingerprints);
-        let identity_confidence = (1.0
-            - fingerprint_mismatches as f32 / fingerprints.len().max(1) as f32)
-            .clamp(0.0, 1.0);
-        signals.push(SignalAssessment {
-            kind: SignalKind::ModelIdentity,
-            score: 1.0 - identity_confidence,
-            severity: severity_from_score(1.0 - identity_confidence),
-            detail: format!("identity confidence {identity_confidence:.3}"),
-        });
-
-        let boundary_violations = boundary_violations(samples, boundary_probes);
-        if boundary_violations > 0 {
-            let score = boundary_violations as f32 / boundary_probes.len().max(1) as f32;
-            signals.push(SignalAssessment {
-                kind: SignalKind::BoundaryDrift,
-                score,
-                severity: severity_from_score(score),
-                detail: format!("{boundary_violations} boundary violations"),
-            });
-        }
-
-        let consistency_variants = consistency_variants(samples);
-        if consistency_variants > 0 {
-            let score = (consistency_variants as f32 / samples.len().max(1) as f32).min(1.0);
-            signals.push(SignalAssessment {
-                kind: SignalKind::ConsistencyDrift,
-                score,
-                severity: severity_from_score(score),
-                detail: format!("{consistency_variants} inconsistent sample groups"),
-            });
-        }
-
-        let drift_score = aggregate_drift(&signals);
-        let drift = DriftAssessment {
-            score: drift_score,
-            category: drift_category(drift_score),
-            window_size: samples.len(),
-            triggered: drift_score >= self.config.critical_drift_threshold,
-            baseline_age_secs,
-            detail: if drift_score >= self.config.critical_drift_threshold {
-                "critical drift threshold crossed".to_string()
-            } else {
-                "drift within acceptable bounds".to_string()
-            },
-        };
-
-        let score = health_score(&signals, drift_score, identity_confidence);
+        let drift = self.assess_drift(&signals, samples.len(), baseline_age_secs);
+        let score = health_score(&signals, drift.score, identity.confidence);
         let action = choose_action(
             score,
             &drift,
-            identity_confidence,
+            identity.confidence,
             baseline_age_secs,
             self.config.sentinel_min_health,
         );
@@ -131,21 +51,160 @@ impl ProbeEngine {
             score,
             signals,
             drift,
-            identity_confidence,
+            identity_confidence: identity.confidence,
             action,
             evidence: ProbeEvidence {
                 baseline_age_secs,
                 sample_count: samples.len(),
-                canary_failures,
-                fingerprint_mismatches,
-                boundary_violations,
-                consistency_variants,
-                distribution_shift,
-                refusal_rate_delta: refusal_delta,
+                canary_failures: canary.count,
+                fingerprint_mismatches: identity.mismatches,
+                boundary_violations: boundary.count,
+                consistency_variants: consistency.count,
+                distribution_shift: core.distribution_shift,
+                refusal_rate_delta: core.refusal_delta,
             },
             timestamp: now_secs(),
         }
     }
+
+    /// The four signals that are always reported, plus the two raw values
+    /// the evidence block repeats.
+    fn core_signals(&self, samples: &[ProbeSample]) -> CoreSignals {
+        let input_output_correlation = correlation_score(samples);
+        let distribution_shift = output_distribution_shift(samples, &self.baseline);
+        let refusal_delta = (refusal_rate(samples) - self.baseline.refusal_rate).abs();
+        let latency_skew = latency_skew(samples, self.baseline.average_latency_to_token_ratio);
+        let signals = vec![
+            assessment(
+                SignalKind::InputOutputCorrelation,
+                input_output_correlation,
+                "response entropy and latency drift relative to input complexity".to_string(),
+            ),
+            assessment(
+                SignalKind::OutputDistributionShift,
+                distribution_shift,
+                "token distribution divergence vs baseline".to_string(),
+            ),
+            assessment(
+                SignalKind::RefusalRate,
+                refusal_delta,
+                format!("refusal-rate delta {refusal_delta:.3}"),
+            ),
+            assessment(
+                SignalKind::LatencySkew,
+                latency_skew,
+                "latency-to-token ratio skew".to_string(),
+            ),
+        ];
+        CoreSignals {
+            signals,
+            distribution_shift,
+            refusal_delta,
+        }
+    }
+
+    fn assess_drift(
+        &self,
+        signals: &[SignalAssessment],
+        window_size: usize,
+        baseline_age_secs: u64,
+    ) -> DriftAssessment {
+        let drift_score = aggregate_drift(signals);
+        let triggered = drift_score >= self.config.critical_drift_threshold;
+        DriftAssessment {
+            score: drift_score,
+            category: drift_category(drift_score),
+            window_size,
+            triggered,
+            baseline_age_secs,
+            detail: if triggered {
+                "critical drift threshold crossed".to_string()
+            } else {
+                "drift within acceptable bounds".to_string()
+            },
+        }
+    }
+}
+
+struct CoreSignals {
+    signals: Vec<SignalAssessment>,
+    distribution_shift: f32,
+    refusal_delta: f32,
+}
+
+/// A counted check that only reports a signal when something was found.
+struct CountedCheck {
+    count: usize,
+    signal: Option<SignalAssessment>,
+}
+
+struct IdentityCheck {
+    mismatches: usize,
+    confidence: f32,
+    signal: SignalAssessment,
+}
+
+fn assessment(kind: SignalKind, score: f32, detail: String) -> SignalAssessment {
+    SignalAssessment {
+        kind,
+        score,
+        severity: severity_from_score(score),
+        detail,
+    }
+}
+
+fn canary_check(samples: &[ProbeSample], canaries: &[CanaryCase]) -> CountedCheck {
+    let count = canary_failures(samples, canaries);
+    let signal = (count > 0).then(|| {
+        let score = count as f32 / canaries.len().max(1) as f32;
+        assessment(
+            SignalKind::CapabilityRegression,
+            score,
+            format!("{count} canary failures"),
+        )
+    });
+    CountedCheck { count, signal }
+}
+
+fn identity_check(samples: &[ProbeSample], fingerprints: &[FingerprintProbe]) -> IdentityCheck {
+    let mismatches = fingerprint_mismatches(samples, fingerprints);
+    let confidence = (1.0 - mismatches as f32 / fingerprints.len().max(1) as f32).clamp(0.0, 1.0);
+    let signal = assessment(
+        SignalKind::ModelIdentity,
+        1.0 - confidence,
+        format!("identity confidence {confidence:.3}"),
+    );
+    IdentityCheck {
+        mismatches,
+        confidence,
+        signal,
+    }
+}
+
+fn boundary_check(samples: &[ProbeSample], probes: &[BoundaryProbe]) -> CountedCheck {
+    let count = boundary_violations(samples, probes);
+    let signal = (count > 0).then(|| {
+        let score = count as f32 / probes.len().max(1) as f32;
+        assessment(
+            SignalKind::BoundaryDrift,
+            score,
+            format!("{count} boundary violations"),
+        )
+    });
+    CountedCheck { count, signal }
+}
+
+fn consistency_check(samples: &[ProbeSample]) -> CountedCheck {
+    let count = consistency_variants(samples);
+    let signal = (count > 0).then(|| {
+        let score = (count as f32 / samples.len().max(1) as f32).min(1.0);
+        assessment(
+            SignalKind::ConsistencyDrift,
+            score,
+            format!("{count} inconsistent sample groups"),
+        )
+    });
+    CountedCheck { count, signal }
 }
 
 fn choose_action(
