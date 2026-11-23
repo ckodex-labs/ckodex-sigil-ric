@@ -89,34 +89,56 @@ pub(crate) fn image_view(
     if let Some(interpreter) = interpreter {
         bind_interpreter(&mut consumed, profile, interpreter, width, height)?;
     }
-    let mut channels = Vec::new();
-    if let Some((tool, source_text)) = ocr {
-        let factor = OCR_MIN_SIDE
-            .div_ceil(view.image.width.min(view.image.height).max(1))
-            .max(1);
-        let png = encode_png(&replicate(&view.image, factor))?;
-        let run = tool.extract(&png)?;
-        let identity = view_identity(tool, OCR_EXTRACTOR, profile, &format!("nearest-x{factor}"));
-        consumed.extractor = Some(identity.identity_digest.clone());
-        channels.extend(divergence(
-            &run.output,
+    let channels = match ocr {
+        Some((tool, source_text)) => ocr_view_channels(
+            tool,
             source_text,
-            &tool.identity(OCR_EXTRACTOR),
-            &identity,
+            &view.image,
+            profile,
+            &mut consumed,
             adapter_id,
-        ));
-        channels.insert(
-            0,
-            ExtractedChannel {
-                channel_kind: ChannelKind::OcrText,
-                content: run.output,
-                extractor: identity,
-                confidence: None,
-                truncated: run.input_unread,
-            },
-        );
-    }
+        )?,
+        None => Vec::new(),
+    };
     Ok(ViewExtraction { consumed, channels })
+}
+
+/// OCR on the model's view, then the divergence from the source OCR text.
+/// Records the view extractor's identity in `consumed`.
+fn ocr_view_channels(
+    tool: &PinnedTool,
+    source_text: &str,
+    view_image: &Rgb8,
+    profile: &PreprocessorProfile,
+    consumed: &mut ConsumedView,
+    adapter_id: &str,
+) -> Result<Vec<ExtractedChannel>, PerceptionError> {
+    let factor = OCR_MIN_SIDE
+        .div_ceil(view_image.width.min(view_image.height).max(1))
+        .max(1);
+    let png = encode_png(&replicate(view_image, factor))?;
+    let run = tool.extract(&png)?;
+    let identity = view_identity(tool, OCR_EXTRACTOR, profile, &format!("nearest-x{factor}"));
+    consumed.extractor = Some(identity.identity_digest.clone());
+    let mut channels = Vec::new();
+    channels.extend(divergence(
+        &run.output,
+        source_text,
+        &tool.identity(OCR_EXTRACTOR),
+        &identity,
+        adapter_id,
+    ));
+    channels.insert(
+        0,
+        ExtractedChannel {
+            channel_kind: ChannelKind::OcrText,
+            content: run.output,
+            extractor: identity,
+            confidence: None,
+            truncated: run.input_unread,
+        },
+    );
+    Ok(channels)
 }
 
 /// Bind the placeholder stream the interpreter derives from the view size.

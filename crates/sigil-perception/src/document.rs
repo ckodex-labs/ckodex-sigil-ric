@@ -12,10 +12,12 @@
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha384};
-use sigil_multimodal::{ChannelKind, ExtractedChannel, ExtractorIdentity};
+use sigil_multimodal::{ChannelKind, ExtractedChannel};
 use std::collections::HashMap;
 
 pub use sigil_multimodal::{PerceptionAdapter, PerceptionError, PerceptionReport};
+
+mod render;
 
 /// Optional rendered-vs-extracted comparison: a pinned renderer (e.g.
 /// `pdftoppm`) rasterizes the artifact, a pinned OCR reads the pixels back,
@@ -89,140 +91,6 @@ impl PerceptionAdapter for DocumentAdapter {
             consumed: None,
         })
     }
-}
-
-/// One render+OCR run per page — pdftoppm cannot stream multiple pages to
-/// one stdout, so the renderer is invoked once per page with `-f N -l N`
-/// appended to its pinned args. Pages beyond the cap are recorded, not
-/// rendered — a page the render never covered is evidence, not silence.
-const MAX_RENDER_PAGES: usize = 12;
-
-impl DocumentAdapter {
-    /// Render each page, OCR the pixels, and diff the text layer against
-    /// what actually painted. Emits an `OcrText` channel for the rendered
-    /// side and, when lines diverge, a `Divergence` channel carrying exactly
-    /// the lines a human viewing the render would not see.
-    fn render_compare_channels(
-        &self,
-        compare: &RenderCompare,
-        bytes: &[u8],
-        channels: &[ExtractedChannel],
-        existing_properties: &[(String, String)],
-    ) -> (Vec<(String, String)>, Vec<ExtractedChannel>) {
-        let mut properties = Vec::new();
-        let mut out = Vec::new();
-        let key = |name: &str| format!("{}.render_compare.{name}", self.adapter_id());
-        let mut hasher = Sha384::new();
-        hasher.update(compare.renderer.binary_digest.as_bytes());
-        hasher.update(compare.ocr.binary_digest.as_bytes());
-        let chain_digest = hex_digest(&hasher.finalize());
-
-        let pages_key = format!("{}.pages", self.adapter_id());
-        let total_pages = existing_properties
-            .iter()
-            .find(|(k, _)| *k == pages_key)
-            .and_then(|(_, v)| v.parse::<usize>().ok())
-            .unwrap_or(1)
-            .max(1);
-        let render_pages = total_pages.min(MAX_RENDER_PAGES);
-        if total_pages > render_pages {
-            properties.push((key("pages_capped"), total_pages.to_string()));
-        }
-
-        let mut rendered = String::new();
-        let mut rendered_count = 0usize;
-        let mut partial_input = false;
-        for page in 1..=render_pages {
-            let page_args = [
-                "-f".to_string(),
-                page.to_string(),
-                "-l".to_string(),
-                page.to_string(),
-            ];
-            match compare
-                .renderer
-                .run_with(bytes, &page_args)
-                .and_then(|png| {
-                    let ocr = compare.ocr.extract(&png.output)?;
-                    Ok((ocr.output, png.input_unread || ocr.input_unread))
-                }) {
-                Ok((text, input_unread)) => {
-                    if input_unread {
-                        partial_input = true;
-                        properties.push((key(&format!("page{page}")), "partial-input".to_string()));
-                    }
-                    rendered.push_str(&text);
-                    rendered.push('\n');
-                    rendered_count += 1;
-                }
-                Err(err) => {
-                    properties.push((key(&format!("page{page}")), format!("failed: {err}")));
-                }
-            }
-        }
-        properties.push((key("pages_rendered"), rendered_count.to_string()));
-        if rendered_count == 0 {
-            properties.push((key("status"), "failed: no page rendered".to_string()));
-            return (properties, out);
-        }
-        properties.push((key("status"), "ran".to_string()));
-
-        out.push(ExtractedChannel {
-            channel_kind: ChannelKind::OcrText,
-            content: rendered.clone(),
-            extractor: chain_identity(
-                format!("{}/render-ocr", self.adapter_id()),
-                format!("{}+{}", compare.renderer.version, compare.ocr.version),
-                &chain_digest,
-                compare,
-            ),
-            confidence: Some(0.7),
-            truncated: total_pages > render_pages || partial_input,
-        });
-
-        let extracted = channels
-            .iter()
-            .find(|c| c.channel_kind == ChannelKind::TextLayer)
-            .map(|c| c.content.as_str())
-            .unwrap_or_default();
-        let divergent = divergent_lines(extracted, &rendered);
-        properties.push((key("divergent_lines"), divergent.len().to_string()));
-        if !divergent.is_empty() {
-            out.push(ExtractedChannel {
-                channel_kind: ChannelKind::Divergence,
-                content: divergent.join("\n"),
-                extractor: chain_identity(
-                    format!("{}/divergence", self.adapter_id()),
-                    DIVERGENCE_VERSION.to_string(),
-                    &chain_digest,
-                    compare,
-                ),
-                confidence: Some(0.8),
-                truncated: false,
-            });
-        }
-        (properties, out)
-    }
-}
-
-/// Identity of the render-then-OCR chain: the combined binary digest plus both
-/// tools' pinned arguments (tagged by role) and their declared models.
-fn chain_identity(
-    name: String,
-    version: String,
-    chain_digest: &str,
-    compare: &RenderCompare,
-) -> ExtractorIdentity {
-    let tagged = |role: &str, args: &[String]| {
-        args.iter()
-            .map(|arg| format!("{role}:{arg}"))
-            .collect::<Vec<_>>()
-    };
-    let mut args = tagged("renderer", &compare.renderer.args);
-    args.extend(tagged("ocr", &compare.ocr.args));
-    let mut models = compare.renderer.model_digests.clone();
-    models.extend(compare.ocr.model_digests.iter().cloned());
-    ExtractorIdentity::bound(name, version, chain_digest.to_string(), args, models)
 }
 
 /// Version of the divergence comparison, shared with the model-view

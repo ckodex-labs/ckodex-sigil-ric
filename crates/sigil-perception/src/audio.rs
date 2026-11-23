@@ -68,23 +68,9 @@ impl PerceptionAdapter for AudioAdapter {
         let mut properties = wav_properties(&spec, duration_secs, adapter_id);
         let mut channels = vec![sampling::metadata_channel(&spec, duration_secs, adapter_id)];
 
-        // Spectral analysis channel: low-frequency deception detection.
-        // Downmixes to mono (weighted per ITU-R BS.775-4 for >2 channels,
-        // mitigating CVE-2026-34760) and runs FFT-based subliminal and
-        // steganography detection.
-        let scale = crate::spectral::normalization_factor(spec.bits_per_sample);
-        let (samples_f32, dropped_samples) =
-            sampling::read_samples_f32(artifact.bytes, &spec, scale);
-        let mono = if spec.channels > 2 {
-            crate::spectral::downmix_to_mono_weighted_f32(&samples_f32, spec.channels)
-        } else {
-            crate::spectral::downmix_to_mono_f32(&samples_f32, spec.channels)
-        };
-        if let Some(channel) =
-            sampling::spectral_channel(&mono, &spec, adapter_id, &artifact_digest, dropped_samples)
-        {
-            channels.push(channel);
-        }
+        let (spectral, dropped_samples) =
+            spectral_channel(artifact.bytes, &spec, adapter_id, &artifact_digest);
+        channels.extend(spectral);
         if dropped_samples > 0 {
             properties.push((
                 format!("{adapter_id}.dropped_samples"),
@@ -125,6 +111,28 @@ impl PerceptionAdapter for AudioAdapter {
             consumed,
         })
     }
+}
+
+/// Spectral analysis channel: low-frequency deception detection. Downmixes
+/// to mono (weighted per ITU-R BS.775-4 for >2 channels, mitigating
+/// CVE-2026-34760) and runs FFT-based subliminal and steganography
+/// detection. Also returns how many samples could not be read.
+fn spectral_channel(
+    bytes: &[u8],
+    spec: &hound::WavSpec,
+    adapter_id: &str,
+    artifact_digest: &str,
+) -> (Option<ExtractedChannel>, usize) {
+    let scale = crate::spectral::normalization_factor(spec.bits_per_sample);
+    let (samples_f32, dropped_samples) = sampling::read_samples_f32(bytes, spec, scale);
+    let mono = if spec.channels > 2 {
+        crate::spectral::downmix_to_mono_weighted_f32(&samples_f32, spec.channels)
+    } else {
+        crate::spectral::downmix_to_mono_f32(&samples_f32, spec.channels)
+    };
+    let channel =
+        sampling::spectral_channel(&mono, spec, adapter_id, artifact_digest, dropped_samples);
+    (channel, dropped_samples)
 }
 
 fn wav_properties(

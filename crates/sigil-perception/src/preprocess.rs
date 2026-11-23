@@ -117,56 +117,11 @@ impl PreprocessorProfile {
                 kernel,
                 resize,
                 patching,
-            } => {
-                put(&mut h, b"image");
-                put(
-                    &mut h,
-                    match kernel {
-                        // The reference version is part of the identity: Pillow
-                        // 12.3.0 and 13.0.0 produce different bicubic bytes.
-                        ImageKernel::PillowBicubic => b"pillow-13.0.0/bicubic".as_slice(),
-                        ImageKernel::PillowNearest => b"pillow-13.0.0/nearest".as_slice(),
-                    },
-                );
-                match resize {
-                    ResizeRule::Fixed { width, height } => {
-                        put(&mut h, b"fixed");
-                        ints(&mut h, &[*width, *height]);
-                    }
-                    ResizeRule::SmartResize {
-                        factor,
-                        min_pixels,
-                        max_pixels,
-                    } => {
-                        put(&mut h, b"smart-resize");
-                        ints(&mut h, &[*factor, *min_pixels, *max_pixels]);
-                    }
-                }
-                match patching {
-                    None => put(&mut h, b"no-patching"),
-                    Some(p) => {
-                        put(&mut h, b"patching");
-                        ints(&mut h, &[p.patch_size, p.temporal_patch_size, p.merge_size]);
-                        for value in p.image_mean.iter().chain(&p.image_std) {
-                            h.update(value.to_bits().to_be_bytes());
-                        }
-                    }
-                }
-            }
+            } => hash_image_spec(&mut h, *kernel, *resize, patching.as_ref()),
             ProfileSpec::Audio {
                 target_rate_hz,
                 resampler,
-            } => {
-                put(&mut h, b"audio");
-                ints(&mut h, &[*target_rate_hz]);
-                put(
-                    &mut h,
-                    match resampler {
-                        AudioResampler::Decimate => b"decimate".as_slice(),
-                        AudioResampler::FfmpegSwrDefault => b"ffmpeg-swr-default".as_slice(),
-                    },
-                );
-            }
+            } => hash_audio_spec(&mut h, *target_rate_hz, *resampler),
         }
         h.finalize().iter().map(|b| format!("{b:02x}")).collect()
     }
@@ -294,27 +249,19 @@ pub const BUILTIN_PROFILES: &[&str] = &[
 /// Looks up a built-in profile by name.
 #[must_use]
 pub fn builtin(name: &str) -> Option<PreprocessorProfile> {
+    let (spec, parity) = builtin_spec(name)?;
+    Some(PreprocessorProfile {
+        name: name.to_string(),
+        spec,
+        parity,
+    })
+}
+
+fn builtin_spec(name: &str) -> Option<(ProfileSpec, ConsumedParity)> {
     let spec = match name {
-        "qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow" => (
-            ProfileSpec::Image {
-                kernel: ImageKernel::PillowBicubic,
-                // Qwen/Qwen2-VL-7B-Instruct preprocessor_config.json values,
-                // as recorded in scripts/reference/README.md.
-                resize: ResizeRule::SmartResize {
-                    factor: 28,
-                    min_pixels: 3_136,
-                    max_pixels: 12_845_056,
-                },
-                patching: Some(Patching {
-                    patch_size: 14,
-                    temporal_patch_size: 2,
-                    merge_size: 2,
-                    image_mean: [0.481_454_66, 0.457_827_5, 0.408_210_73],
-                    image_std: [0.268_629_54, 0.261_302_58, 0.275_777_11],
-                }),
-            },
-            ConsumedParity::ReferenceMatched,
-        ),
+        "qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow" => {
+            (qwen2_vl_spec(), ConsumedParity::ReferenceMatched)
+        }
         "thumbnail/nearest-80" => (
             ProfileSpec::Image {
                 kernel: ImageKernel::PillowNearest,
@@ -344,11 +291,81 @@ pub fn builtin(name: &str) -> Option<PreprocessorProfile> {
         ),
         _ => return None,
     };
-    Some(PreprocessorProfile {
-        name: name.to_string(),
-        spec: spec.0,
-        parity: spec.1,
-    })
+    Some(spec)
+}
+
+fn qwen2_vl_spec() -> ProfileSpec {
+    ProfileSpec::Image {
+        kernel: ImageKernel::PillowBicubic,
+        // Qwen/Qwen2-VL-7B-Instruct preprocessor_config.json values,
+        // as recorded in scripts/reference/README.md.
+        resize: ResizeRule::SmartResize {
+            factor: 28,
+            min_pixels: 3_136,
+            max_pixels: 12_845_056,
+        },
+        patching: Some(Patching {
+            patch_size: 14,
+            temporal_patch_size: 2,
+            merge_size: 2,
+            image_mean: [0.481_454_66, 0.457_827_5, 0.408_210_73],
+            image_std: [0.268_629_54, 0.261_302_58, 0.275_777_11],
+        }),
+    }
+}
+
+fn hash_image_spec(
+    h: &mut Sha384,
+    kernel: ImageKernel,
+    resize: ResizeRule,
+    patching: Option<&Patching>,
+) {
+    put(h, b"image");
+    put(
+        h,
+        match kernel {
+            // The reference version is part of the identity: Pillow
+            // 12.3.0 and 13.0.0 produce different bicubic bytes.
+            ImageKernel::PillowBicubic => b"pillow-13.0.0/bicubic".as_slice(),
+            ImageKernel::PillowNearest => b"pillow-13.0.0/nearest".as_slice(),
+        },
+    );
+    match resize {
+        ResizeRule::Fixed { width, height } => {
+            put(h, b"fixed");
+            ints(h, &[width, height]);
+        }
+        ResizeRule::SmartResize {
+            factor,
+            min_pixels,
+            max_pixels,
+        } => {
+            put(h, b"smart-resize");
+            ints(h, &[factor, min_pixels, max_pixels]);
+        }
+    }
+    match patching {
+        None => put(h, b"no-patching"),
+        Some(p) => {
+            put(h, b"patching");
+            ints(h, &[p.patch_size, p.temporal_patch_size, p.merge_size]);
+            for value in p.image_mean.iter().chain(&p.image_std) {
+                h.update(value.to_bits().to_be_bytes());
+            }
+        }
+    }
+}
+
+fn hash_audio_spec(h: &mut Sha384, target_rate_hz: u64, resampler: AudioResampler) {
+    put(h, b"audio");
+    ints(h, &[target_rate_hz]);
+    put(
+        h,
+        match resampler {
+            AudioResampler::Decimate => b"decimate".as_slice(),
+            AudioResampler::FfmpegSwrDefault => b"ffmpeg-swr-default".as_slice(),
+        },
+    );
 }
 
 fn put(h: &mut Sha384, bytes: &[u8]) {

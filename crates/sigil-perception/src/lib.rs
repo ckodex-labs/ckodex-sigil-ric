@@ -71,81 +71,25 @@ impl PerceptionAdapter for ImageAdapter {
             .map_err(|_| PerceptionError::DecodeFailed)?
             .decode()
             .map_err(|_| PerceptionError::DecodeFailed)?;
-        let (width, height) = (decoded.width(), decoded.height());
-
-        let mut properties = vec![
-            (
-                format!("{}.color", self.adapter_id()),
-                format!("{:?}", decoded.color()),
-            ),
-            (format!("{}.width", self.adapter_id()), width.to_string()),
-            (format!("{}.height", self.adapter_id()), height.to_string()),
-        ];
-
+        let mut properties = self.image_properties(&decoded);
         let mut channels = Vec::new();
 
-        // Metadata channel: EXIF inventory rendered as `tag = value` lines.
-        // Values are scanned by the kernel like any other text channel.
-        if let Some((content, field_count, truncated)) = inventory_exif(artifact.bytes) {
-            properties.push((
-                format!("{}.exif.fields", self.adapter_id()),
-                field_count.to_string(),
-            ));
-            channels.push(ExtractedChannel {
-                channel_kind: ChannelKind::Metadata,
-                content,
-                extractor: in_process_identity(
-                    format!("{}/exif", self.adapter_id()),
-                    "kamadak-exif/0.19",
-                    &[],
-                ),
-                confidence: None,
-                truncated,
-            });
+        if let Some(channel) = self.exif_channel(artifact.bytes, &mut properties) {
+            channels.push(channel);
         }
 
         // OCR channel via the pinned external binary, when configured.
         let mut source_text = None;
         if let Some(ocr) = &self.ocr {
-            let run = ocr.extract(artifact.bytes)?;
-            source_text = Some(run.output.clone());
-            channels.push(ExtractedChannel {
-                channel_kind: ChannelKind::OcrText,
-                content: run.output,
-                extractor: ocr.identity(OCR_EXTRACTOR),
-                confidence: None,
-                // A non-zero exit is an error. A clean exit that left input
-                // unread (e.g. bytes appended after the image) is declared:
-                // the OCR text does not cover the whole artifact.
-                truncated: run.input_unread,
-            });
+            let (channel, text) = ocr_channel(ocr, artifact.bytes)?;
+            source_text = Some(text);
+            channels.push(channel);
         }
 
         let mut consumed = None;
         if let Some(profile) = &self.profile {
-            if !model_view::within_source_budget(width, height) {
-                return Err(PerceptionError::ExtractorFailed(format!(
-                    "a {width}x{height} image exceeds the model-view budget of {} pixels",
-                    model_view::MAX_SOURCE_PIXELS
-                )));
-            }
-            let decode_covered = decoded.color() == image::ColorType::Rgb8
-                && image::guess_format(artifact.bytes).ok() == Some(image::ImageFormat::Png);
-            let rgb = decoded.to_rgb8();
-            let image = preprocess::Rgb8 {
-                width: rgb.width() as usize,
-                height: rgb.height() as usize,
-                data: rgb.into_raw(),
-            };
-            let ocr = self.ocr.as_ref().zip(source_text.as_deref());
-            let view = model_view::image_view(
-                profile,
-                &image,
-                decode_covered,
-                ocr,
-                self.interpreter.as_deref(),
-                self.adapter_id(),
-            )?;
+            let view =
+                self.profile_view(profile, &decoded, artifact.bytes, source_text.as_deref())?;
             channels.extend(view.channels);
             consumed = Some(view.consumed);
         }
@@ -162,6 +106,105 @@ impl PerceptionAdapter for ImageAdapter {
             consumed,
         })
     }
+}
+
+impl ImageAdapter {
+    /// Decoded colour type and dimensions, as report properties.
+    fn image_properties(&self, decoded: &image::DynamicImage) -> Vec<(String, String)> {
+        vec![
+            (
+                format!("{}.color", self.adapter_id()),
+                format!("{:?}", decoded.color()),
+            ),
+            (
+                format!("{}.width", self.adapter_id()),
+                decoded.width().to_string(),
+            ),
+            (
+                format!("{}.height", self.adapter_id()),
+                decoded.height().to_string(),
+            ),
+        ]
+    }
+
+    /// Metadata channel: EXIF inventory rendered as `tag = value` lines.
+    /// Values are scanned by the kernel like any other text channel.
+    fn exif_channel(
+        &self,
+        bytes: &[u8],
+        properties: &mut Vec<(String, String)>,
+    ) -> Option<ExtractedChannel> {
+        let (content, field_count, truncated) = inventory_exif(bytes)?;
+        properties.push((
+            format!("{}.exif.fields", self.adapter_id()),
+            field_count.to_string(),
+        ));
+        Some(ExtractedChannel {
+            channel_kind: ChannelKind::Metadata,
+            content,
+            extractor: in_process_identity(
+                format!("{}/exif", self.adapter_id()),
+                "kamadak-exif/0.19",
+                &[],
+            ),
+            confidence: None,
+            truncated,
+        })
+    }
+
+    /// The model's view of the image under `profile`, bound and OCR'd.
+    fn profile_view(
+        &self,
+        profile: &preprocess::PreprocessorProfile,
+        decoded: &image::DynamicImage,
+        bytes: &[u8],
+        source_text: Option<&str>,
+    ) -> Result<model_view::ViewExtraction, PerceptionError> {
+        let (width, height) = (decoded.width(), decoded.height());
+        if !model_view::within_source_budget(width, height) {
+            return Err(PerceptionError::ExtractorFailed(format!(
+                "a {width}x{height} image exceeds the model-view budget of {} pixels",
+                model_view::MAX_SOURCE_PIXELS
+            )));
+        }
+        let decode_covered = decoded.color() == image::ColorType::Rgb8
+            && image::guess_format(bytes).ok() == Some(image::ImageFormat::Png);
+        let rgb = decoded.to_rgb8();
+        let image = preprocess::Rgb8 {
+            width: rgb.width() as usize,
+            height: rgb.height() as usize,
+            data: rgb.into_raw(),
+        };
+        let ocr = self.ocr.as_ref().zip(source_text);
+        model_view::image_view(
+            profile,
+            &image,
+            decode_covered,
+            ocr,
+            self.interpreter.as_deref(),
+            self.adapter_id(),
+        )
+    }
+}
+
+/// OCR channel through the pinned external binary, with the recognised text.
+fn ocr_channel(
+    ocr: &ExternalOcr,
+    bytes: &[u8],
+) -> Result<(ExtractedChannel, String), PerceptionError> {
+    let run = ocr.extract(bytes)?;
+    let text = run.output.clone();
+    let channel = ExtractedChannel {
+        channel_kind: ChannelKind::OcrText,
+        content: run.output,
+        extractor: ocr.identity(OCR_EXTRACTOR),
+        confidence: None,
+        // A non-zero exit is an error. A clean exit that left input
+        // unread (e.g. bytes appended after the image) is declared:
+        // the OCR text does not cover the whole artifact.
+        truncated: run.input_unread,
+    };
+    Ok((channel, text))
 }
 
 /// EXIF inventory: `tag = value` lines, capped at 256 fields. The cap is
@@ -286,32 +329,32 @@ mod tests {
         assert_eq!(err, PerceptionError::DecodeFailed);
     }
 
+    /// Fake OCR binary: a shell script that consumes stdin and emits
+    /// deterministic text, a stand-in for a real OCR engine's output contract.
+    #[cfg(unix)]
+    fn pinned_fake_ocr() -> ExternalOcr {
+        use std::os::unix::fs::PermissionsExt;
+        let dir = std::env::temp_dir().join("sigil-perception-ocr-test");
+        std::fs::create_dir_all(&dir).expect("mkdir");
+        let fake_ocr = dir.join("fake-ocr.sh");
+        // Consumes stdin (no EPIPE) and emits deterministic text.
+        std::fs::write(
+            &fake_ocr,
+            "#!/bin/sh\ncat > /dev/null\necho extracted-text\n",
+        )
+        .expect("write");
+        std::fs::set_permissions(&fake_ocr, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        ExternalOcr::pin(fake_ocr, vec![], "fake-1.0".to_string()).expect("pin")
+    }
+
     #[test]
     fn ocr_channel_flows_through_kernel_mapping_as_derived() {
-        // Fake OCR binary: a shell script that echoes its stdin. Proves the
-        // external-command path end-to-end without a real OCR engine.
+        // Proves the external-command path end-to-end without a real OCR engine.
         #[cfg(unix)]
         {
-            let dir = std::env::temp_dir().join("sigil-perception-ocr-test");
-            std::fs::create_dir_all(&dir).expect("mkdir");
-            let fake_ocr = dir.join("fake-ocr.sh");
-            // Consumes stdin (no EPIPE) and emits deterministic text — a stand-in
-            // for a real OCR engine's output contract.
-            std::fs::write(
-                &fake_ocr,
-                "#!/bin/sh\ncat > /dev/null\necho extracted-text\n",
-            )
-            .expect("write");
-            {
-                use std::os::unix::fs::PermissionsExt;
-                std::fs::set_permissions(&fake_ocr, std::fs::Permissions::from_mode(0o755))
-                    .expect("chmod");
-            }
-
-            let ocr = ExternalOcr::pin(fake_ocr, vec![], "fake-1.0".to_string()).expect("pin");
             let adapter = ImageAdapter {
                 interpreter: None,
-                ocr: Some(ocr),
+                ocr: Some(pinned_fake_ocr()),
                 profile: None,
             };
 

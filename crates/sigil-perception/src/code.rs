@@ -66,92 +66,119 @@ fn quote_opens_literal(chars: &[char], i: usize) -> bool {
 /// Split source text into comment, string-literal, and code surfaces.
 fn split_code_surfaces(src: &str) -> Surfaces {
     let chars: Vec<char> = src.chars().collect();
-    let mut s = Surfaces {
-        comments: String::new(),
-        strings: String::new(),
-        code_lines: 0,
-        comment_lines: 0,
-        string_literals: 0,
+    let mut lexer = Lexer {
+        chars: &chars,
+        i: 0,
+        state: State::Code,
+        surfaces: Surfaces {
+            comments: String::new(),
+            strings: String::new(),
+            code_lines: 0,
+            comment_lines: 0,
+            string_literals: 0,
+        },
     };
-    let mut state = State::Code;
-    let mut i = 0;
-    while i < chars.len() {
-        let c = chars[i];
-        let two = if i + 1 < chars.len() {
-            &chars[i..i + 2]
+    while lexer.i < chars.len() {
+        lexer.step();
+        lexer.i += 1;
+    }
+    if lexer.state == State::LineComment {
+        lexer.surfaces.comment_lines += 1;
+    }
+    lexer.surfaces
+}
+
+/// The lexer's position in the source, its state and what it has recovered.
+struct Lexer<'a> {
+    chars: &'a [char],
+    i: usize,
+    state: State,
+    surfaces: Surfaces,
+}
+
+impl Lexer<'_> {
+    /// The next `n` chars, or none when fewer remain.
+    fn ahead(&self, n: usize) -> &[char] {
+        if self.i + n <= self.chars.len() {
+            &self.chars[self.i..self.i + n]
         } else {
             &[]
-        };
-        let three = if i + 2 < chars.len() {
-            &chars[i..i + 3]
-        } else {
-            &[]
-        };
-        match state {
-            State::Code => {
-                if c == '\n' {
-                    s.code_lines += 1;
-                } else if two == ['/', '/'] {
-                    state = State::LineComment;
-                    i += 1;
-                } else if two == ['/', '*'] {
-                    state = State::BlockComment;
-                    i += 1;
-                } else if three == ['"', '"', '"'] || three == ['\'', '\'', '\''] {
-                    state = State::Docstring(three[0]);
-                    i += 2;
-                } else if c == '"' || c == '`' || (c == '\'' && quote_opens_literal(&chars, i)) {
-                    state = State::String(c);
-                } else if two == ['-', '-'] && line_comment_opens(&chars, i) {
-                    state = State::LineComment;
-                    i += 1;
-                } else if c == '#' && line_comment_opens(&chars, i) {
-                    state = State::LineComment;
-                }
-            }
-            State::LineComment => {
-                if c == '\n' {
-                    state = State::Code;
-                    s.comment_lines += 1;
-                } else {
-                    s.comments.push(c);
-                }
-            }
-            State::BlockComment => {
-                if c == '\n' {
-                    s.comment_lines += 1;
-                }
-                s.comments.push(c);
-                if two == ['*', '/'] {
-                    state = State::Code;
-                    i += 1;
-                }
-            }
-            State::String(q) | State::Docstring(q) => {
-                if c == '\\' {
-                    s.strings.push(c);
-                    if let Some(&next) = chars.get(i + 1) {
-                        s.strings.push(next);
-                        i += 1;
-                    }
-                } else if state == State::Docstring(q) && three == [q, q, q] {
-                    state = State::Code;
-                    s.string_literals += 1;
-                    i += 2;
-                } else if state == State::String(q) && c == q {
-                    state = State::Code;
-                    s.string_literals += 1;
-                } else {
-                    s.strings.push(c);
-                }
-            }
         }
-        i += 1;
     }
-    if state == State::LineComment {
-        s.comment_lines += 1;
+
+    /// Consume the char at `i`; a transition may advance `i` past a
+    /// multi-char delimiter, and the caller then steps over the last char.
+    fn step(&mut self) {
+        let c = self.chars[self.i];
+        match self.state {
+            State::Code => self.step_code(c),
+            State::LineComment => self.step_line_comment(c),
+            State::BlockComment => self.step_block_comment(c),
+            State::String(quote) | State::Docstring(quote) => self.step_quoted(quote, c),
+        }
     }
-    s
+
+    fn step_code(&mut self, c: char) {
+        let (two, three) = (self.ahead(2), self.ahead(3));
+        if c == '\n' {
+            self.surfaces.code_lines += 1;
+        } else if two == ['/', '/'] {
+            self.state = State::LineComment;
+            self.i += 1;
+        } else if two == ['/', '*'] {
+            self.state = State::BlockComment;
+            self.i += 1;
+        } else if three == ['"', '"', '"'] || three == ['\'', '\'', '\''] {
+            self.state = State::Docstring(three[0]);
+            self.i += 2;
+        } else if c == '"' || c == '`' || (c == '\'' && quote_opens_literal(self.chars, self.i)) {
+            self.state = State::String(c);
+        } else if two == ['-', '-'] && line_comment_opens(self.chars, self.i) {
+            self.state = State::LineComment;
+            self.i += 1;
+        } else if c == '#' && line_comment_opens(self.chars, self.i) {
+            self.state = State::LineComment;
+        }
+    }
+
+    fn step_line_comment(&mut self, c: char) {
+        if c == '\n' {
+            self.state = State::Code;
+            self.surfaces.comment_lines += 1;
+        } else {
+            self.surfaces.comments.push(c);
+        }
+    }
+
+    fn step_block_comment(&mut self, c: char) {
+        if c == '\n' {
+            self.surfaces.comment_lines += 1;
+        }
+        self.surfaces.comments.push(c);
+        if self.ahead(2) == ['*', '/'] {
+            self.state = State::Code;
+            self.i += 1;
+        }
+    }
+
+    fn step_quoted(&mut self, quote: char, c: char) {
+        if c == '\\' {
+            self.surfaces.strings.push(c);
+            if let Some(&next) = self.chars.get(self.i + 1) {
+                self.surfaces.strings.push(next);
+                self.i += 1;
+            }
+        } else if self.state == State::Docstring(quote) && self.ahead(3) == [quote; 3] {
+            self.state = State::Code;
+            self.surfaces.string_literals += 1;
+            self.i += 2;
+        } else if self.state == State::String(quote) && c == quote {
+            self.state = State::Code;
+            self.surfaces.string_literals += 1;
+        } else {
+            self.surfaces.strings.push(c);
+        }
+    }
 }
 
 impl PerceptionAdapter for CodeAdapter {

@@ -159,82 +159,16 @@ impl PerceptionAdapter for VideoAdapter {
         let mut reader = Cursor::new(artifact.bytes);
         let context = mp4parse::read_mp4(&mut reader).map_err(|_| PerceptionError::DecodeFailed)?;
 
-        let mut properties = Vec::new();
-        let mut channels = Vec::new();
-
-        let video_tracks = context
-            .tracks
-            .iter()
-            .filter(|t| t.track_type == mp4parse::TrackType::Video)
-            .count();
-        let audio_tracks = context
-            .tracks
-            .iter()
-            .filter(|t| t.track_type == mp4parse::TrackType::Audio)
-            .count();
-        let subtitle_tracks = context
-            .tracks
-            .iter()
-            .filter(|t| t.track_type == mp4parse::TrackType::Metadata)
-            .count();
-
-        properties.push((
-            format!("{}.video_tracks", self.adapter_id()),
-            video_tracks.to_string(),
-        ));
-        properties.push((
-            format!("{}.audio_tracks", self.adapter_id()),
-            audio_tracks.to_string(),
-        ));
-        properties.push((
-            format!("{}.subtitle_tracks", self.adapter_id()),
-            subtitle_tracks.to_string(),
-        ));
-
-        // Extract video track dimensions and duration.
-        for (idx, track) in context.tracks.iter().enumerate() {
-            if track.track_type == mp4parse::TrackType::Video {
-                if let Some(tkhd) = &track.tkhd {
-                    properties.push((
-                        format!("{}.video{}.width", self.adapter_id(), idx),
-                        tkhd.width.to_string(),
-                    ));
-                    properties.push((
-                        format!("{}.video{}.height", self.adapter_id(), idx),
-                        tkhd.height.to_string(),
-                    ));
-                }
-                if let (Some(dur), Some(ts)) = (track.duration, track.timescale) {
-                    let duration_secs = dur.0 as f64 / ts.0 as f64;
-                    properties.push((
-                        format!("{}.video{}.duration_secs", self.adapter_id(), idx),
-                        format!("{duration_secs:.3}"),
-                    ));
-                }
-            }
-        }
-
-        // Metadata channel: track inventory rendered as text.
-        let metadata_content = format!(
-            "video_tracks = {video_tracks}\naudio_tracks = {audio_tracks}\nsubtitle_tracks = {subtitle_tracks}\n",
-        );
-        channels.push(ExtractedChannel {
-            channel_kind: ChannelKind::Metadata,
-            content: metadata_content,
-            extractor: crate::in_process_identity(
-                format!("{}/mp4-header", self.adapter_id()),
-                "mp4parse/0.17",
-                &[],
-            ),
-            confidence: None,
-            truncated: false,
-        });
+        let tracks = TrackCounts::of(&context);
+        let mut properties = self.inventory_properties(&tracks);
+        properties.extend(self.video_track_properties(&context));
+        let mut channels = vec![self.inventory_channel(&tracks)];
 
         if let Some(extract) = &self.stream_extract {
             self.extract_streams(
                 artifact,
                 extract,
-                subtitle_tracks,
+                tracks.subtitle,
                 &mut properties,
                 &mut channels,
             );
@@ -260,6 +194,95 @@ impl PerceptionAdapter for VideoAdapter {
             channels,
             consumed: None,
         })
+    }
+}
+
+/// Tracks of each kind in the container.
+struct TrackCounts {
+    video: usize,
+    audio: usize,
+    subtitle: usize,
+}
+
+impl TrackCounts {
+    fn of(context: &mp4parse::MediaContext) -> Self {
+        let count = |kind| {
+            context
+                .tracks
+                .iter()
+                .filter(|t| t.track_type == kind)
+                .count()
+        };
+        Self {
+            video: count(mp4parse::TrackType::Video),
+            audio: count(mp4parse::TrackType::Audio),
+            subtitle: count(mp4parse::TrackType::Metadata),
+        }
+    }
+}
+
+impl VideoAdapter {
+    fn inventory_properties(&self, tracks: &TrackCounts) -> Vec<(String, String)> {
+        vec![
+            (
+                format!("{}.video_tracks", self.adapter_id()),
+                tracks.video.to_string(),
+            ),
+            (
+                format!("{}.audio_tracks", self.adapter_id()),
+                tracks.audio.to_string(),
+            ),
+            (
+                format!("{}.subtitle_tracks", self.adapter_id()),
+                tracks.subtitle.to_string(),
+            ),
+        ]
+    }
+
+    /// Dimensions and duration of each video track.
+    fn video_track_properties(&self, context: &mp4parse::MediaContext) -> Vec<(String, String)> {
+        let mut properties = Vec::new();
+        for (idx, track) in context.tracks.iter().enumerate() {
+            if track.track_type != mp4parse::TrackType::Video {
+                continue;
+            }
+            if let Some(tkhd) = &track.tkhd {
+                properties.push((
+                    format!("{}.video{}.width", self.adapter_id(), idx),
+                    tkhd.width.to_string(),
+                ));
+                properties.push((
+                    format!("{}.video{}.height", self.adapter_id(), idx),
+                    tkhd.height.to_string(),
+                ));
+            }
+            if let (Some(dur), Some(ts)) = (track.duration, track.timescale) {
+                let duration_secs = dur.0 as f64 / ts.0 as f64;
+                properties.push((
+                    format!("{}.video{}.duration_secs", self.adapter_id(), idx),
+                    format!("{duration_secs:.3}"),
+                ));
+            }
+        }
+        properties
+    }
+
+    /// Metadata channel: track inventory rendered as text.
+    fn inventory_channel(&self, tracks: &TrackCounts) -> ExtractedChannel {
+        ExtractedChannel {
+            channel_kind: ChannelKind::Metadata,
+            content: format!(
+                "video_tracks = {}\naudio_tracks = {}\nsubtitle_tracks = {}\n",
+                tracks.video, tracks.audio, tracks.subtitle,
+            ),
+            extractor: crate::in_process_identity(
+                format!("{}/mp4-header", self.adapter_id()),
+                "mp4parse/0.17",
+                &[],
+            ),
+            confidence: None,
+            truncated: false,
+        }
     }
 }
 

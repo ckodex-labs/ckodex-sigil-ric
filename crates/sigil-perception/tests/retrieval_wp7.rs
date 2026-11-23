@@ -16,6 +16,54 @@ use sigil_core::types::{Provenance, TextSegment, TrustLevel};
 use sigil_core::{Sigil, Vocab};
 use sigil_perception::vlm::{QWEN2_VL_2B, Qwen2VlInterpreter};
 
+/// The pinned Qwen2-VL interpreter. Fetched, not vendored:
+/// scripts/reference/fetch_qwen2vl_assets.sh.
+fn qwen2vl_interpreter() -> Qwen2VlInterpreter {
+    let assets = std::env::var_os("SIGIL_QWEN2VL_ASSETS").map_or_else(
+        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.ref-models/qwen2-vl-2b"),
+        std::path::PathBuf::from,
+    );
+    Qwen2VlInterpreter::load(&assets, &QWEN2_VL_2B).unwrap_or_else(|e| {
+        panic!(
+            "Qwen2-VL assets at {}: {e} (run scripts/reference/fetch_qwen2vl_assets.sh)",
+            assets.display()
+        )
+    })
+}
+
+/// `text` admitted by SIGIL's engine as a retrieved chunk, embedded by a
+/// model whose tokenizer produced `ids`.
+fn bound_chunk(text: &str, ids: &[u32]) -> RetrievedChunk {
+    let receipt = Sigil::new(Vocab::tiktoken("cl100k_base"), Policy::default())
+        .expect("engine")
+        .process_text_segments(&[TextSegment {
+            text,
+            provenance: Provenance::Retrieval,
+        }])
+        .expect("admit")
+        .receipt;
+    let tokenizer_digest = QWEN2_VL_2B.files[0].1.to_string();
+    RetrievedChunk {
+        source_id: "kb://reports/q3".to_string(),
+        source_trust: TrustLevel::Bounded,
+        source_ceiling: AuthorityCeiling::Act,
+        embedding: Some(EmbeddingBinding {
+            model: EmbeddingModel {
+                name: "qwen2-tokenized embedder".to_string(),
+                // No embedding weights are vendored: the rule under test is
+                // the input binding, which the real tokenizer decides.
+                weights_digest: "unmeasured".to_string(),
+                tokenizer_digest,
+                pooling: Pooling::Mean,
+                dimensions: 1536,
+            },
+            input: EmbeddedInput::from_token_ids(&receipt.canonical_digest, ids),
+            score: 0.5,
+        }),
+        receipt,
+    }
+}
+
 #[test]
 fn cv_ric_039_a_byte_level_embedder_binds_the_whole_tag_smuggled_chunk() {
     let reference: Value = serde_json::from_str(include_str!(
@@ -30,17 +78,7 @@ fn cv_ric_039_a_byte_level_embedder_binds_the_whole_tag_smuggled_chunk() {
         "the tag probe"
     );
 
-    // Fetched, not vendored: scripts/reference/fetch_qwen2vl_assets.sh.
-    let assets = std::env::var_os("SIGIL_QWEN2VL_ASSETS").map_or_else(
-        || Path::new(env!("CARGO_MANIFEST_DIR")).join("../../.ref-models/qwen2-vl-2b"),
-        std::path::PathBuf::from,
-    );
-    let interpreter = Qwen2VlInterpreter::load(&assets, &QWEN2_VL_2B).unwrap_or_else(|e| {
-        panic!(
-            "Qwen2-VL assets at {}: {e} (run scripts/reference/fetch_qwen2vl_assets.sh)",
-            assets.display()
-        )
-    });
+    let interpreter = qwen2vl_interpreter();
     let ids = interpreter.tokenizer().encode(text).expect("encode");
     let expected: Vec<u64> = probe["ids"]
         .as_array()
@@ -53,34 +91,7 @@ fn cv_ric_039_a_byte_level_embedder_binds_the_whole_tag_smuggled_chunk() {
         expected
     );
 
-    let receipt = Sigil::new(Vocab::tiktoken("cl100k_base"), Policy::default())
-        .expect("engine")
-        .process_text_segments(&[TextSegment {
-            text,
-            provenance: Provenance::Retrieval,
-        }])
-        .expect("admit")
-        .receipt;
-    let tokenizer_digest = QWEN2_VL_2B.files[0].1.to_string();
-    let chunk = RetrievedChunk {
-        source_id: "kb://reports/q3".to_string(),
-        source_trust: TrustLevel::Bounded,
-        source_ceiling: AuthorityCeiling::Act,
-        embedding: Some(EmbeddingBinding {
-            model: EmbeddingModel {
-                name: "qwen2-tokenized embedder".to_string(),
-                // No embedding weights are vendored: the rule under test is
-                // the input binding, which the real tokenizer decides.
-                weights_digest: "unmeasured".to_string(),
-                tokenizer_digest,
-                pooling: Pooling::Mean,
-                dimensions: 1536,
-            },
-            input: EmbeddedInput::from_token_ids(&receipt.canonical_digest, &ids),
-            score: 0.5,
-        }),
-        receipt,
-    };
+    let chunk = bound_chunk(text, &ids);
     let assessment = assess_retrieval(&chunk, AuthorityCeiling::Act);
     assert!(assessment.findings.is_empty(), "{:?}", assessment.findings);
     assert_eq!(assessment.ceiling, AuthorityCeiling::Act);

@@ -250,27 +250,26 @@ fn undecodable_audio_fails_closed() {
     assert_eq!(err, PerceptionError::DecodeFailed);
 }
 
+/// Fake ASR binary: a shell script that consumes stdin (no EPIPE) and emits
+/// deterministic text.
+#[cfg(unix)]
+fn pinned_fake_asr() -> ExternalTranscript {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = std::env::temp_dir().join("sigil-perception-asr-test");
+    std::fs::create_dir_all(&dir).expect("mkdir");
+    let fake_asr = dir.join("fake-asr.sh");
+    std::fs::write(&fake_asr, "#!/bin/sh\ncat > /dev/null\necho hello-world\n").expect("write");
+    std::fs::set_permissions(&fake_asr, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+    ExternalTranscript::pin(fake_asr, vec![], "fake-1.0".to_string()).expect("pin")
+}
+
 #[test]
 fn transcript_channel_flows_through_kernel_mapping_as_derived() {
-    // Fake ASR binary: a shell script that echoes deterministic text.
     #[cfg(unix)]
     {
-        let dir = std::env::temp_dir().join("sigil-perception-asr-test");
-        std::fs::create_dir_all(&dir).expect("mkdir");
-        let fake_asr = dir.join("fake-asr.sh");
-        // Consumes stdin (no EPIPE) and emits deterministic text.
-        std::fs::write(&fake_asr, "#!/bin/sh\ncat > /dev/null\necho hello-world\n").expect("write");
-        {
-            use std::os::unix::fs::PermissionsExt;
-            std::fs::set_permissions(&fake_asr, std::fs::Permissions::from_mode(0o755))
-                .expect("chmod");
-        }
-
-        let transcript =
-            ExternalTranscript::pin(fake_asr, vec![], "fake-1.0".to_string()).expect("pin");
         let adapter = AudioAdapter {
             resampler: None,
-            transcript: Some(transcript),
+            transcript: Some(pinned_fake_asr()),
             profile: None,
         };
 
