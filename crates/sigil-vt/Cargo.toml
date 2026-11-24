@@ -11,7 +11,7 @@ sigil-core = { path = "../sigil-core" }
 # OSC table against ghostty's fuzzed parser. Optional because building
 # it needs rust >= 1.90 + zig 0.15.2 + a ghostty source fetch; none of
 # that reaches the default build.
-libghostty-vt = { version = "=0.2.1", optional = true }
+libghostty-vt = { version = "=0.2.2", optional = true }
 
 [features]
 conformance = ["dep:libghostty-vt"]
