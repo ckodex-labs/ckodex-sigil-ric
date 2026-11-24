@@ -41,6 +41,12 @@ pub enum ChannelKind {
     /// Content present in one representation of an artifact but absent
     /// from another (e.g. text-layer lines that never paint to the render).
     Divergence,
+    /// Measurements SIGIL computed itself from the artifact (the audio
+    /// spectral report): numbers, not language. The kernel judges them with
+    /// its facts rules and never lexes them as text (RIC-MM-001 finding F1).
+    /// Only an in-process adapter emits this kind; it is not accepted over
+    /// the wire (`ModalInput::channel` is never deserialized).
+    Facts,
 }
 
 pub use crate::extractor_identity::{
@@ -111,7 +117,8 @@ pub fn channel_provenance(kind: ChannelKind) -> Provenance {
         | ChannelKind::TextLayer
         | ChannelKind::Transcript
         | ChannelKind::Divergence
-        | ChannelKind::Structure => Provenance::McpTool,
+        | ChannelKind::Structure
+        | ChannelKind::Facts => Provenance::McpTool,
     }
 }
 
@@ -164,7 +171,8 @@ fn channel_provenance_for(kind: ChannelKind) -> Provenance {
         | ChannelKind::TextLayer
         | ChannelKind::Transcript
         | ChannelKind::Divergence
-        | ChannelKind::Structure => Provenance::McpTool,
+        | ChannelKind::Structure
+        | ChannelKind::Facts => Provenance::McpTool,
     }
 }
 
@@ -265,6 +273,7 @@ mod tests {
             ChannelKind::Caption,
             ChannelKind::TextLayer,
             ChannelKind::Transcript,
+            ChannelKind::Facts,
             ChannelKind::Structure,
         ] {
             let provenance = channel_provenance_for(kind);

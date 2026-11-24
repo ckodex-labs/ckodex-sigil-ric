@@ -44,7 +44,14 @@ pub(crate) fn spectral_findings(content: &str, severity_floor: Severity) -> Vec<
     };
     let severity = Severity::High.max(severity_floor);
     let mut findings = Vec::new();
-    if let Some(count) = non_empty_len(&report, "subliminal_findings") {
+    let subliminal = report
+        .get("subliminal_findings")
+        .and_then(Value::as_array)
+        .map_or(0, |bands| {
+            bands.iter().filter(|band| material(band)).count()
+        });
+    if subliminal > 0 {
+        let count = subliminal;
         findings.push(MultimodalFinding {
             kind: MultimodalFindingKind::SubliminalAudio,
             severity,
@@ -55,7 +62,10 @@ pub(crate) fn spectral_findings(content: &str, severity_floor: Severity) -> Vec<
         .get("steganography_findings")
         .and_then(Value::as_array)
         .map_or(0, |bands| {
-            bands.iter().filter(|band| structured_band(band)).count()
+            bands
+                .iter()
+                .filter(|band| material(band) && structured_band(band))
+                .count()
         });
     if structured_stego > 0 {
         let count = structured_stego;
@@ -70,12 +80,17 @@ pub(crate) fn spectral_findings(content: &str, severity_floor: Severity) -> Vec<
     findings
 }
 
-fn non_empty_len(report: &Value, key: &str) -> Option<usize> {
-    report
-        .get(key)?
-        .as_array()
-        .map(Vec::len)
-        .filter(|len| *len > 0)
+/// A reported band holds enough of the file's energy to carry a hidden
+/// channel: the same floor as the inaudible band (`HIDDEN_ENERGY_FRACTION_MIN`).
+/// Measured on real speech (LibriSpeech clips from the sherpa-onnx test set,
+/// 2026-11-23, RIC-MM-001 O-3): the sub-20 Hz band held 0.06 % and the
+/// 6-8 kHz peak 0.0007 %, which flagged every benign recording HIGH before the
+/// floor; the attack specimens hold at least 34 %. A band without a fraction
+/// counts: missing evidence never clears a band.
+fn material(band: &Value) -> bool {
+    band.get("fraction_of_total")
+        .and_then(Value::as_f64)
+        .is_none_or(|fraction| fraction >= HIDDEN_ENERGY_FRACTION_MIN)
 }
 
 /// A reported steganography band counts unless it is the aggregate

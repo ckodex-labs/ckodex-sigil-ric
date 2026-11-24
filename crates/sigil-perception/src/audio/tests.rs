@@ -64,6 +64,11 @@ fn float_wav_produces_spectral_channel() {
         .find(|c| c.extractor.name.ends_with("/spectral"))
         .expect("spectral channel must exist for float WAV");
     assert!(!spectral.truncated, "float WAV should not be truncated");
+    assert_eq!(
+        spectral.channel_kind,
+        ChannelKind::Facts,
+        "SIGIL's own measurement, never lexed as language (F1)"
+    );
     let json: serde_json::Value = serde_json::from_str(&spectral.content).expect("spectral JSON");
     assert!(
         json["windows_analyzed"].as_u64().unwrap_or(0) > 0,
@@ -107,13 +112,12 @@ fn audio_adapter_decodes_wav_and_reports_structure() {
             .iter()
             .any(|(k, v)| k.ends_with(".bits_per_sample") && v == "16")
     );
-    // Metadata channel present, no transcript configured.
-    assert!(
-        report
-            .channels
-            .iter()
-            .all(|channel| channel.channel_kind == ChannelKind::Metadata)
-    );
+    // Metadata and the spectral facts, no transcript configured: the
+    // spectral report is SIGIL's own measurement, a facts channel.
+    assert!(report.channels.iter().all(|channel| matches!(
+        channel.channel_kind,
+        ChannelKind::Metadata | ChannelKind::Facts
+    )));
 }
 
 #[test]

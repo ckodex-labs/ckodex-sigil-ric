@@ -58,7 +58,13 @@ impl MultimodalEngine {
             }],
             input.consumed.clone(),
         )?;
-        let assessment = output.assessment.clone();
+        let mut assessment = output.assessment.clone();
+        if input.channel == Some(crate::perception::ChannelKind::Facts) {
+            // SIGIL's own measurements are admitted and receipted, but judged
+            // by the facts rules alone: lexing a spectral report as language
+            // flagged every benign recording (RIC-MM-001 F1).
+            assessment.max_severity = sigil_core::types::Severity::None;
+        }
         acc.retrieval_caps
             .extend(retrieval_cap(input, &output.receipt.canonical_digest));
         if input.modality == Modality::Text {

@@ -1,0 +1,327 @@
+{
+ "note": "Spectral reports sigil-perception's audio adapter produced (sigil-cli perceive, 2026-11-23) for two real speech recordings: LibriSpeech clips shipped in sherpa-onnx-whisper-tiny.en/test_wavs (scripts/reference/fetch_reference_set.sh). The audio is not stored here.",
+ "inputs": {
+  "0.wav": "220319fc3e9fc7020f1fd4bafb33ed5eda5fcb0ea733c9defd657030756c31c929b0ec78e711822ac4205bf377480ec7",
+  "1.wav": "5352be0ee35b8a1fb20a81cb2562d516fadc483f9a7dd1dfdff185ce4c0ba03ce89f282a4ea45f8551d2e8897ccd0015"
+ },
+ "reports": {
+  "0.wav": {
+   "artifact_digest": "220319fc3e9fc7020f1fd4bafb33ed5eda5fcb0ea733c9defd657030756c31c929b0ec78e711822ac4205bf377480ec7",
+   "sample_rate": 16000,
+   "channels": 1,
+   "total_samples": 106000,
+   "windows_analyzed": 206,
+   "total_energy": 90402.5,
+   "anomalous_bands": [
+    {
+     "label": "sub_audible",
+     "low_hz": 0,
+     "high_hz": 20,
+     "energy": 214.89732,
+     "fraction_of_total": 0.00059777836
+    },
+    {
+     "label": "high_frequency_anomaly",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 36.31929,
+     "fraction_of_total": 0.00040175093,
+     "flatness": 0.84462166,
+     "subbands": [
+      {
+       "low_hz": 6000,
+       "high_hz": 6250,
+       "energy_fraction": 0.00004885286,
+       "flatness": 0.9456369
+      },
+      {
+       "low_hz": 6265.625,
+       "high_hz": 6515.625,
+       "energy_fraction": 0.00003367943,
+       "flatness": 0.9123065
+      },
+      {
+       "low_hz": 6531.25,
+       "high_hz": 6781.25,
+       "energy_fraction": 0.000047971273,
+       "flatness": 0.84462166
+      },
+      {
+       "low_hz": 6796.875,
+       "high_hz": 7046.875,
+       "energy_fraction": 0.00005969895,
+       "flatness": 0.87329
+      },
+      {
+       "low_hz": 7062.5,
+       "high_hz": 7312.5,
+       "energy_fraction": 0.000056584744,
+       "flatness": 0.9246532
+      },
+      {
+       "low_hz": 7328.125,
+       "high_hz": 7578.125,
+       "energy_fraction": 0.00008127557,
+       "flatness": 0.8765912
+      },
+      {
+       "low_hz": 7593.75,
+       "high_hz": 7843.75,
+       "energy_fraction": 0.000053877207,
+       "flatness": 0.8934875
+      },
+      {
+       "low_hz": 7859.375,
+       "high_hz": 8000,
+       "energy_fraction": 0.000019810685,
+       "flatness": 0.9829057
+      }
+     ]
+    },
+    {
+     "label": "narrowband_high_freq_peak",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 0.62977934,
+     "fraction_of_total": 0.000006966393
+    }
+   ],
+   "subliminal_findings": [
+    {
+     "label": "sub_audible",
+     "low_hz": 0,
+     "high_hz": 20,
+     "energy": 214.89732,
+     "fraction_of_total": 0.00059777836
+    }
+   ],
+   "steganography_findings": [
+    {
+     "label": "high_frequency_anomaly",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 36.31929,
+     "fraction_of_total": 0.00040175093,
+     "flatness": 0.84462166,
+     "subbands": [
+      {
+       "low_hz": 6000,
+       "high_hz": 6250,
+       "energy_fraction": 0.00004885286,
+       "flatness": 0.9456369
+      },
+      {
+       "low_hz": 6265.625,
+       "high_hz": 6515.625,
+       "energy_fraction": 0.00003367943,
+       "flatness": 0.9123065
+      },
+      {
+       "low_hz": 6531.25,
+       "high_hz": 6781.25,
+       "energy_fraction": 0.000047971273,
+       "flatness": 0.84462166
+      },
+      {
+       "low_hz": 6796.875,
+       "high_hz": 7046.875,
+       "energy_fraction": 0.00005969895,
+       "flatness": 0.87329
+      },
+      {
+       "low_hz": 7062.5,
+       "high_hz": 7312.5,
+       "energy_fraction": 0.000056584744,
+       "flatness": 0.9246532
+      },
+      {
+       "low_hz": 7328.125,
+       "high_hz": 7578.125,
+       "energy_fraction": 0.00008127557,
+       "flatness": 0.8765912
+      },
+      {
+       "low_hz": 7593.75,
+       "high_hz": 7843.75,
+       "energy_fraction": 0.000053877207,
+       "flatness": 0.8934875
+      },
+      {
+       "low_hz": 7859.375,
+       "high_hz": 8000,
+       "energy_fraction": 0.000019810685,
+       "flatness": 0.9829057
+      }
+     ]
+    },
+    {
+     "label": "narrowband_high_freq_peak",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 0.62977934,
+     "fraction_of_total": 0.000006966393
+    }
+   ],
+   "dominant_freq_hz": 468.75
+  },
+  "1.wav": {
+   "artifact_digest": "5352be0ee35b8a1fb20a81cb2562d516fadc483f9a7dd1dfdff185ce4c0ba03ce89f282a4ea45f8551d2e8897ccd0015",
+   "sample_rate": 16000,
+   "channels": 1,
+   "total_samples": 267440,
+   "windows_analyzed": 521,
+   "total_energy": 96074.17,
+   "anomalous_bands": [
+    {
+     "label": "sub_audible",
+     "low_hz": 0,
+     "high_hz": 20,
+     "energy": 1086.7302,
+     "fraction_of_total": 0.0028035138
+    },
+    {
+     "label": "high_frequency_anomaly",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 15873.185,
+     "fraction_of_total": 0.16521803,
+     "flatness": 0.9462534,
+     "subbands": [
+      {
+       "low_hz": 6000,
+       "high_hz": 6250,
+       "energy_fraction": 0.0339025,
+       "flatness": 0.973517
+      },
+      {
+       "low_hz": 6265.625,
+       "high_hz": 6515.625,
+       "energy_fraction": 0.018487573,
+       "flatness": 0.9665066
+      },
+      {
+       "low_hz": 6531.25,
+       "high_hz": 6781.25,
+       "energy_fraction": 0.016905958,
+       "flatness": 0.9462534
+      },
+      {
+       "low_hz": 6796.875,
+       "high_hz": 7046.875,
+       "energy_fraction": 0.027682321,
+       "flatness": 0.9640393
+      },
+      {
+       "low_hz": 7062.5,
+       "high_hz": 7312.5,
+       "energy_fraction": 0.016956665,
+       "flatness": 0.97358054
+      },
+      {
+       "low_hz": 7328.125,
+       "high_hz": 7578.125,
+       "energy_fraction": 0.019316917,
+       "flatness": 0.96749485
+      },
+      {
+       "low_hz": 7593.75,
+       "high_hz": 7843.75,
+       "energy_fraction": 0.018806398,
+       "flatness": 0.95797694
+      },
+      {
+       "low_hz": 7859.375,
+       "high_hz": 8000,
+       "energy_fraction": 0.013159647,
+       "flatness": 0.96425414
+      }
+     ]
+    },
+    {
+     "label": "frequency_hopping",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 1139.1927,
+     "fraction_of_total": 0.0118574295
+    }
+   ],
+   "subliminal_findings": [
+    {
+     "label": "sub_audible",
+     "low_hz": 0,
+     "high_hz": 20,
+     "energy": 1086.7302,
+     "fraction_of_total": 0.0028035138
+    }
+   ],
+   "steganography_findings": [
+    {
+     "label": "high_frequency_anomaly",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 15873.185,
+     "fraction_of_total": 0.16521803,
+     "flatness": 0.9462534,
+     "subbands": [
+      {
+       "low_hz": 6000,
+       "high_hz": 6250,
+       "energy_fraction": 0.0339025,
+       "flatness": 0.973517
+      },
+      {
+       "low_hz": 6265.625,
+       "high_hz": 6515.625,
+       "energy_fraction": 0.018487573,
+       "flatness": 0.9665066
+      },
+      {
+       "low_hz": 6531.25,
+       "high_hz": 6781.25,
+       "energy_fraction": 0.016905958,
+       "flatness": 0.9462534
+      },
+      {
+       "low_hz": 6796.875,
+       "high_hz": 7046.875,
+       "energy_fraction": 0.027682321,
+       "flatness": 0.9640393
+      },
+      {
+       "low_hz": 7062.5,
+       "high_hz": 7312.5,
+       "energy_fraction": 0.016956665,
+       "flatness": 0.97358054
+      },
+      {
+       "low_hz": 7328.125,
+       "high_hz": 7578.125,
+       "energy_fraction": 0.019316917,
+       "flatness": 0.96749485
+      },
+      {
+       "low_hz": 7593.75,
+       "high_hz": 7843.75,
+       "energy_fraction": 0.018806398,
+       "flatness": 0.95797694
+      },
+      {
+       "low_hz": 7859.375,
+       "high_hz": 8000,
+       "energy_fraction": 0.013159647,
+       "flatness": 0.96425414
+      }
+     ]
+    },
+    {
+     "label": "frequency_hopping",
+     "low_hz": 6000,
+     "high_hz": 8000,
+     "energy": 1139.1927,
+     "fraction_of_total": 0.0118574295
+    }
+   ],
+   "dominant_freq_hz": 437.5
+  }
+ }
+}

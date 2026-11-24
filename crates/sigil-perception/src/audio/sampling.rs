@@ -96,7 +96,7 @@ pub(crate) fn spectral_channel(
     let content = serde_json::to_string_pretty(&report)
         .unwrap_or_else(|_| "spectral_analysis_error".to_string());
     Some(ExtractedChannel {
-        channel_kind: ChannelKind::Metadata,
+        channel_kind: ChannelKind::Facts,
         content,
         extractor: crate::in_process_identity(
             format!("{adapter_id}/spectral"),

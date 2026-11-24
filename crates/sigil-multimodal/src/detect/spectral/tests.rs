@@ -84,7 +84,7 @@ fn a_band_without_flatness_still_counts() {
 fn narrowband_peaks_are_never_cleared_by_flatness() {
     let report = json!({ "steganography_findings": [{
         "label": "narrowband_high_freq_peak", "low_hz": 46000.0, "high_hz": 48000.0,
-        "energy": 1.0, "fraction_of_total": 0.01, "flatness": 0.99 }] });
+        "energy": 1.0, "fraction_of_total": HIDDEN_ENERGY_FRACTION_MIN, "flatness": 0.99 }] });
     assert_eq!(
         kinds(report),
         vec![MultimodalFindingKind::AudioSteganography]
@@ -186,4 +186,48 @@ fn unreadable_inaudible_facts_fail_closed() {
     let alias = json!({ "alias_predictions": [{ "target_rate_hz": 16000,
         "hidden_folding_fraction": null, "hidden_flatness": 0.1 }] });
     assert!(kinds(alias).contains(&MultimodalFindingKind::ResamplerAliasing));
+}
+
+/// The legacy sub-audible and high-band detectors share the hidden-channel
+/// energy floor: a band holding less of the file's energy than
+/// `HIDDEN_ENERGY_FRACTION_MIN` cannot carry a payload and is not a finding.
+#[test]
+fn faint_sub_audible_and_high_band_energy_is_not_a_finding() {
+    let faint = HIDDEN_ENERGY_FRACTION_MIN / 2.0;
+    let report = json!({
+        "subliminal_findings": [{
+            "label": "sub_audible", "low_hz": 0.0, "high_hz": 20.0,
+            "energy": 1.0, "fraction_of_total": faint }],
+        "steganography_findings": [{
+            "label": "narrowband_high_freq_peak", "low_hz": 6000.0, "high_hz": 8000.0,
+            "energy": 1.0, "fraction_of_total": faint }] });
+    assert!(kinds(report).is_empty());
+    let material = json!({ "subliminal_findings": [{
+        "label": "sub_audible", "low_hz": 0.0, "high_hz": 20.0,
+        "energy": 1.0, "fraction_of_total": HIDDEN_ENERGY_FRACTION_MIN }] });
+    assert_eq!(
+        kinds(material),
+        vec![MultimodalFindingKind::SubliminalAudio]
+    );
+}
+
+/// D5 benign rate (RIC-MM-001 O-3): the spectral report sigil-perception
+/// produced for two real speech recordings (LibriSpeech clips shipped as the
+/// sherpa-onnx whisper-tiny.en test set). Before the energy floor both were
+/// flagged HIGH as subliminal audio and steganography.
+#[test]
+fn real_benign_speech_yields_no_spectral_finding() {
+    let reports: serde_json::Value = serde_json::from_str(include_str!(
+        "../../../../../tests/fixtures/multimodal/benign_speech_spectral.json"
+    ))
+    .expect("fixture");
+    for (name, report) in reports["reports"].as_object().expect("reports") {
+        assert!(
+            report["subliminal_findings"]
+                .as_array()
+                .is_some_and(|b| !b.is_empty()),
+            "{name}: the adapter reports the faint band, the kernel judges it"
+        );
+        assert!(kinds(report.clone()).is_empty(), "{name}");
+    }
 }

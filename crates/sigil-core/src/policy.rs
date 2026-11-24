@@ -362,7 +362,11 @@ pub struct ScanPolicy {
     pub entropy_analysis: bool,
     #[serde(default = "ScanPolicy::default_true")]
     pub smuggling_detection: bool,
-    #[serde(default = "ScanPolicy::default_true")]
+    /// Off by default: the n-gram rarity detector judges an input against
+    /// its own n-gram counts with no baseline corpus, so every ordinary
+    /// sentence longer than about 55 characters was flagged (measured
+    /// 2026-11-23, RIC-MM-001 O-3). It stays available as an explicit opt-in.
+    #[serde(default)]
     pub rare_pattern_detection: bool,
     #[serde(default = "ScanPolicy::default_true")]
     pub slow_rate_detection: bool,
@@ -408,7 +412,7 @@ impl Default for ScanPolicy {
             dlp_enabled: true,
             entropy_analysis: true,
             smuggling_detection: true,
-            rare_pattern_detection: true,
+            rare_pattern_detection: false,
             slow_rate_detection: true,
             encoded_payloads: true,
             injection_threshold: Self::default_injection_threshold(),
