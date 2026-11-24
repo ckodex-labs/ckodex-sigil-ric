@@ -27,12 +27,17 @@ row() { # file profile json
        findings: [$f[] | .kind] }'
 }
 
+refused() { # file profile message: the profile does not apply (fail closed)
+  jq -cn --arg file "$(basename "$1")" --arg profile "$2" --arg error "$3" \
+    '{file: $file, profile: $profile, refused: ($error | fromjson? // {error: $error} | .error)}'
+}
+
 for f in "$dir"/*; do
   case "$f" in
     *.png|*.jpg|*.jpeg)
       for p in qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow thumbnail/nearest-80; do
         out=$("$bin" --format json perceive --input "$f" --profile "$p" --analyze \
-          --ocr-binary "$tess" --ocr-args "stdin - --psm 6")
+          --ocr-binary "$tess" --ocr-args "stdin - --psm 6" 2>&1) || { refused "$f" "$p" "$out"; continue; }
         row "$f" "$p" "$out"
       done ;;
     *.wav)
@@ -42,7 +47,7 @@ for f in "$dir"/*; do
         # shellcheck disable=SC2086 # extra is two words or none
         out=$(SIGIL_REF_MODELS=$models "$bin" --format json perceive --input "$f" --profile "$p" --analyze \
           --transcript-binary "$models/venv/bin/python" \
-          --transcript-args "scripts/reference/whisper-stdin ffmpeg" $extra)
+          --transcript-args "scripts/reference/whisper-stdin ffmpeg" $extra 2>&1) || { refused "$f" "$p" "$out"; continue; }
         row "$f" "$p" "$out"
       done ;;
   esac

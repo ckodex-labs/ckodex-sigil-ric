@@ -1,0 +1,6 @@
+{"file":"0.wav","sha384":"220319fc3e9fc7020f1fd4bafb33ed5eda5fcb0ea733c9defd657030756c31c929b0ec78e711822ac4205bf377480ec7","profile":"audio/16k-decimate","verdict":"Allow","ceiling":"act","divergence":[],"findings":[]}
+{"file":"0.wav","sha384":"220319fc3e9fc7020f1fd4bafb33ed5eda5fcb0ea733c9defd657030756c31c929b0ec78e711822ac4205bf377480ec7","profile":"whisper/16k-filtered","verdict":"Allow","ceiling":"observe","divergence":[],"findings":[]}
+{"file":"1.wav","sha384":"5352be0ee35b8a1fb20a81cb2562d516fadc483f9a7dd1dfdff185ce4c0ba03ce89f282a4ea45f8551d2e8897ccd0015","profile":"audio/16k-decimate","verdict":"Allow","ceiling":"act","divergence":[],"findings":[]}
+{"file":"1.wav","sha384":"5352be0ee35b8a1fb20a81cb2562d516fadc483f9a7dd1dfdff185ce4c0ba03ce89f282a4ea45f8551d2e8897ccd0015","profile":"whisper/16k-filtered","verdict":"Allow","ceiling":"observe","divergence":[],"findings":[]}
+{"file":"8k.wav","profile":"audio/16k-decimate","refused":"extractor failed: profile audio/16k-decimate has no in-process audio view for 8000 Hz"}
+{"file":"8k.wav","sha384":"f477529cd439c5f56a592ae4a4e7693610b79eef33893aa86d97fc065b5b6946d3bb0f0fdf20f3b015f5563b0d7a8be8","profile":"whisper/16k-filtered","verdict":"Flag","ceiling":"observe","divergence":[],"findings":["audio_steganography"]}
