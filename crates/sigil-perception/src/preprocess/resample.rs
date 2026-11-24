@@ -159,28 +159,30 @@ pub enum PassOrder {
     VerticalFirst,
 }
 
-/// Pillow 13.0.0's pass order for a bicubic resize, where it is known.
+/// Pillow 13.0.0's pass order for a bicubic resize, as its source decides it
+/// (`ImagingResampleInner`, `src/libImaging/Resample.c`): vertical first when
+/// the height shrinks by more than twice as many pixels as the width does,
 ///
-/// Observed by running Pillow 13.0.0 on 360 sizes across three source shapes
-/// (validated, not read from its source): horizontal first unless the image
-/// grows horizontally and shrinks vertically, which runs vertical first.
-/// When both axes shrink Pillow picks either order and no size or cost rule
-/// fitted the observations, so the order is unknown: `None`. When only one
-/// pass runs the order does not matter.
+/// ```c
+/// int horizontal_first = !((in_h - h) > 0 && (in_h - h) > (in_w - w) * 2);
+/// ```
+///
+/// horizontal first otherwise. When only one pass runs the order does not
+/// matter. Read from the Pillow 13.0.0 source distribution and checked against
+/// Pillow on both sides of the boundary (`pillow_parity.json`).
 #[must_use]
 pub fn pillow13_pass_order(
     in_width: usize,
     in_height: usize,
     width: usize,
     height: usize,
-) -> Option<PassOrder> {
-    if width == in_width || height == in_height {
-        return Some(PassOrder::HorizontalFirst);
-    }
-    match (width > in_width, height > in_height) {
-        (_, true) => Some(PassOrder::HorizontalFirst),
-        (true, false) => Some(PassOrder::VerticalFirst),
-        (false, false) => None,
+) -> PassOrder {
+    let shrink = |from: usize, to: usize| from as i128 - to as i128;
+    let (dx, dy) = (shrink(in_width, width), shrink(in_height, height));
+    if dy > 0 && dy > dx * 2 {
+        PassOrder::VerticalFirst
+    } else {
+        PassOrder::HorizontalFirst
     }
 }
 

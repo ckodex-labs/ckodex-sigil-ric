@@ -99,6 +99,66 @@
    "rgb_sha384": "c7e361be90dc601d115df617925c9f1e6a895db76e197632d964e2e0ffacef25391aec1c7bb9bdbf0598fc2c05818c95"
   },
   {
+   "kernel": "bicubic",
+   "width": 600,
+   "height": 560,
+   "rgb_sha384": "b6c76e00eb90b27f5e874266b8c7ad1c66a4eb7e1eda6b96d206a55bf08417629ddf4c9df303fdb08ab3dd820acdaaee"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 600,
+   "height": 559,
+   "rgb_sha384": "cb85e9dcec73a92a8b77874995c75b930dabc8bc703a359614e84b80016f3e7342d8c832eb9f7a110837b06ee5f09ba8"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 500,
+   "height": 360,
+   "rgb_sha384": "d1585889b328576290cc1f0bed4dc76ca58b505e22acc4e04c8fd2959c507811bfe93aa0d710446064428a14800b3255"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 500,
+   "height": 359,
+   "rgb_sha384": "d26ebb9333e8c008e3c6f29443716adbd0f913406ef8015e97d8982c779c78fd1d20ebb3386203ba445f2eda6ce9743a"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 630,
+   "height": 620,
+   "rgb_sha384": "31b02cfd83ed5fbb2dd35f90170e1186a040b29fd7e909c766de4c87eea2991a8944bcf9cdf4bd618ba650d3852b919a"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 630,
+   "height": 619,
+   "rgb_sha384": "1986c1f88d6b0c09becf567d25d6f7b25ea37221347f014d2e22883dec621c32ed430e88fff38ab622f9d8c549e08741"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 630,
+   "height": 100,
+   "rgb_sha384": "0e95b6cab770115a77102b0e2c0749055982e20d67e418a2eb97d0cb3e0df0ec62b560ae413bb509483dc5f57640c6af"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 200,
+   "height": 100,
+   "rgb_sha384": "3d538182861f26528b3acdc7f42064496b1bdadb9ca66fa6c9ed922ba0142bb801d8f6688d91b4ad9b3d1070eb277e3d"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 639,
+   "height": 637,
+   "rgb_sha384": "28fcf67312b56e1f48c4fe57c0d96301c45aa469aca86397d0028fbd50897d2e8d7d2a8b5c3bebc384b734ed4bc35ef7"
+  },
+  {
+   "kernel": "bicubic",
+   "width": 639,
+   "height": 636,
+   "rgb_sha384": "fd8a45841d9467b45cd0258b0acc0bb15fa9c08c8c07391bee6f2bd0d1a98aa8effe285a2ea223503b2b7b75a0a83d18"
+  },
+  {
    "kernel": "nearest",
    "width": 80,
    "height": 80,

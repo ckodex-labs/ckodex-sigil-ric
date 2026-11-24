@@ -85,15 +85,18 @@ order.
 - **Pillow version is part of the identity** (measured 2026-11-21). Pillow
   12.3.0's `ImagingResampleInner` always runs the horizontal pass first
   (read in its `Resample.c`; not run, an offline install was not
-  permitted). Pillow 13.0.0 does not. Run on 360 sizes over three source
-  shapes, it went horizontal first whenever the vertical axis grows, vertical
-  first when the image grows horizontally and shrinks vertically, and either
-  way when both axes shrink. No size or cost rule fitted that last region.
-  The kernel labels in the digest carry `pillow-13.0.0`. For an input in the
-  unknown region, a reference-matched profile yields an `approximate` view,
-  so the ceiling is capped (`pillow13_pass_order`, CV-RIC-031).
-  `scripts/reference/pillow_parity.py` records 21 cases. Where the order is
-  unknown, the bytes equal one of the two orders.
+  permitted). Pillow 13.0.0 does not: its `ImagingResampleInner` (read in
+  the 13.0.0 source distribution, 2026-11-23, O-10) runs the vertical pass
+  first when the height shrinks by more than twice as many pixels as the
+  width, `(in_h - h) > 0 && (in_h - h) > (in_w - w) * 2`, and horizontal
+  first otherwise. That explains the earlier observation on 360 sizes
+  ("either order when both axes shrink"): the boundary falls inside that
+  region. The kernel labels in the digest carry `pillow-13.0.0`.
+  `pillow13_pass_order` implements the rule, so every input has a known
+  order and a reference-matched bicubic profile keeps its parity.
+  `scripts/reference/pillow_parity.py` records 31 cases, including pairs on
+  both sides of the boundary; for each shrink-both case the other order gives
+  different bytes, so each case discriminates (CV-RIC-031).
 - **Parity is per input, never stronger than the profile's.** A
   `ModelView` carries its own parity.
 

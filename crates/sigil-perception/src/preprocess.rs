@@ -154,10 +154,8 @@ impl PreprocessorProfile {
         }
     }
 
-    /// The model view of an image under this profile, with the parity that
-    /// holds for this input. A reference-matched profile still yields an
-    /// approximate view where the reference's behaviour for this input is
-    /// unknown (Pillow 13's bicubic pass order when both axes shrink).
+    /// The model view of an image under this profile, with the profile's
+    /// parity.
     #[must_use]
     pub fn model_view(&self, image: &Rgb8) -> Option<ModelView> {
         let ProfileSpec::Image { kernel, .. } = &self.spec else {
@@ -167,13 +165,8 @@ impl PreprocessorProfile {
         let (w, h) = (usize::try_from(w).ok()?, usize::try_from(h).ok()?);
         let (image, parity) = match kernel {
             ImageKernel::PillowBicubic => {
-                match pillow13_pass_order(image.width, image.height, w, h) {
-                    Some(order) => (resize_bicubic(image, w, h, order), self.parity),
-                    None => (
-                        resize_bicubic(image, w, h, PassOrder::HorizontalFirst),
-                        ConsumedParity::Approximate,
-                    ),
-                }
+                let order = pillow13_pass_order(image.width, image.height, w, h);
+                (resize_bicubic(image, w, h, order), self.parity)
             }
             ImageKernel::PillowNearest => (resize_nearest(image, w, h), self.parity),
         };

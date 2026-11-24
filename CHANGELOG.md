@@ -69,6 +69,10 @@ file it was given, and signs which one it judged.
 
 ### Fixed
 
+- Pillow 13's bicubic pass order is implemented from its source for every
+  size, so a reference-matched bicubic profile no longer drops to
+  `approximate` when both axes shrink.
+- A pinned tool's spawn is retried, bounded, on `ETXTBSY` (text file busy).
 - Spectral judgment: three bypasses, structure judged per reported slice, and
   slice and region rules combined rather than substituted.
 - A negation only cancels an override it directly modifies.

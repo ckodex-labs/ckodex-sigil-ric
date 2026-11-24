@@ -71,11 +71,12 @@ fn cv_ric_031_resampler_matches_pillow_across_sizes() {
         &std::fs::read_to_string(fixture("pillow_parity.json")).expect("parity fixture"),
     )
     .expect("json");
-    // Where Pillow 13's pass order is unknown (both axes shrink), the bytes
-    // must equal one of the two orders: the order is the only unknown.
+    // Every case follows the pass order Pillow 13's source picks. Where both
+    // axes shrink, the fixture straddles the boundary, and the other order
+    // must give different bytes there, so each such case discriminates.
     assert_eq!(parity["pillow"], "13.0.0");
     let src = source();
-    let (mut mismatches, mut unknown_order) = (Vec::new(), 0);
+    let (mut mismatches, mut shrink_both) = (Vec::new(), [0, 0]);
     for case in parity["cases"].as_array().expect("cases") {
         let (w, h) = (
             case["width"].as_u64().expect("w") as usize,
@@ -83,15 +84,22 @@ fn cv_ric_031_resampler_matches_pillow_across_sizes() {
         );
         let expected = case["rgb_sha384"].as_str().expect("hash");
         let matches = match case["kernel"].as_str() {
-            Some("bicubic") => match pillow13_pass_order(src.width, src.height, w, h) {
-                Some(order) => sha384(&resize_bicubic(&src, w, h, order).data) == expected,
-                None => {
-                    unknown_order += 1;
-                    [PassOrder::HorizontalFirst, PassOrder::VerticalFirst]
-                        .iter()
-                        .any(|o| sha384(&resize_bicubic(&src, w, h, *o).data) == expected)
+            Some("bicubic") => {
+                let order = pillow13_pass_order(src.width, src.height, w, h);
+                if w < src.width && h < src.height {
+                    shrink_both[usize::from(order == PassOrder::VerticalFirst)] += 1;
+                    let other = match order {
+                        PassOrder::HorizontalFirst => PassOrder::VerticalFirst,
+                        PassOrder::VerticalFirst => PassOrder::HorizontalFirst,
+                    };
+                    assert_ne!(
+                        sha384(&resize_bicubic(&src, w, h, other).data),
+                        expected,
+                        "{w}x{h} does not discriminate the order"
+                    );
                 }
-            },
+                sha384(&resize_bicubic(&src, w, h, order).data) == expected
+            }
             Some("nearest") => sha384(&resize_nearest(&src, w, h).data) == expected,
             other => panic!("unknown kernel {other:?}"),
         };
@@ -101,16 +109,17 @@ fn cv_ric_031_resampler_matches_pillow_across_sizes() {
     }
     assert!(mismatches.is_empty(), "differs from Pillow: {mismatches:?}");
     assert!(
-        unknown_order >= 3,
-        "the fixture covers the unknown-order region"
+        shrink_both[0] >= 4 && shrink_both[1] >= 4,
+        "both sides of the shrink-both boundary: {shrink_both:?}"
     );
 }
 
 #[test]
-fn cv_ric_031_unknown_reference_behaviour_downgrades_the_view_to_approximate() {
-    // A reference-matched bicubic profile that shrinks both axes hits the
-    // region where Pillow 13's pass order is unknown: the view must not claim
-    // parity it has not shown.
+fn cv_ric_031_a_view_carries_its_profiles_parity_and_is_never_promoted() {
+    // Pillow 13's pass order is known for every size (Resample.c), so a
+    // reference-matched bicubic profile that shrinks both axes keeps its
+    // parity, and the view is the bytes Pillow produces (the parity vector
+    // above).
     let shrink = PreprocessorProfile {
         name: "test/bicubic-300".to_string(),
         spec: ProfileSpec::Image {
@@ -124,8 +133,8 @@ fn cv_ric_031_unknown_reference_behaviour_downgrades_the_view_to_approximate() {
         parity: ConsumedParity::ReferenceMatched,
     };
     let view = shrink.model_view(&source()).expect("view");
-    assert_eq!(view.parity, ConsumedParity::Approximate);
-    // An approximate profile is never promoted by a known-order input.
+    assert_eq!(view.parity, ConsumedParity::ReferenceMatched);
+    // An approximate profile is never promoted by any input.
     let mut approx = shrink.clone();
     approx.parity = ConsumedParity::Approximate;
     approx.spec = ProfileSpec::Image {

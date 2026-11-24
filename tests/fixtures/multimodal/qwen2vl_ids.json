@@ -271,9 +271,9 @@
   },
   {
    "path": "tests/fixtures/multimodal/pillow_parity.json",
-   "sha384": "430b1ca253e014cc0e635187b8ca5c993b4c805fcb9570e1c27c93b5ad3f7e9e71866663f62cb2f11c6e44590103104c",
-   "count": 2632,
-   "ids_sha384_u32le": "14959eba5022c3632b26c6d8d8baa55c3bee2b85d3c30c71977455743b895b5c588921d86b6bda918d4daa30912e47dc"
+   "sha384": "1e4fe912cfd7a4a3377d3e5aa36d8825cde6ec4085d4b529ffc6fa46cc95684f2f4a951fc8ab6086ae2733671d7278e7",
+   "count": 3877,
+   "ids_sha384_u32le": "c8f85bd065f048197e03a54814e25737129d9a9c349f1f5040a249a275f374c76190f778dc089cfc9db6bdb560d78385"
   }
  ],
  "requests": [
