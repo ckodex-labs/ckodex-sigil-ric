@@ -282,11 +282,12 @@ For native Zig targets and cross-compilation, the build pipeline integrates with
 The attack classes and the tests that block them are listed in
 [docs/QA-SCORECARD.md](./docs/QA-SCORECARD.md). On every push:
 
-- `cargo test --workspace`: TESTCOUNT tests, 0 failures, in the Dagger CI image
-  with real Tesseract and ffmpeg.
+- `cargo test --workspace`: 591 tests, 0 failures, in the Dagger CI image
+  (Linux) with real Tesseract and ffmpeg.
 - `cargo clippy --workspace --all-targets -- -D warnings`, with functions held
   to 50 lines (`clippy.toml`).
-- Line coverage gate of 80 % (`cargo llvm-cov`); COVERAGE at the 0.4.0 release.
+- Line coverage gate of 80 % (`cargo llvm-cov`); 89.91 % (17,105 of 19,025
+  lines) at the 0.4.0 release.
 - Conformance vectors CV-RIC-001 to CV-RIC-040 (`docs/RIC-CONTRACT.md`),
   detector findings mapped to MITRE ATLAS and ATT&CK, and terminal-escape
   conformance against ghostty.
