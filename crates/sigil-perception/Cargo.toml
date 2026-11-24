@@ -16,7 +16,7 @@ realfft = "3.5"
 rustfft = "6.4"
 serde = { version = "1", features = ["derive"] }
 serde_json.workspace = true
-sha2 = "0.10.9"
+sha2 = "0.11.1"
 sigil-core = { path = "../sigil-core" }
 sigil-multimodal = { path = "../sigil-multimodal" }
 thiserror.workspace = true
