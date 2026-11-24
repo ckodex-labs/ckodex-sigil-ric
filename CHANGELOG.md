@@ -27,6 +27,14 @@ file it was given, and signs which one it judged.
   the source's.
 - **A configured custom DLP pattern file that is missing or malformed is an
   error**, not an empty pattern set.
+- **The n-gram rarity detector is off by default** (`scan.rare_pattern_detection`).
+  It judged each input against its own n-gram counts with no baseline, so
+  0.3.x flagged every ordinary sentence longer than about 55 characters.
+  Set it to `true` to keep the old behaviour.
+- **Fewer false positives on benign speech.** The sub-audible and high-band
+  audio detectors require 5 % of the file's energy, and SIGIL's own spectral
+  report is no longer scanned as language. Measured in
+  `docs/measurements/BENIGN-2026-11.md`.
 - **Media inputs and retrieved chunks sent over the API cannot carry parity or
   a retrieval assessment**, so they always cap at `observe`: a caller cannot
   prove SIGIL assessed them.
@@ -90,10 +98,16 @@ file it was given, and signs which one it judged.
 
 ### Known limits
 
-Tracked in `docs/missions/RIC-MM-001-OPEN.md`: the `whisper/16k-filtered`
-view stays approximate (`docs/reference-models/FFMPEG-16K.md`), and receipt
-v3 compatibility cannot be tested because the line that defined it is not
-available.
+Tracked in `docs/missions/RIC-MM-001-OPEN.md`:
+
+- OCR noise on photographs is reported as a LOW divergence: 22 of 24 benign
+  photographs are flagged under the Qwen2-VL view and capped at `observe`.
+  This fails closed; confidence gating is planned for 0.4.1.
+- The `whisper/16k-filtered` view stays approximate
+  (`docs/reference-models/FFMPEG-16K.md`).
+- Receipt v3 compatibility cannot be tested: the line that defined it is not
+  available.
+- Linux archives only; macOS and Windows build from source.
 
 ## [0.3.2] - 2026-10-16
 
