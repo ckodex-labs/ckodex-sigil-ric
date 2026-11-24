@@ -33,4 +33,4 @@ Run from the repository root.
 | `whisper_logmel.py` | spectrograms and Whisper 80-bin log-mel (same maths as `whisper/audio.py`) |
 | `pillow_parity.py` | `pillow_parity.json`: Pillow 13.0.0 bicubic and nearest hashes over 21 sizes, for the Rust resampler |
 | `qwen2vl_ids.py` | `qwen2vl_ids.json`: Qwen2-VL text and request ID streams from `.ref-models/qwen2-vl-2b` (`fetch_qwen2vl_assets.sh`), made by `tokenizers` 0.22.2 and transformers 5.12.1 (`Qwen2VLProcessor.replace_image_token`) under the system Python 3.11. It needs no pixels, so 5.x's resize path does not apply |
-| `embeddings.py` | Whisper tiny.en decoder embedding rows, GloVe mean-pooled filter scores |
+| `embeddings.py` | Whisper tiny.en decoder embedding rows, GloVe mean-pooled filter scores; the scores (no vectors) are kept in `embedding_probes.json` |

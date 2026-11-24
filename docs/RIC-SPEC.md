@@ -106,6 +106,9 @@ The tag characters turn "report…" into one out-of-vocabulary word, which the
 filter drops. It scored a representation the model never receives. The
 Qwen2 byte-level tokenizer, by contrast, maps the same text to 89 IDs and
 keeps every tag character (`tests/fixtures/multimodal/qwen2vl_ids.json`).
+Both scores were reproduced on 2026-11-23 by `scripts/reference/embeddings.py`
+with the published vectors (`tests/fixtures/multimodal/embedding_probes.json`,
+which records the vectors' SHA-384 and stores scores only).
 
 Normative rules:
 
@@ -367,7 +370,7 @@ Policy may lower a ceiling; it may never raise one. Derived channels inherit
 |---|---|
 | Section 4.1 model-input boundary: receipts, signing, boundary findings, fusion audit, authority ceilings | implemented in SIGIL v0.3.x, CV-RIC-001 through CV-RIC-008 |
 | Section 4.2 tool boundary | specified |
-| Section 4.3 retrieval boundary | draft rules RIC-RET-1 to 3 implemented on the model-input side: retrieval receipt, trust and ceiling never above the source, unbound or sibling embeddings capped at `observe`, CV-RIC-038 to CV-RIC-040. Not implemented: a retriever adapter that computes embeddings itself, and the GloVe reproduction (its vectors are not in this repository) |
+| Section 4.3 retrieval boundary | draft rules RIC-RET-1 to 3 implemented on the model-input side: retrieval receipt, trust and ceiling never above the source, unbound or sibling embeddings capped at `observe`, CV-RIC-038 to CV-RIC-040. Not implemented: a retriever adapter that computes embeddings itself. The GloVe example is reproduced (`tests/fixtures/multimodal/embedding_probes.json`) |
 | Section 4.4 agent-to-agent boundary: capability leases, attenuation, representation binding, revocation | implemented in SIGIL v0.3.1+, CV-RIC-009 through CV-RIC-014 |
 | Section 4.5 human-approval boundary | specified |
 | Multimodal perception: pixels, waveforms, temporal spans | partial (RIC-MM-001, in progress). SIGIL produces and binds the consumed view for images (`qwen2-vl/smart-resize-bicubic@transformers-4.57.6-slow`, `thumbnail/nearest-80`) and audio (`audio/16k-decimate`), signs it in receipt v4, and caps unresolved media at `observe`. For Qwen2-VL it emits the exact request ID stream from digest-pinned assets and binds the placeholder stream and interpreter identity: CV-RIC-029 to CV-RIC-037. Filtered resampling runs through a pinned ffmpeg and stays approximate. Not implemented: other model families, temporal spans, and transcript divergence (no ASR is installed). |
